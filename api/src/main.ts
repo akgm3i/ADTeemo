@@ -13,10 +13,12 @@ app.get('/health', (c) => {
   return c.json({ ok: true, message: 'Healthy' });
 });
 
-app.route('/users', usersRoutes);
+const routes = app.route('/users', usersRoutes);
 
-// Export the app for testing
-export { app };
+export type AppType = typeof routes;
+
+// Export the app for testing and runtime
+export default app;
 
 // Serve the app only when this file is the main module
 if (import.meta.main) {
