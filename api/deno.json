@@ -1,0 +1,22 @@
+{
+  "tasks": {
+    "dev": "deno run --watch --allow-net --allow-read --allow-env --allow-write src/main.ts",
+    "db:generate": "deno run -A npm:drizzle-kit generate:sqlite",
+    "db:migrate": "deno run --allow-net --allow-read --allow-write src/db/migrate.ts"
+  },
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "hono/jsx"
+  },
+  "nodeModulesDir": "auto",
+  "imports": {
+    "hono": "https://deno.land/x/hono@v4.2.3/mod.ts",
+    "hono/": "https://deno.land/x/hono@v4.2.3/",
+    "drizzle-orm": "npm:drizzle-orm@0.30.8",
+    "drizzle-orm/sqlite-core": "npm:drizzle-orm@0.30.8/sqlite-core",
+    "drizzle-kit": "npm:drizzle-kit@0.20.14",
+    "@libsql/client": "npm:@libsql/client@0.6.0",
+    "@hono/zod-validator": "npm:@hono/zod-validator@0.2.1",
+    "zod": "npm:zod@3.23.8"
+  }
+}

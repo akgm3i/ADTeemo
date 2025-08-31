@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "dev": "deno run --watch --allow-net --allow-read --allow-env src/main.ts",
+    "start": "deno run --allow-net --allow-read --allow-env src/main.ts"
+  },
+  "imports": {
+    "discord.js": "npm:discord.js@14.15.2",
+    "@hono/rpc-client": "npm:@hono/rpc-client@0.1.2"
+  }
+}

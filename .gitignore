@@ -1,0 +1,23 @@
+# Deno / Node
+node_modules
+deno.lock
+
+# Drizzle
+/api/drizzle
+/api/sqlite.db
+/api/sqlite.db-journal
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+lerna-debug.log*
+
+# Misc
+.DS_Store
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
