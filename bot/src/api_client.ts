@@ -1,4 +1,4 @@
-import { hc } from '@hono/rpc-client';
+import { hc } from 'hono/client';
 import type { app } from '../../api/src/main.ts';
 
 const API_URL = Deno.env.get('API_URL');

@@ -10,13 +10,12 @@
   },
   "nodeModulesDir": "auto",
   "imports": {
-    "hono": "https://deno.land/x/hono@v4.2.3/mod.ts",
-    "hono/": "https://deno.land/x/hono@v4.2.3/",
-    "drizzle-orm": "npm:drizzle-orm@0.30.8",
-    "drizzle-orm/sqlite-core": "npm:drizzle-orm@0.30.8/sqlite-core",
-    "drizzle-kit": "npm:drizzle-kit@0.20.14",
-    "@libsql/client": "npm:@libsql/client@0.6.0",
-    "@hono/zod-validator": "npm:@hono/zod-validator@0.2.1",
-    "zod": "npm:zod@3.23.8"
+    "hono": "npm:hono",
+    "zod": "npm:zod",
+    "@hono/zod-validator": "npm:@hono/zod-validator",
+    "drizzle-orm": "npm:drizzle-orm",
+    "drizzle-orm/sqlite-core": "npm:drizzle-orm/sqlite-core",
+    "drizzle-kit": "npm:drizzle-kit",
+    "@libsql/client": "npm:@libsql/client"
   }
 }
