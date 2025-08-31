@@ -4,8 +4,8 @@ deno.lock
 
 # Drizzle
 /api/drizzle
-/api/sqlite.db
-/api/sqlite.db-journal
+/api/data/sqlite.db
+/api/data/sqlite.db-journal
 
 # Logs
 logs

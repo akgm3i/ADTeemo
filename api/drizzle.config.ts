@@ -1,12 +1,12 @@
-import type { Config } from 'drizzle-kit';
+import { defineConfig } from 'drizzle-kit';
 
-export default {
+export default defineConfig({
   schema: './src/db/schema.ts',
   out: './drizzle',
-  driver: 'libsql',
-  dbCredentials: {
-    url: 'file:/app/data/sqlite.db',
-  },
+  dialect: 'sqlite',
   verbose: true,
   strict: true,
-} satisfies Config;
+  dbCredentials: {
+    url: Deno.env.get('DATABASE_URL') || 'file:./data/sqlite.db',
+  },
+});

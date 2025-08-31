@@ -1,8 +1,9 @@
 {
   "tasks": {
     "dev": "deno run --watch --allow-net --allow-read --allow-env --allow-write src/main.ts",
-    "db:generate": "deno run -A npm:drizzle-kit generate:sqlite",
-    "db:migrate": "deno run --allow-net --allow-read --allow-write src/db/migrate.ts"
+    "db:push": "deno run -A npm:drizzle-kit push",
+    "db:generate": "deno run -A npm:drizzle-kit generate",
+    "db:migrate": "deno run --allow-net --allow-read --allow-write npm:drizzle-kit migrate"
   },
   "compilerOptions": {
     "jsx": "react-jsx",
