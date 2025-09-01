@@ -1,11 +1,15 @@
 {
+  "name": "@adteemo/bot",
+  "exports": {
+    ".": "./src/main.ts"
+  },
   "tasks": {
-    "dev": "deno run --watch --allow-net --allow-read --allow-env --allow-ffi src/main.ts",
-    "start": "deno run --allow-net --allow-read --allow-env --allow-ffi src/main.ts",
+    "dev": "deno run -A --watch --env=../.env.dev src/main.ts",
+    "test": "deno test -A --env=../.env.dev",
     "deploy-commands": "deno run --allow-net --allow-read --allow-env --allow-ffi src/deploy-commands.ts"
   },
   "compilerOptions": {
-    "strict": true
+    "types": ["./src/@types/discord.js.d.ts"]
   },
   "imports": {
     "discord.js": "npm:discord.js",

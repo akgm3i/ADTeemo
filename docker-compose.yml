@@ -1,32 +1,29 @@
-version: '3.8'
+version: "3.8"
 
 services:
   api:
     build:
-      context: ./api
+      context: .
+      dockerfile: ./docker/Dockerfile
+      target: api
     ports:
       - "8000:8000"
     volumes:
-      # This mounts the host's ./data directory into /app/data in the container.
-      # The SQLite database will be stored here to persist data across container restarts.
-      - ./data:/app/data
-    # To use a .env file for secrets, create a .env file in the root
-    # and uncomment the following line.
+      - ./data:/app/api/data
+    environment:
+      DB_FILE_NAME: "file:./data/sqlite.db"
     # env_file:
     #   - .env
 
   bot:
     build:
-      context: ./bot
+      context: .
+      dockerfile: ./docker/Dockerfile
+      target: bot
     depends_on:
       - api
     environment:
-      # The bot connects to the api service via its Docker network name 'api'
       API_URL: http://api:8000
-      # The Discord token must be set in your shell or a .env file
-      # e.g., create a .env file with DISCORD_TOKEN=your_token_here
       DISCORD_TOKEN: ${DISCORD_TOKEN}
-    # To use a .env file for secrets, create a .env file in the root
-    # and uncomment the following line.
     # env_file:
     #   - .env

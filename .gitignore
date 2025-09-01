@@ -3,9 +3,7 @@ node_modules
 deno.lock
 
 # Drizzle
-/api/drizzle
-/api/data/sqlite.db
-/api/data/sqlite.db-journal
+/data/sqlite.db
 
 # Logs
 logs
@@ -15,9 +13,5 @@ yarn-debug.log*
 lerna-debug.log*
 
 # Misc
-.DS_Store
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.dev

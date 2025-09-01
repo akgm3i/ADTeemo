@@ -1,13 +1,20 @@
-import { eq } from 'drizzle-orm';
-import { db } from './index.ts';
-import { users, userRoles, type Lane } from './schema.ts';
+import { eq } from "drizzle-orm";
+import { createInsertSchema, createUpdateSchema } from "drizzle-zod";
+import { db } from "./index.ts";
+import { type Lane, userRoles, users } from "./schema.ts";
+
+const userInsertSchema = createInsertSchema(users);
+const userUpdateSchema = createUpdateSchema(users);
+const userRolesInsertSchema = createInsertSchema(userRoles);
 
 /**
  * Creates a user if they don't already exist.
  * @param userId The Discord user ID.
  */
 export async function upsertUser(userId: string) {
-  await db.insert(users).values({ id: userId }).onConflictDoNothing().execute();
+  const user = { id: userId };
+  const parsed = userInsertSchema.parse(user);
+  await db.insert(users).values(parsed).onConflictDoNothing().execute();
 }
 
 /**
@@ -17,7 +24,11 @@ export async function upsertUser(userId: string) {
  */
 export async function setMainRole(userId: string, role: Lane) {
   await upsertUser(userId); // Ensure user exists
-  return await db.update(users).set({ mainRole: role }).where(eq(users.id, userId)).execute();
+  const user = { id: userId, mainRole: role };
+  const parsed = userUpdateSchema.parse(user);
+  return await db.update(users).set(parsed).where(
+    eq(users.id, userId),
+  ).execute();
 }
 
 /**
@@ -27,7 +38,10 @@ export async function setMainRole(userId: string, role: Lane) {
  */
 export async function addUserRole(userId: string, role: Lane) {
   await upsertUser(userId); // Ensure user exists
-  return await db.insert(userRoles).values({ userId, role }).onConflictDoNothing().execute();
+  const user = { id: userId, mainRole: role };
+  const parsed = userRolesInsertSchema.parse(user);
+  return await db.insert(userRoles).values(parsed)
+    .onConflictDoNothing().execute();
 }
 
 /**

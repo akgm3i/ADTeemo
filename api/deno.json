@@ -1,17 +1,16 @@
 {
+  "name": "@adteemo/api",
+  "exports": {
+    ".": "./src/index.ts",
+    "./hc": "./src/hc.ts",
+    "./schema": "./src/db/schema.ts"
+  },
   "tasks": {
-    "dev": "deno run --watch --allow-net --allow-read --allow-env --allow-write src/main.ts",
-    "db:push": "deno run -A npm:drizzle-kit push --force",
-    "db:generate": "deno run -A npm:drizzle-kit generate",
-    "db:migrate": "deno run --allow-net --allow-read --allow-write npm:drizzle-kit migrate"
+    "dev": "DB_FILE_NAME=file:../data/sqlite.db deno serve -A --watch --env=../.env.dev src/index.ts",
+    "test": "deno test -A --env=../.env.dev"
   },
-  "compilerOptions": {
-    "jsx": "react-jsx",
-    "jsxImportSource": "hono/jsx",
-    "strict": true
-  },
-  "nodeModulesDir": "auto",
   "imports": {
+    "drizzle-zod": "npm:drizzle-zod@^0.8.3",
     "hono": "npm:hono",
     "zod": "npm:zod",
     "@hono/zod-validator": "npm:@hono/zod-validator",
