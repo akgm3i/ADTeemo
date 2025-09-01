@@ -6,8 +6,8 @@
     "./schema": "./src/db/schema.ts"
   },
   "tasks": {
-    "dev": "DB_FILE_NAME=file:../data/sqlite.db deno serve -A --watch --env=../.env.dev src/index.ts",
-    "test": "deno test -A --env=../.env.dev"
+    "dev": "DATABASE_URL=file:../data/sqlite.db deno serve -A --watch --env=../.env.dev src/index.ts",
+    "test": "deno test -A"
   },
   "imports": {
     "drizzle-zod": "npm:drizzle-zod@^0.8.3",

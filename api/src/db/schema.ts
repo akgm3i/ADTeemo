@@ -1,11 +1,11 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 
-export const lanes = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "SUPPORT"] as const;
+export const lanes = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const;
 export type Lane = (typeof lanes)[number];
 
 export const users = sqliteTable("users", {
-  id: text("id").primaryKey(), // Discord User ID
+  discordId: text("discord_id").primaryKey(),
   riotId: text("riot_id"),
   mainRole: text("main_role", { enum: lanes }),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(
@@ -14,13 +14,6 @@ export const users = sqliteTable("users", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).$onUpdate(() =>
     new Date()
   ),
-});
-
-export const userRoles = sqliteTable("user_roles", {
-  userId: text("user_id").notNull().references(() => users.id, {
-    onDelete: "cascade",
-  }),
-  role: text("role", { enum: lanes }).notNull(),
 });
 
 export const matches = sqliteTable("matches", {
@@ -35,7 +28,7 @@ export const matchParticipants = sqliteTable("match_participants", {
   matchId: text("match_id").notNull().references(() => matches.id, {
     onDelete: "cascade",
   }),
-  userId: text("user_id").notNull().references(() => users.id, {
+  userId: text("user_id").notNull().references(() => users.discordId, {
     onDelete: "cascade",
   }),
   team: text("team").notNull(), // 'BLUE' or 'RED'
@@ -46,15 +39,7 @@ export const matchParticipants = sqliteTable("match_participants", {
 // --- RELATIONS ---
 
 export const usersRelations = relations(users, ({ many }) => ({
-  roles: many(userRoles),
   matchParticipations: many(matchParticipants),
-}));
-
-export const userRolesRelations = relations(userRoles, ({ one }) => ({
-  user: one(users, {
-    fields: [userRoles.userId],
-    references: [users.id],
-  }),
 }));
 
 export const matchesRelations = relations(matches, ({ many }) => ({
@@ -70,7 +55,7 @@ export const matchParticipantsRelations = relations(
     }),
     user: one(users, {
       fields: [matchParticipants.userId],
-      references: [users.id],
+      references: [users.discordId],
     }),
   }),
 );

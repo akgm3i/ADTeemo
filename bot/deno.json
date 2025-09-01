@@ -5,7 +5,7 @@
   },
   "tasks": {
     "dev": "deno run -A --watch --env=../.env.dev src/main.ts",
-    "test": "deno test -A --env=../.env.dev",
+    "test": "deno test -A",
     "deploy-commands": "deno run --allow-net --allow-read --allow-env --allow-ffi src/deploy-commands.ts"
   },
   "compilerOptions": {

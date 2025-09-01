@@ -1,4 +1,9 @@
-import { APIUser, REST, Routes } from "npm:discord.js";
+import {
+  APIUser,
+  REST,
+  RESTPutAPIApplicationGuildCommandsResult,
+  Routes,
+} from "npm:discord.js";
 import { readdir } from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +14,7 @@ const guildId = Deno.env.get("DISCORD_GUILD_ID");
 
 if (!token || !clientId || !guildId) {
   throw new Error(
-    "Missing DISCORD_TOKEN or DISCORD_CLIENT_ID in .env.dev file",
+    "Missing DISCORD_TOKEN or DISCORD_CLIENT_ID or DISCORD_GUILD_ID in .env.dev file",
   );
 }
 
@@ -35,7 +40,6 @@ for (const file of commandFiles) {
 // Construct and prepare an instance of the REST module
 const rest = new REST().setToken(token);
 
-// and deploy your commands!
 (async () => {
   try {
     console.log(
@@ -46,7 +50,7 @@ const rest = new REST().setToken(token);
     const data = await rest.put(
       Routes.applicationGuildCommands(clientId, guildId),
       { body: commands },
-    ) as { length: number; id: string; username: string };
+    ) as RESTPutAPIApplicationGuildCommandsResult;
 
     console.log(
       `Successfully reloaded ${data.length} application (/) commands for bot ${

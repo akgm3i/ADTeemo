@@ -4,7 +4,8 @@
     "test:all": "deno test --allow-env --allow-read --allow-sys --allow-ffi",
     "db:push": "deno run --allow-env --allow-read --allow-sys --allow-run --allow-ffi --node-modules-dir npm:drizzle-kit push",
     "db:generate": "deno run --allow-env --allow-read --allow-sys --allow-run npm:drizzle-kit generate",
-    "db:migrate": "deno run npm:drizzle-kit migrate"
+    "db:migrate": "deno run npm:drizzle-kit migrate",
+    "deploy-commands": "deno run --allow-net --allow-read --allow-env --allow-ffi bot/src/deploy-commands.ts"
   },
   "compilerOptions": {
     "strict": true

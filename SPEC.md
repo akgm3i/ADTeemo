@@ -13,17 +13,20 @@
 ```mermaid
 graph TD
     subgraph Discord
-        User
-        Bot
+      subgraph Guild
+          User
+          Post
+          Event
+        end
     end
 
     subgraph "Our System (Docker)"
         subgraph "Discord Bot"
-            A["discord.js (via npm)"]
+            Bot["ad teemo (via discord.js)"]
         end
         subgraph "Backend API"
-            B[Hono RPC]
-            C[Database]
+            API[Hono RPC]
+            DB[(Database)]
         end
     end
 
@@ -31,13 +34,17 @@ graph TD
         RiotAPI[Riot API]
     end
 
-    User -- Slash Command/Reaction --> Bot
-    Bot -- API Request --> B
-    B -- CRUD --> C
-    B -- API Request --> RiotAPI
-    RiotAPI -- Game Data --> B
-    B -- API Response --> Bot
-    Bot -- Post Message/Move VC --> User
+    User -- Slash Command --> Bot
+    User -- Reaction --> Post
+    User -- Join --> Event
+    Bot -- Post Message<br>Read Reaction --> Post
+    Bot -- API Request --> API
+    API -- CRUD --> DB
+    API -- API Request --> RiotAPI
+    RiotAPI -- Game Data --> API
+    API -- API Response --> Bot
+    Bot -- Move VC --> User
+    Bot -- Create Event --> Event
 ```
 
 ### 2.1. 技術スタック
@@ -63,7 +70,7 @@ graph TD
 ### 3.2. カスタムゲームイベント管理
 
 - **イベント作成**: `/create-custom-game` のようなスラッシュコマンドで、Discordのスケジュールイベントを作成する。
-- **参加者募集**: イベント作成と同時に、Botは募集用のメッセージを特定のチャンネルに投稿する。 `Custom` ロールがへのメンションを行う。メッセージにはロールごとの絵文字リアクションが付与される。
+- **参加者募集**: イベント作成と同時に、Botは募集用のメッセージを特定のチャンネルに投稿する。 `Custom` ロールへのメンションを行う。メッセージにはロールごとの絵文字リアクションが付与される。
 - **参加登録**: ユーザーは募集メッセージにリアクションすることで、そのゲームで希望するロールを表明し、参加登録を行う。複数ロールへのリアクション (複数ロールでの参加希望) を許可する。
 
 ### 3.3. チーム分けとゲーム開始
