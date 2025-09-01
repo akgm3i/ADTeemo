@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile
+      target: api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/api/data
+    environment:
+      DB_FILE_NAME: "file:./data/sqlite.db"
+    # env_file:
+    #   - .env
+
+  bot:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile
+      target: bot
+    depends_on:
+      - api
+    environment:
+      API_URL: http://api:8000
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+    # env_file:
+    #   - .env

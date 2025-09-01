@@ -1,0 +1,22 @@
+{
+  "name": "@adteemo/api",
+  "exports": {
+    ".": "./src/index.ts",
+    "./hc": "./src/hc.ts",
+    "./schema": "./src/db/schema.ts"
+  },
+  "tasks": {
+    "dev": "DATABASE_URL=file:../data/sqlite.db deno serve -A --watch --env=../.env.dev src/index.ts",
+    "test": "deno test -A"
+  },
+  "imports": {
+    "drizzle-zod": "npm:drizzle-zod@^0.8.3",
+    "hono": "npm:hono",
+    "zod": "npm:zod",
+    "@hono/zod-validator": "npm:@hono/zod-validator",
+    "drizzle-orm": "npm:drizzle-orm",
+    "drizzle-orm/sqlite-core": "npm:drizzle-orm/sqlite-core",
+    "drizzle-kit": "npm:drizzle-kit",
+    "@libsql/client": "npm:@libsql/client"
+  }
+}
