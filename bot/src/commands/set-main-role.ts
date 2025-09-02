@@ -1,5 +1,6 @@
 import { CommandInteraction, SlashCommandBuilder } from "npm:discord.js";
 import { type Lane, lanes } from "@adteemo/api/schema";
+import { ROLE_DISPLAY_NAMES } from "../constants.ts";
 import * as apiClient from "../api_client.ts";
 
 export const data = new SlashCommandBuilder()
@@ -10,7 +11,12 @@ export const data = new SlashCommandBuilder()
       .setDescription("The role you want to set as your main.")
       .setRequired(true)
       .addChoices(
-        ...lanes.map((lane) => ({ name: lane, value: lane })),
+        // The `lanes` array is imported directly from the API schema.
+        // The `ROLE_DISPLAY_NAMES` provides the user-facing name.
+        ...lanes.map((role) => ({
+          name: ROLE_DISPLAY_NAMES[role],
+          value: role,
+        })),
       )
   );
 

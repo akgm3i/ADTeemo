@@ -1,7 +1,7 @@
-import type { Collection } from "discord.js";
+import type { Collection } from "npm:discord.js";
 import { Command } from "../types.ts";
 
-declare module "discord.js" {
+declare module "npm:discord.js" {
   export interface Client {
     commands: Collection<string, Command>;
   }
