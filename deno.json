@@ -11,18 +11,18 @@
     "strict": true
   },
   "fmt": {
+    "include": ["api/", "bot/"],
+    "exclude": ["node_modules/", "coverage/"],
     "useTabs": false,
     "indentWidth": 2,
     "singleQuote": false,
     "proseWrap": "preserve"
   },
   "lint": {
-    "include": ["*.ts", "*.js"],
-    "exclude": ["node_modules/"],
+    "include": ["api/", "bot/"],
+    "exclude": ["node_modules/", "coeverage/"],
     "rules": {
-      "tags": ["recommended"],
-      "include": [],
-      "exclude": []
+      "tags": ["recommended"]
     }
   },
   "imports": {
