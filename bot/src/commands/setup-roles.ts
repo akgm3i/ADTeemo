@@ -30,10 +30,10 @@ export async function execute(interaction: CommandInteraction) {
     case "SUCCESS": {
       const { created, existing } = result.summary;
       if (created.length > 0) {
-        message =
-          `✅ セットアップ完了！\n作成したロール (${created.length}件): \`${
-            created.join(", ")
-          }\`\n既存のロール (${existing.length}件): \`${existing.join(", ")}\``;
+        message = `✅ セットアップ完了！\n作成したロール (${created.length}件): \`${created.join(", ")}\``;
+        if (existing.length > 0) {
+          message += `\n既存のロール (${existing.length}件): \`${existing.join(", ")}\``;
+        }
       } else {
         message = `✅ 必要なロールはすべて存在しています。`;
       }

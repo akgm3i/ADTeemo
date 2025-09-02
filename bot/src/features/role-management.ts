@@ -47,8 +47,15 @@ export async function ensureRoles(guild: Guild): Promise<EnsureRolesResult> {
         name: roleName,
       })
     );
-    const createdRoles = await Promise.all(createPromises);
-    created.push(...createdRoles.map((role) => role.name));
+    const createdRoles = await Promise.allSettled(createPromises);
+    created.push(
+      ...createdRoles.map((result) => {
+        if (result.status === "fulfilled") {
+          return result.value.name;
+        }
+        return null;
+      }).filter((name): name is string => name !== null),
+    );
   } catch (error) {
     // Handle permission errors specifically
     if (

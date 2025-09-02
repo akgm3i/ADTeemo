@@ -8,6 +8,7 @@ import {
 import { readdir } from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureRoles } from "./features/role-management.ts";
 
 // Create a new client instance
 const client = new Client({
@@ -79,8 +80,6 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
   }
 });
 
-import { ensureRoles } from "./features/role-management.ts";
-
 // When the bot joins a new guild, run this code
 client.on(Events.GuildCreate, async (guild) => {
   console.log(`Joined a new guild: ${guild.name} (id: ${guild.id})`);
@@ -95,7 +94,7 @@ client.on(Events.GuildCreate, async (guild) => {
         const createdCount = result.summary.created.length;
         if (createdCount > 0) {
           message =
-            `サーバー「${guild.name}」へのご招待ありがとうございます！\n必要なロール（${createdCount}件）を自動作成しました: \`${
+            `サーバー「${guild.name}」へのご招待ありがとうございます！\n必要なロール (${createdCount}件) を自動作成しました: \`${
               result.summary.created.join(", ")
             }\``;
         } else {
@@ -106,7 +105,7 @@ client.on(Events.GuildCreate, async (guild) => {
       }
       case "PERMISSION_ERROR":
         message =
-          `サーバー「${guild.name}」に招待されましたが、ロールを作成する権限（ロールの管理）がありません。サーバー設定を確認してください。`;
+          `サーバー「${guild.name}」に招待されましたが、ロールを作成する権限 (ロールの管理) がありません。サーバー設定を確認してください。`;
         break;
       case "UNKNOWN_ERROR":
         message =
