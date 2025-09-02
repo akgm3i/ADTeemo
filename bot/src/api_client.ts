@@ -23,7 +23,7 @@ export async function checkHealth() {
     console.error("Failed to communicate with API", error);
     return { success: false, error: "Failed to communicate with API" };
   }
-};
+}
 
 export async function setMainRole(userId: string, role: Lane) {
   try {

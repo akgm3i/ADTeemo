@@ -109,7 +109,7 @@ describe("ensureRoles", () => {
         create: () => {
           // Simulate a Discord API error for missing permissions
           const errorPayload = { message: "Missing Permissions", code: 50013 };
-          throw new DiscordAPIError(
+          const error = new DiscordAPIError(
             errorPayload,
             50013,
             403,
@@ -117,6 +117,7 @@ describe("ensureRoles", () => {
             "/guilds/123/roles",
             {},
           );
+          return Promise.reject(error);
         },
       },
     } as unknown as Guild;

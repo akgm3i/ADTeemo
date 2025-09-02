@@ -1,8 +1,8 @@
 import {
   APIUser,
   REST,
-  RESTPutAPIApplicationGuildCommandsResult,
   RESTPutAPIApplicationCommandsResult,
+  RESTPutAPIApplicationGuildCommandsResult,
   Routes,
 } from "npm:discord.js";
 import { readdir } from "node:fs/promises";
@@ -57,7 +57,7 @@ const rest = new REST().setToken(token);
         `Successfully reloaded ${data.length} application guild (/) commands for bot ${
           (await rest.get(Routes.user()) as APIUser).username
         }.`,
-    );
+      );
     } else {
       const data = await rest.put(
         Routes.applicationCommands(clientId),
