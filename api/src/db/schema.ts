@@ -1,7 +1,7 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 
-export const lanes = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"] as const;
+export const lanes = ["Top", "Jungle", "Middle", "Bottom", "Support"] as const;
 export type Lane = (typeof lanes)[number];
 
 export const users = sqliteTable("users", {

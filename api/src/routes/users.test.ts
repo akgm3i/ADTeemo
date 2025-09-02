@@ -7,7 +7,7 @@ Deno.test("User Routes API", async (t) => {
   await t.step(
     "PUT /users/:userId/main-role -> should set the main role",
     async () => {
-      const payload = { role: "JUNGLE" };
+      const payload = { role: "Jungle" };
       const res = await app.request(`/users/${userId}/main-role`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
