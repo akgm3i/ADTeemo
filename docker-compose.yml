@@ -11,7 +11,7 @@ services:
     volumes:
       - ./data:/app/api/data
     environment:
-      DB_FILE_NAME: "file:./data/sqlite.db"
+      DATABASE_URL: "file:./data/sqlite.db"
     # env_file:
     #   - .env
 

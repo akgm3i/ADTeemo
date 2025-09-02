@@ -26,7 +26,7 @@ COPY --from=builder /deno-dir /deno-dir
 COPY --from=builder /app /app
 
 # Specify the command to run on container start
-CMD ["run", "-A", "src/index.ts"]
+CMD ["serve", "-A", "src/index.ts"]
 
 # Production stage bot
 FROM denoland/deno:latest AS bot
