@@ -70,9 +70,12 @@ Deno.test("Set Main Role Command", async (t) => {
         "fetch",
         () =>
           Promise.resolve(
-            new Response(JSON.stringify({ success: false, error: "DB error" }), {
-              status: 500,
-            }),
+            new Response(
+              JSON.stringify({ success: false, error: "DB error" }),
+              {
+                status: 500,
+              },
+            ),
           ),
       );
       const { deferReplySpy, editReplySpy, interaction } = setupMocks(

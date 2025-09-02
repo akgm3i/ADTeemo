@@ -36,8 +36,14 @@ Deno.test("Health Command", async (t) => {
           () =>
             Promise.resolve(
               new Response(
-                JSON.stringify({ ok: true, message: "All systems operational." }),
-                { status: 200, headers: { "Content-Type": "application/json" } },
+                JSON.stringify({
+                  ok: true,
+                  message: "All systems operational.",
+                }),
+                {
+                  status: 200,
+                  headers: { "Content-Type": "application/json" },
+                },
               ),
             ),
         );
@@ -67,7 +73,10 @@ Deno.test("Health Command", async (t) => {
             Promise.resolve(
               new Response(
                 JSON.stringify({ ok: true, message: null }),
-                { status: 200, headers: { "Content-Type": "application/json" } },
+                {
+                  status: 200,
+                  headers: { "Content-Type": "application/json" },
+                },
               ),
             ),
         );
