@@ -1,22 +1,26 @@
-import { DiscordAPIError, type Guild } from "npm:discord.js";
+import {
+  DiscordAPIError,
+  type Guild,
+  RESTJSONErrorCodes,
+} from "npm:discord.js";
 import { DISCORD_ROLES_TO_MANAGE } from "../constants.ts";
 
 export type EnsureRolesResult =
   | {
-      status: "SUCCESS";
-      summary: {
-        existing: string[];
-        created: string[];
-      };
-    }
-  | {
-      status: "PERMISSION_ERROR";
-      message: string;
-    }
-  | {
-      status: "UNKNOWN_ERROR";
-      error: unknown;
+    status: "SUCCESS";
+    summary: {
+      existing: string[];
+      created: string[];
     };
+  }
+  | {
+    status: "PERMISSION_ERROR";
+    message: string;
+  }
+  | {
+    status: "UNKNOWN_ERROR";
+    error: unknown;
+  };
 
 /**
  * Checks a guild for the required bot roles and creates any that are missing.
@@ -38,16 +42,19 @@ export async function ensureRoles(guild: Guild): Promise<EnsureRolesResult> {
 
   const created: string[] = [];
   try {
-    for (const roleName of missing) {
-      const createdRole = await guild.roles.create({
+    const createPromises = missing.map((roleName) =>
+      guild.roles.create({
         name: roleName,
-        // Using default permissions, color, etc., as requested.
-      });
-      created.push(createdRole.name);
-    }
+      })
+    );
+    const createdRoles = await Promise.all(createPromises);
+    created.push(...createdRoles.map((role) => role.name));
   } catch (error) {
     // Handle permission errors specifically
-    if (error instanceof DiscordAPIError && error.code === 50013) { // 50013: Missing Permissions
+    if (
+      error instanceof DiscordAPIError &&
+      error.code === RESTJSONErrorCodes.MissingPermissions
+    ) {
       return {
         status: "PERMISSION_ERROR",
         message: "The bot lacks the 'Manage Roles' permission.",

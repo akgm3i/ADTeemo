@@ -4,7 +4,7 @@ import {
   Events,
   GatewayIntentBits,
   Interaction,
-} from "discord.js";
+} from "npm:discord.js";
 import { readdir } from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";

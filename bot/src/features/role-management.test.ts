@@ -1,8 +1,5 @@
-import {
-  assertEquals,
-  assertExists,
-} from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { describe, it } from "https://deno.land/std@0.208.0/testing/bdd.ts";
+import { assertEquals, assertExists } from "jsr:@std/assert";
+import { describe, it } from "jsr:@std/testing/bdd";
 import { Collection, DiscordAPIError } from "npm:discord.js";
 import type { Guild, Role, RoleCreateOptions } from "npm:discord.js";
 import { ensureRoles } from "./role-management.ts";
@@ -112,7 +109,14 @@ describe("ensureRoles", () => {
         create: () => {
           // Simulate a Discord API error for missing permissions
           const errorPayload = { message: "Missing Permissions", code: 50013 };
-          throw new DiscordAPIError(errorPayload, 50013, 403, "POST", "/guilds/123/roles", {});
+          throw new DiscordAPIError(
+            errorPayload,
+            50013,
+            403,
+            "POST",
+            "/guilds/123/roles",
+            {},
+          );
         },
       },
     } as unknown as Guild;

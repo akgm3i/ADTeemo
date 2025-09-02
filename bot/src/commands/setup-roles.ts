@@ -7,7 +7,9 @@ import { ensureRoles } from "../features/role-management.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("setup-roles")
-  .setDescription("Creates the necessary roles for the bot if they are missing.")
+  .setDescription(
+    "Creates the necessary roles for the bot if they are missing.",
+  )
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
 export async function execute(interaction: CommandInteraction) {
@@ -33,15 +35,16 @@ export async function execute(interaction: CommandInteraction) {
             created.join(", ")
           }\`\n既存のロール (${existing.length}件): \`${existing.join(", ")}\``;
       } else {
-        message = `✅ セットアップ不要！\n必要なロールはすべて存在しています。`;
+        message = `✅ 必要なロールはすべて存在しています。`;
       }
       break;
     }
     case "PERMISSION_ERROR":
-      message = `❌ 権限エラー！\n${result.message}`;
+      message = `❌ 権限エラー。\n${result.message}`;
       break;
     case "UNKNOWN_ERROR":
-      message = `❌ 不明なエラー！\nロールのセットアップ中にエラーが発生しました。`;
+      message =
+        `❌ 不明なエラー。\nロールのセットアップ中にエラーが発生しました。`;
       console.error(
         `Error setting up roles via command in guild ${interaction.guild.id}:`,
         result.error,

@@ -1,5 +1,5 @@
 import { CommandInteraction, SlashCommandBuilder } from "npm:discord.js";
-import { lanes, type Lane } from "@adteemo/api/schema";
+import { type Lane, lanes } from "@adteemo/api/schema";
 import { ROLE_DISPLAY_NAMES } from "../constants.ts";
 import * as apiClient from "../api_client.ts";
 
