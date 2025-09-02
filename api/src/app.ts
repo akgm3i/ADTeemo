@@ -5,6 +5,6 @@ import { usersRoutes } from "./routes/users.ts";
 export const app = new Hono()
   .use("*", logger())
   .get("/health", (c) => {
-    return c.json({ ok: true, message: "Healthy" });
+    return c.json({ ok: true, message: "This API is healthy!" });
   })
   .route("/users", usersRoutes);

@@ -2,6 +2,7 @@ import {
   APIUser,
   REST,
   RESTPutAPIApplicationGuildCommandsResult,
+  RESTPutAPIApplicationCommandsResult,
   Routes,
 } from "npm:discord.js";
 import { readdir } from "node:fs/promises";
@@ -12,9 +13,9 @@ const token = Deno.env.get("DISCORD_TOKEN");
 const clientId = Deno.env.get("DISCORD_CLIENT_ID");
 const guildId = Deno.env.get("DISCORD_GUILD_ID");
 
-if (!token || !clientId || !guildId) {
+if (!token || !clientId) {
   throw new Error(
-    "Missing DISCORD_TOKEN or DISCORD_CLIENT_ID or DISCORD_GUILD_ID in .env.dev file",
+    "Missing DISCORD_TOKEN or DISCORD_CLIENT_ID in .env.dev file",
   );
 }
 
@@ -47,16 +48,27 @@ const rest = new REST().setToken(token);
     );
 
     // The put method is used to fully refresh all commands in the guild with the current set
-    const data = await rest.put(
-      Routes.applicationGuildCommands(clientId, guildId),
-      { body: commands },
-    ) as RESTPutAPIApplicationGuildCommandsResult;
-
-    console.log(
-      `Successfully reloaded ${data.length} application (/) commands for bot ${
-        (await rest.get(Routes.user()) as APIUser).username
-      }.`,
+    if (guildId) {
+      const data = await rest.put(
+        Routes.applicationGuildCommands(clientId, guildId),
+        { body: commands },
+      ) as RESTPutAPIApplicationGuildCommandsResult;
+      console.log(
+        `Successfully reloaded ${data.length} application guild (/) commands for bot ${
+          (await rest.get(Routes.user()) as APIUser).username
+        }.`,
     );
+    } else {
+      const data = await rest.put(
+        Routes.applicationCommands(clientId),
+        { body: commands },
+      ) as RESTPutAPIApplicationCommandsResult;
+      console.log(
+        `Successfully reloaded ${data.length} application (/) commands for bot ${
+          (await rest.get(Routes.user()) as APIUser).username
+        }.`,
+      );
+    }
   } catch (error) {
     console.error(error);
   }

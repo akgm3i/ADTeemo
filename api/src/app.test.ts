@@ -6,5 +6,5 @@ Deno.test("GET /health should return a healthy response", async () => {
   const body = await res.json();
 
   assertEquals(res.status, 200);
-  assertEquals(body, { ok: true, message: "Healthy" });
+  assertEquals(body, { ok: true, message: "This API is healthy!" });
 });

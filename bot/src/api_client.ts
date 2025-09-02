@@ -8,12 +8,23 @@ import { hcWithType } from "@adteemo/api/hc";
 
 const client = hcWithType(API_URL);
 
-/**
- * Sets the main role for a given user via the API.
- * @param userId The user's Discord ID.
- * @param role The role to set.
- * @returns An object indicating success or failure.
- */
+export async function checkHealth() {
+  try {
+    const res = await client.health.$get();
+    if (res.ok) {
+      const data = await res.json();
+      return { success: data.ok, message: data.message, error: null };
+    } else {
+      const errorBody = await res.text();
+      console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
+      return { success: false, error: `API returned status ${res.status}` };
+    }
+  } catch (error) {
+    console.error("Failed to communicate with API", error);
+    return { success: false, error: "Failed to communicate with API" };
+  }
+};
+
 export async function setMainRole(userId: string, role: Lane) {
   try {
     const res = await client.users[":userId"]["main-role"].$put({
