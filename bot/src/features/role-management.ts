@@ -40,6 +40,16 @@ export async function ensureRoles(guild: Guild): Promise<EnsureRolesResult> {
     }
   }
 
+  if (missing.length === 0) {
+    return {
+      status: "SUCCESS",
+      summary: {
+        existing,
+        created: [],
+      },
+    };
+  }
+
   const created: string[] = [];
   try {
     const createPromises = missing.map((roleName) =>
@@ -48,26 +58,33 @@ export async function ensureRoles(guild: Guild): Promise<EnsureRolesResult> {
       })
     );
     const createdRoles = await Promise.allSettled(createPromises);
-    created.push(
-      ...createdRoles.map((result) => {
-        if (result.status === "fulfilled") {
-          return result.value.name;
+
+    for (const result of createdRoles) {
+      if (result.status === "fulfilled") {
+        if (result.value) {
+          created.push(result.value.name);
         }
-        return null;
-      }).filter((name): name is string => name !== null),
-    );
-  } catch (error) {
-    // Handle permission errors specifically
-    if (
-      error instanceof DiscordAPIError &&
-      error.code === RESTJSONErrorCodes.MissingPermissions
-    ) {
-      return {
-        status: "PERMISSION_ERROR",
-        message: "The bot lacks the 'Manage Roles' permission.",
-      };
+      } else {
+        // A role creation failed. Handle the error.
+        const error = result.reason;
+        if (
+          error instanceof DiscordAPIError &&
+          error.code === RESTJSONErrorCodes.MissingPermissions
+        ) {
+          return {
+            status: "PERMISSION_ERROR",
+            message: "The bot lacks the 'Manage Roles' permission.",
+          };
+        }
+        // For any other error, treat it as an unknown error.
+        return {
+          status: "UNKNOWN_ERROR",
+          error,
+        };
+      }
     }
-    // Handle other potential errors
+  } catch (error) {
+    // This catch block is for unexpected errors outside of the promises.
     return {
       status: "UNKNOWN_ERROR",
       error,
