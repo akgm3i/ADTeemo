@@ -1,4 +1,4 @@
-import * as path from "https://deno.land/std/path/mod.ts";
+import * as path from "jsr:@std/path";
 import { Command } from "../types.ts";
 
 export async function loadCommands(): Promise<Command[]> {

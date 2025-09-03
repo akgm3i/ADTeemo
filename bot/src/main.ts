@@ -23,12 +23,10 @@ const client = new Client({
 client.commands = new Collection();
 
 // Load commands and add them to the client
-(async () => {
-  const commands = await loadCommands();
-  for (const command of commands) {
-    client.commands.set(command.data.name, command);
-  }
-})();
+const commands = await loadCommands();
+for (const command of commands) {
+  client.commands.set(command.data.name, command);
+}
 
 
 // When the client is ready, run this code (only once)
