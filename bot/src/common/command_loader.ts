@@ -7,7 +7,10 @@ export async function loadCommands(): Promise<Command[]> {
   const commandsPath = path.join(__dirname, "..", "commands");
 
   for await (const dirEntry of Deno.readDir(commandsPath)) {
-    if (dirEntry.isFile && dirEntry.name.endsWith(".ts") && !dirEntry.name.endsWith(".test.ts")) {
+    if (
+      dirEntry.isFile && dirEntry.name.endsWith(".ts") &&
+      !dirEntry.name.endsWith(".test.ts")
+    ) {
       const filePath = path.join(commandsPath, dirEntry.name);
       try {
         const command = await import(path.toFileUrl(filePath).href);
