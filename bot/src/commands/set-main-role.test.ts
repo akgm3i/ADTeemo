@@ -1,4 +1,5 @@
 import { assertEquals } from "jsr:@std/assert";
+import { describe, it } from "jsr:@std/testing/bdd";
 import { spy, stub } from "jsr:@std/testing/mock";
 import {
   type CommandInteraction,
@@ -9,8 +10,8 @@ import {
 import { type Lane } from "@adteemo/api/schema";
 import { execute } from "./set-main-role.ts";
 
-Deno.test("Set Main Role Command", async (t) => {
-  await t.step("execute", async (t) => {
+describe("Set Main Role Command", () => {
+  describe("execute", () => {
     // Helper function to create mocks
     const setupMocks = (role: Lane | null) => {
       const deferReplySpy = spy(
@@ -37,7 +38,7 @@ Deno.test("Set Main Role Command", async (t) => {
       return { deferReplySpy, editReplySpy, getStringSpy, interaction };
     };
 
-    await t.step("should set main role and reply with success", async () => {
+    it("API呼び出しが成功した時にメインロールを設定すると、成功メッセージで応答する", async () => {
       const fetchStub = stub(
         globalThis,
         "fetch",
@@ -64,7 +65,7 @@ Deno.test("Set Main Role Command", async (t) => {
       }
     });
 
-    await t.step("should reply with an error on API failure", async () => {
+    it("API呼び出しが失敗した時にメインロールを設定すると、エラーメッセージで応答する", async () => {
       const fetchStub = stub(
         globalThis,
         "fetch",
@@ -96,17 +97,14 @@ Deno.test("Set Main Role Command", async (t) => {
       }
     });
 
-    await t.step(
-      "should not proceed if interaction is not a chat input command",
-      async () => {
-        const { deferReplySpy, interaction } = setupMocks("Top");
-        // deno-lint-ignore no-explicit-any
-        (interaction as any).isChatInputCommand = () => false;
+    it("チャットインプットコマンドでないインタラクションで実行すると、何もせずに処理を中断する", async () => {
+      const { deferReplySpy, interaction } = setupMocks("Top");
+      // deno-lint-ignore no-explicit-any
+      (interaction as any).isChatInputCommand = () => false;
 
-        await execute(interaction);
+      await execute(interaction);
 
-        assertEquals(deferReplySpy.calls.length, 0);
-      },
-    );
+      assertEquals(deferReplySpy.calls.length, 0);
+    });
   });
 });

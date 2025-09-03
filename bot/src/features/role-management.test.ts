@@ -6,7 +6,7 @@ import { ensureRoles } from "./role-management.ts";
 import { DISCORD_ROLES_TO_MANAGE } from "../constants.ts";
 
 describe("ensureRoles", () => {
-  it("should identify and create all roles if none exist", async () => {
+  it("管理対象のロールが一つも存在しないギルドで実行すると、すべてのロールを作成する", async () => {
     const createdRolesLog: RoleCreateOptions[] = [];
     const mockGuild = {
       roles: {
@@ -37,9 +37,12 @@ describe("ensureRoles", () => {
       assertEquals(result.summary.existing, []);
     }
   });
-  it("should only create roles that are missing", async () => {
+
+  it("管理対象のロールが一部のみ存在するギルドで実行すると、不足しているロールのみを作成する", async () => {
     const existingRoles = ["Top", "JG", "Custom"];
-    const rolesToCreate = ["Mid", "Bot", "Sup"];
+    const rolesToCreate = DISCORD_ROLES_TO_MANAGE.filter(
+      (r) => !existingRoles.includes(r),
+    );
 
     const createdRolesLog: RoleCreateOptions[] = [];
     const mockGuild = {
@@ -72,7 +75,8 @@ describe("ensureRoles", () => {
       assertEquals(result.summary.existing.sort(), existingRoles.sort());
     }
   });
-  it("should not create any roles if all already exist", async () => {
+
+  it("管理対象のロールがすべて存在するギルドで実行すると、ロールを一つも作成しない", async () => {
     const createdRolesLog: RoleCreateOptions[] = [];
     const mockGuild = {
       roles: {
@@ -102,7 +106,7 @@ describe("ensureRoles", () => {
     }
   });
 
-  it("should return a permission error if role creation fails", async () => {
+  it("ロールの作成中に権限エラーが発生すると、PERMISSION_ERRORステータスを返す", async () => {
     const mockGuild = {
       roles: {
         cache: new Collection<string, Role>(),

@@ -1,4 +1,5 @@
 import { assert, assertEquals } from "jsr:@std/assert";
+import { describe, it } from "jsr:@std/testing/bdd";
 import { spy } from "jsr:@std/testing/mock";
 import {
   Collection,
@@ -15,7 +16,7 @@ import {
 import { execute } from "./setup-roles.ts";
 import { DISCORD_ROLES_TO_MANAGE } from "../constants.ts";
 
-Deno.test("Setup Roles Command", async (t) => {
+describe("Setup Roles Command", () => {
   // Helper to create a mock interaction and guild
   const setupMocks = (
     existingRoles: string[] = [],
@@ -68,23 +69,20 @@ Deno.test("Setup Roles Command", async (t) => {
     };
   };
 
-  await t.step(
-    "should reply with an error if not used in a guild",
-    async () => {
-      const { replySpy, interaction } = setupMocks();
-      (interaction as { guild: Guild | null }).guild = null;
-      await execute(interaction);
-      assertEquals(replySpy.calls.length, 1);
-      const replyArgs = replySpy.calls[0].args[0] as InteractionReplyOptions;
-      assertEquals(
-        replyArgs.content,
-        "This command can only be used in a server.",
-      );
-      assertEquals(replyArgs.ephemeral, true);
-    },
-  );
+  it("ギルド（サーバー）外でコマンドを実行すると、エラーメッセージを返信する", async () => {
+    const { replySpy, interaction } = setupMocks();
+    (interaction as { guild: Guild | null }).guild = null;
+    await execute(interaction);
+    assertEquals(replySpy.calls.length, 1);
+    const replyArgs = replySpy.calls[0].args[0] as InteractionReplyOptions;
+    assertEquals(
+      replyArgs.content,
+      "This command can only be used in a server.",
+    );
+    assertEquals(replyArgs.ephemeral, true);
+  });
 
-  await t.step("should create missing roles and report success", async () => {
+  it("不足しているロールがある場合にコマンドを実行すると、それらを作成して成功を報告する", async () => {
     const { deferReplySpy, editReplySpy, interaction, rolesCreateSpy } =
       setupMocks(["Top", "JG"]);
     await execute(interaction);
@@ -99,68 +97,59 @@ Deno.test("Setup Roles Command", async (t) => {
     assert(replyMessage.includes("既存のロール (2件)"));
   });
 
-  await t.step(
-    "should report success when all roles already exist",
-    async () => {
-      const { deferReplySpy, editReplySpy, interaction, rolesCreateSpy } =
-        setupMocks([...DISCORD_ROLES_TO_MANAGE]);
-      await execute(interaction);
+  it("管理対象の全ロールが既に存在する場合にコマンドを実行すると、ロールを作成せずに成功を報告する", async () => {
+    const { deferReplySpy, editReplySpy, interaction, rolesCreateSpy } =
+      setupMocks([...DISCORD_ROLES_TO_MANAGE]);
+    await execute(interaction);
 
-      assertEquals(deferReplySpy.calls.length, 1);
-      assertEquals(rolesCreateSpy.calls.length, 0);
-      assertEquals(editReplySpy.calls.length, 1);
-      assertEquals(
-        editReplySpy.calls[0].args[0],
-        "✅ 必要なロールはすべて存在しています。",
-      );
-    },
-  );
+    assertEquals(deferReplySpy.calls.length, 1);
+    assertEquals(rolesCreateSpy.calls.length, 0);
+    assertEquals(editReplySpy.calls.length, 1);
+    assertEquals(
+      editReplySpy.calls[0].args[0],
+      "✅ 必要なロールはすべて存在しています。",
+    );
+  });
 
-  await t.step(
-    "should handle permission errors during role creation",
-    async () => {
-      const error = new DiscordAPIError(
-        {
-          message: "Missing Permissions",
-          code: RESTJSONErrorCodes.MissingPermissions,
-        },
-        RESTJSONErrorCodes.MissingPermissions,
-        403,
-        "PUT",
-        "/guilds/id/roles",
-        {},
-      );
-      const { deferReplySpy, editReplySpy, interaction } = setupMocks(
-        [],
-        error,
-      );
-      await execute(interaction);
+  it("ロール作成中に権限エラーが発生した場合、コマンドは権限エラーとして処理する", async () => {
+    const error = new DiscordAPIError(
+      {
+        message: "Missing Permissions",
+        code: RESTJSONErrorCodes.MissingPermissions,
+      },
+      RESTJSONErrorCodes.MissingPermissions,
+      403,
+      "PUT",
+      "/guilds/id/roles",
+      {},
+    );
+    const { deferReplySpy, editReplySpy, interaction } = setupMocks(
+      [],
+      error,
+    );
+    await execute(interaction);
 
-      assertEquals(deferReplySpy.calls.length, 1);
-      assertEquals(editReplySpy.calls.length, 1);
-      assertEquals(
-        editReplySpy.calls[0].args[0],
-        "❌ 権限エラー。\nThe bot lacks the 'Manage Roles' permission.",
-      );
-    },
-  );
+    assertEquals(deferReplySpy.calls.length, 1);
+    assertEquals(editReplySpy.calls.length, 1);
+    assertEquals(
+      editReplySpy.calls[0].args[0],
+      "❌ 権限エラー。\nThe bot lacks the 'Manage Roles' permission.",
+    );
+  });
 
-  await t.step(
-    "should handle unknown errors during role creation",
-    async () => {
-      const { deferReplySpy, editReplySpy, interaction } = setupMocks(
-        [],
-        new Error("Some other error"),
-      );
-      await execute(interaction);
+  it("ロール作成中に不明なエラーが発生した場合、コマンドは不明なエラーとして処理する", async () => {
+    const { deferReplySpy, editReplySpy, interaction } = setupMocks(
+      [],
+      new Error("Some other error"),
+    );
+    await execute(interaction);
 
-      assertEquals(deferReplySpy.calls.length, 1);
-      assertEquals(editReplySpy.calls.length, 1);
-      assert(
-        (editReplySpy.calls[0].args[0] as string).startsWith(
-          "❌ 不明なエラー。",
-        ),
-      );
-    },
-  );
+    assertEquals(deferReplySpy.calls.length, 1);
+    assertEquals(editReplySpy.calls.length, 1);
+    assert(
+      (editReplySpy.calls[0].args[0] as string).startsWith(
+        "❌ 不明なエラー。",
+      ),
+    );
+  });
 });
