@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "jsr:@std/assert";
 import { describe, it } from "jsr:@std/testing/bdd";
 import { stub } from "jsr:@std/testing/mock";
-import { Events, SlashCommandBuilder, type Interaction } from "npm:discord.js";
+import { Events, type Interaction, SlashCommandBuilder } from "npm:discord.js";
 import { client } from "./main.ts";
 import { newMockInteractionBuilder } from "./test_utils.ts";
 import type { Command } from "./types.ts";
@@ -49,13 +49,16 @@ describe("Main Bot Logic", () => {
       );
     });
 
-    it("コマンドの実行中にエラーが発生すると、フォロアップメッセージでエラーを報告する", async () => {
+    it("コマンドの実行中にエラーが発生すると、follow upメッセージでエラーを報告する", async () => {
       const mockCommand: Command = {
         data: new SlashCommandBuilder().setName("error-command"),
         execute: () => Promise.resolve(), // This will be replaced by the stub
       };
-      using executeSpy = stub(mockCommand, "execute", () =>
-        Promise.reject(new Error("Test error")));
+      using executeSpy = stub(
+        mockCommand,
+        "execute",
+        () => Promise.reject(new Error("Test error")),
+      );
       client.commands.set(mockCommand.data.name, mockCommand);
 
       const mockInteraction = newMockInteractionBuilder("error-command")
@@ -75,7 +78,7 @@ describe("Main Bot Logic", () => {
       client.commands.delete("error-command");
     });
 
-    it("チャットコマンド以外のインタラクションでは、コマンドを実行しない", async () => {
+    it("ChatInputCommand以外のInteractionでは、コマンドを実行しない", async () => {
       const mockCommand: Command = {
         data: new SlashCommandBuilder().setName("test"),
         execute: () => Promise.resolve(),

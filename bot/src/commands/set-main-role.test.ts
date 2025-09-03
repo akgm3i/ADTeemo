@@ -1,7 +1,6 @@
 import { assertEquals } from "jsr:@std/assert";
 import { describe, it } from "jsr:@std/testing/bdd";
 import { stub } from "jsr:@std/testing/mock";
-import { type Lane } from "@adteemo/api/schema";
 import { execute } from "./set-main-role.ts";
 import { newMockInteractionBuilder } from "../test_utils.ts";
 
@@ -36,8 +35,11 @@ describe("Set Main Role Command", () => {
         JSON.stringify({ success: false, error: "DB error" }),
         { status: 500 },
       );
-      using _fetchStub = stub(globalThis, "fetch", () =>
-        Promise.resolve(fetchResponse));
+      using _fetchStub = stub(
+        globalThis,
+        "fetch",
+        () => Promise.resolve(fetchResponse),
+      );
       const interaction = newMockInteractionBuilder()
         .withStringOption(() => "Jungle")
         .build();
@@ -52,7 +54,7 @@ describe("Set Main Role Command", () => {
       );
     });
 
-    it("チャットインプットコマンドでないインタラクションで実行すると、何もせずに処理を中断する", async () => {
+    it("ChatInputCommandでないInteractionで実行すると、何もせずに処理を中断する", async () => {
       const interaction = newMockInteractionBuilder()
         .withIsChatInputCommand(false)
         .build();

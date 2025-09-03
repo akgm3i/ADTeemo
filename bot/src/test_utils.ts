@@ -1,10 +1,9 @@
-import { spy, type Spy } from "jsr:@std/testing/mock";
+import { type Spy, spy } from "jsr:@std/testing/mock";
 import {
-  Collection,
-  SlashCommandBuilder,
   type CacheType,
   type ChatInputCommandInteraction,
   type Client,
+  Collection,
   type CommandInteraction,
   type CommandInteractionOptionResolver,
   type Guild,
@@ -87,8 +86,9 @@ export function newMockInteractionBuilder(commandName = "test-command") {
 
     build() {
       const interaction = {
-        isChatInputCommand: (): this is ChatInputCommandInteraction<CacheType> =>
-          props.isChatInputCommand,
+        isChatInputCommand: (): this is ChatInputCommandInteraction<
+          CacheType
+        > => props.isChatInputCommand,
         commandName: props.commandName,
         deferReply: spy(
           (_o?: InteractionDeferReplyOptions) => Promise.resolve(),

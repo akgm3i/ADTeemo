@@ -4,9 +4,9 @@ import { spy } from "jsr:@std/testing/mock";
 import {
   Collection,
   DiscordAPIError,
-  RESTJSONErrorCodes,
   type Guild,
   type InteractionReplyOptions,
+  RESTJSONErrorCodes,
   type Role,
 } from "npm:discord.js";
 import { execute } from "./setup-roles.ts";
