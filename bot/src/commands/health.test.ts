@@ -1,166 +1,83 @@
 import { assertEquals } from "jsr:@std/assert";
-import { spy, stub } from "jsr:@std/testing/mock";
-import {
-  type CommandInteraction,
-  type InteractionDeferReplyOptions,
-  type InteractionEditReplyOptions,
-  type MessagePayload,
-} from "npm:discord.js";
+import { describe, it } from "jsr:@std/testing/bdd";
+import { stub } from "jsr:@std/testing/mock";
 import { execute } from "./health.ts";
+import { newMockInteractionBuilder } from "../test_utils.ts";
 
-Deno.test("Health Command", async (t) => {
-  await t.step("execute", async (t) => {
-    // Helper function to create spies and a mock interaction
-    const setupMocks = () => {
-      const deferReplySpy = spy(
-        (_options?: InteractionDeferReplyOptions) => Promise.resolve(),
+describe("Health Command", () => {
+  describe("execute", () => {
+    it("APIが正常な時にコマンドを実行すると、APIからの成功メッセージで応答する", async () => {
+      const response = new Response(
+        JSON.stringify({
+          ok: true,
+          message: "All systems operational.",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
       );
-      const editReplySpy = spy(
-        (_options: string | MessagePayload | InteractionEditReplyOptions) =>
-          Promise.resolve(),
+      using _fetchStub = stub(
+        globalThis,
+        "fetch",
+        () => Promise.resolve(response),
       );
-      const interaction = {
-        isChatInputCommand: () => true,
-        deferReply: deferReplySpy,
-        editReply: editReplySpy,
-      } as unknown as CommandInteraction;
-      return { deferReplySpy, editReplySpy, interaction };
-    };
+      const interaction = newMockInteractionBuilder().build();
 
-    await t.step(
-      "should reply with a success message when API is healthy",
-      async () => {
-        const fetchStub = stub(
-          globalThis,
-          "fetch",
-          () =>
-            Promise.resolve(
-              new Response(
-                JSON.stringify({
-                  ok: true,
-                  message: "All systems operational.",
-                }),
-                {
-                  status: 200,
-                  headers: { "Content-Type": "application/json" },
-                },
-              ),
-            ),
-        );
-        const { deferReplySpy, editReplySpy, interaction } = setupMocks();
+      await execute(interaction);
 
-        try {
-          await execute(interaction);
-          assertEquals(deferReplySpy.calls.length, 1);
-          assertEquals(editReplySpy.calls.length, 1);
-          assertEquals(
-            editReplySpy.calls[0].args[0],
-            "All systems operational.",
-          );
-        } finally {
-          fetchStub.restore();
-        }
-      },
-    );
+      assertEquals(interaction.deferReply.calls.length, 1);
+      assertEquals(interaction.editReply.calls.length, 1);
+      assertEquals(
+        interaction.editReply.calls[0].args[0],
+        "All systems operational.",
+      );
+    });
 
-    await t.step(
-      "should use a default success message if API provides no message",
-      async () => {
-        const fetchStub = stub(
-          globalThis,
-          "fetch",
-          () =>
-            Promise.resolve(
-              new Response(
-                JSON.stringify({ ok: true, message: null }),
-                {
-                  status: 200,
-                  headers: { "Content-Type": "application/json" },
-                },
-              ),
-            ),
-        );
-        const { deferReplySpy, editReplySpy, interaction } = setupMocks();
+    it("APIがエラーを返す時にコマンドを実行すると、APIのエラーを含んだメッセージで応答する", async () => {
+      const response = new Response("Internal Server Error", { status: 500 });
+      using _fetchStub = stub(
+        globalThis,
+        "fetch",
+        () => Promise.resolve(response),
+      );
+      const interaction = newMockInteractionBuilder().build();
 
-        try {
-          await execute(interaction);
-          assertEquals(deferReplySpy.calls.length, 1);
-          assertEquals(editReplySpy.calls.length, 1);
-          assertEquals(
-            editReplySpy.calls[0].args[0],
-            "The bot is healthy!",
-          );
-        } finally {
-          fetchStub.restore();
-        }
-      },
-    );
+      await execute(interaction);
 
-    await t.step(
-      "should reply with an error message when API returns a non-200 status",
-      async () => {
-        const fetchStub = stub(
-          globalThis,
-          "fetch",
-          () =>
-            Promise.resolve(
-              new Response("Internal Server Error", { status: 500 }),
-            ),
-        );
-        const { deferReplySpy, editReplySpy, interaction } = setupMocks();
+      assertEquals(interaction.deferReply.calls.length, 1);
+      assertEquals(interaction.editReply.calls.length, 1);
+      assertEquals(
+        interaction.editReply.calls[0].args[0],
+        "Failed to check the bot's health. API returned status 500",
+      );
+    });
 
-        try {
-          await execute(interaction);
-          assertEquals(deferReplySpy.calls.length, 1);
-          assertEquals(editReplySpy.calls.length, 1);
-          assertEquals(
-            editReplySpy.calls[0].args[0],
-            "Failed to check the bot's health. API returned status 500",
-          );
-        } finally {
-          fetchStub.restore();
-        }
-      },
-    );
+    it("APIとの通信に失敗した時にコマンドを実行すると、通信失敗を示すメッセージで応答する", async () => {
+      using _fetchStub = stub(
+        globalThis,
+        "fetch",
+        () => Promise.reject(new Error("Network disconnect")),
+      );
+      const interaction = newMockInteractionBuilder().build();
 
-    await t.step(
-      "should reply with an error message on network failure",
-      async () => {
-        const fetchStub = stub(
-          globalThis,
-          "fetch",
-          () => Promise.reject(new Error("Network disconnect")),
-        );
-        const { deferReplySpy, editReplySpy, interaction } = setupMocks();
+      await execute(interaction);
 
-        try {
-          await execute(interaction);
-          assertEquals(deferReplySpy.calls.length, 1);
-          assertEquals(editReplySpy.calls.length, 1);
-          assertEquals(
-            editReplySpy.calls[0].args[0],
-            "Failed to check the bot's health. Failed to communicate with API",
-          );
-        } finally {
-          fetchStub.restore();
-        }
-      },
-    );
+      assertEquals(interaction.deferReply.calls.length, 1);
+      assertEquals(interaction.editReply.calls.length, 1);
+      assertEquals(
+        interaction.editReply.calls[0].args[0],
+        "Failed to check the bot's health. Failed to communicate with API",
+      );
+    });
 
-    await t.step(
-      "should not proceed if interaction is not a chat input command",
-      async () => {
-        const deferReplySpy = spy(
-          (_options?: InteractionDeferReplyOptions) => Promise.resolve(),
-        );
-        const interaction = {
-          isChatInputCommand: () => false,
-          deferReply: deferReplySpy,
-        } as unknown as CommandInteraction;
+    it("ChatInputCommandでないInteractionで実行すると、何もせずに処理を中断する", async () => {
+      const interaction = newMockInteractionBuilder()
+        .withIsChatInputCommand(false)
+        .build();
 
-        await execute(interaction);
-        assertEquals(deferReplySpy.calls.length, 0);
-      },
-    );
+      await execute(interaction);
+      assertEquals(interaction.deferReply.calls.length, 0);
+    });
   });
 });
