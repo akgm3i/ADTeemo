@@ -1,4 +1,5 @@
 import {
+  APIGuild,
   APIUser,
   REST,
   RESTPutAPIApplicationCommandsResult,
@@ -38,6 +39,8 @@ const rest = new REST().setToken(token);
       console.log(
         `Successfully reloaded ${data.length} application guild (/) commands for bot ${
           (await rest.get(Routes.user()) as APIUser).username
+        } in guild ${
+          (await rest.get(Routes.guild(guildId)) as APIGuild).name
         }.`,
       );
     } else {
