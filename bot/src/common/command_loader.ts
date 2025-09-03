@@ -1,0 +1,27 @@
+import * as path from "https://deno.land/std/path/mod.ts";
+import { Command } from "../types.ts";
+
+export async function loadCommands(): Promise<Command[]> {
+  const commands: Command[] = [];
+  const __dirname = path.dirname(path.fromFileUrl(import.meta.url));
+  const commandsPath = path.join(__dirname, "..", "commands");
+
+  for await (const dirEntry of Deno.readDir(commandsPath)) {
+    if (dirEntry.isFile && dirEntry.name.endsWith(".ts") && !dirEntry.name.endsWith(".test.ts")) {
+      const filePath = path.join(commandsPath, dirEntry.name);
+      try {
+        const command = await import(new URL(`file://${filePath}`).href);
+        if ("data" in command && "execute" in command) {
+          commands.push(command as Command);
+        } else {
+          console.log(
+            `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`,
+          );
+        }
+      } catch (error) {
+        console.error(`Error loading command at ${filePath}:`, error);
+      }
+    }
+  }
+  return commands;
+}
