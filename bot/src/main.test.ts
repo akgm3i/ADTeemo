@@ -17,7 +17,7 @@ interface Command {
 describe("Main Bot Logic", () => {
   describe("InteractionCreate Event", () => {
     it("登録済みのコマンドが実行されると、対応するexecute関数が呼び出される", async () => {
-      const mockExecute = spy(() => Promise.resolve());
+      const mockExecute = spy((_) => Promise.resolve());
       const mockCommand: Command = {
         data: { name: "test" },
         execute: mockExecute,
@@ -34,7 +34,7 @@ describe("Main Bot Logic", () => {
       await client.emit(Events.InteractionCreate, mockInteraction);
 
       assertEquals(mockExecute.calls.length, 1);
-      assertEquals(mockExecute.calls[0]!.args[0], mockInteraction);
+      assertEquals(mockExecute.calls[0].args[0], mockInteraction);
 
       client.commands.delete("test");
     });
@@ -54,7 +54,7 @@ describe("Main Bot Logic", () => {
         assertEquals(mockExecute.calls.length, 0);
         assertEquals(consoleErrorStub.calls.length, 1);
         assert(
-          (consoleErrorStub.calls[0]!.args[0] as string).startsWith(
+          (consoleErrorStub.calls[0].args[0] as string).startsWith(
             "No command matching",
           ),
         );
@@ -64,7 +64,7 @@ describe("Main Bot Logic", () => {
     });
 
     it("コマンドの実行中にエラーが発生すると、フォロアップメッセージでエラーを報告する", async () => {
-      const followUpSpy = spy(() => Promise.resolve());
+      const followUpSpy = spy((_) => Promise.resolve());
       const mockExecute = spy(() => Promise.reject(new Error("Test error")));
       const mockCommand: Command = {
         data: { name: "error-command" },
@@ -87,7 +87,7 @@ describe("Main Bot Logic", () => {
 
         assertEquals(mockExecute.calls.length, 1);
         assertEquals(followUpSpy.calls.length, 1);
-        assertEquals(followUpSpy.calls[0]!.args[0], {
+        assertEquals(followUpSpy.calls[0].args[0], {
           content: "There was an error while executing this command!",
           ephemeral: true,
         });
