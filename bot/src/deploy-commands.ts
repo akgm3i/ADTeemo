@@ -5,9 +5,7 @@ import {
   RESTPutAPIApplicationGuildCommandsResult,
   Routes,
 } from "npm:discord.js";
-import { readdir } from "node:fs/promises";
-import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import { loadCommands } from "./common/command_loader.ts";
 
 const token = Deno.env.get("DISCORD_TOKEN");
 const clientId = Deno.env.get("DISCORD_CLIENT_ID");
@@ -19,24 +17,8 @@ if (!token || !clientId) {
   );
 }
 
-const commands = [];
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const commandsPath = path.join(__dirname, "commands");
-const commandFiles = (await readdir(commandsPath)).filter((file) =>
-  file.endsWith(".ts")
-);
-
-for (const file of commandFiles) {
-  const filePath = path.join(commandsPath, file);
-  const command = await import(filePath);
-  if ("data" in command && "execute" in command) {
-    commands.push(command.data.toJSON());
-  } else {
-    console.log(
-      `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`,
-    );
-  }
-}
+const loadedCommands = await loadCommands();
+const commands = loadedCommands.map((command) => command.data.toJSON());
 
 // Construct and prepare an instance of the REST module
 const rest = new REST().setToken(token);

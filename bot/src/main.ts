@@ -5,10 +5,8 @@ import {
   GatewayIntentBits,
   Interaction,
 } from "npm:discord.js";
-import { readdir } from "node:fs/promises";
-import * as path from "node:path";
-import { fileURLToPath } from "node:url";
 import { ensureRoles } from "./features/role-management.ts";
+import { loadCommands } from "./common/command_loader.ts";
 
 // Create a new client instance
 const client = new Client({
@@ -24,24 +22,10 @@ const client = new Client({
 
 client.commands = new Collection();
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const commandsPath = path.join(__dirname, "commands");
-const commandFiles = (await readdir(commandsPath)).filter((file) =>
-  file.endsWith(".ts")
-);
-
-for (const file of commandFiles) {
-  const filePath = path.join(commandsPath, file);
-  (async () => {
-    const command = await import(filePath);
-    if (command.data && command.execute) {
-      client.commands.set(command.data.name, command);
-    } else {
-      console.log(
-        `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`,
-      );
-    }
-  })();
+// Load commands and add them to the client
+const commands = await loadCommands();
+for (const command of commands) {
+  client.commands.set(command.data.name, command);
 }
 
 // When the client is ready, run this code (only once)
