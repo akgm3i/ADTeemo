@@ -10,7 +10,7 @@ export async function loadCommands(): Promise<Command[]> {
     if (dirEntry.isFile && dirEntry.name.endsWith(".ts") && !dirEntry.name.endsWith(".test.ts")) {
       const filePath = path.join(commandsPath, dirEntry.name);
       try {
-        const command = await import(new URL(`file://${filePath}`).href);
+        const command = await import(path.toFileUrl(filePath).href);
         if ("data" in command && "execute" in command) {
           commands.push(command as Command);
         } else {
