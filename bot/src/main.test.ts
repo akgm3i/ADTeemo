@@ -1,116 +1,97 @@
-import { assertEquals, assert } from "jsr:@std/assert";
+import { assert, assertEquals } from "jsr:@std/assert";
 import { describe, it } from "jsr:@std/testing/bdd";
-import { spy, stub } from "jsr:@std/testing/mock";
-import {
-  Collection,
-  Events,
-  type Interaction,
-} from "npm:discord.js";
+import { stub } from "jsr:@std/testing/mock";
+import { Events, SlashCommandBuilder, type Interaction } from "npm:discord.js";
 import { client } from "./main.ts";
-
-// Define a minimal Command type for our tests
-interface Command {
-  data: { name: string };
-  execute: (interaction: Interaction) => Promise<void>;
-}
+import { newMockInteractionBuilder } from "./test_utils.ts";
+import type { Command } from "./types.ts";
 
 describe("Main Bot Logic", () => {
   describe("InteractionCreate Event", () => {
+    // A small delay to allow the async event handler to run
+    const yieldToEventLoop = () => new Promise((r) => setTimeout(r, 10));
+
     it("登録済みのコマンドが実行されると、対応するexecute関数が呼び出される", async () => {
-      const mockExecute = spy((_) => Promise.resolve());
       const mockCommand: Command = {
-        data: { name: "test" },
-        execute: mockExecute,
+        data: new SlashCommandBuilder().setName("test"),
+        execute: () => Promise.resolve(),
       };
+      using executeSpy = stub(mockCommand, "execute");
+      client.commands.set(mockCommand.data.name, mockCommand);
 
-      client.commands.set("test", mockCommand as any);
+      const mockInteraction = newMockInteractionBuilder("test")
+        .withClient(client)
+        .build();
 
-      const mockInteraction = {
-        isChatInputCommand: () => true,
-        commandName: "test",
-        client: client,
-      } as unknown as Interaction;
+      client.emit(Events.InteractionCreate, mockInteraction as Interaction);
+      await yieldToEventLoop();
 
-      await client.emit(Events.InteractionCreate, mockInteraction);
-
-      assertEquals(mockExecute.calls.length, 1);
-      assertEquals(mockExecute.calls[0].args[0], mockInteraction);
-
+      assertEquals(executeSpy.calls.length, 1);
+      assertEquals(executeSpy.calls[0].args[0], mockInteraction);
       client.commands.delete("test");
     });
 
     it("未登録のコマンドが実行されると、エラーがログに出力され、コマンドは実行されない", async () => {
-      const consoleErrorStub = stub(console, "error");
-      const mockExecute = spy(() => Promise.resolve());
+      using consoleErrorStub = stub(console, "error");
 
-      const mockInteraction = {
-        isChatInputCommand: () => true,
-        commandName: "unregistered-command",
-        client: client,
-      } as unknown as Interaction;
+      const mockInteraction = newMockInteractionBuilder("unregistered-command")
+        .withClient(client)
+        .build();
 
-      try {
-        await client.emit(Events.InteractionCreate, mockInteraction);
-        assertEquals(mockExecute.calls.length, 0);
-        assertEquals(consoleErrorStub.calls.length, 1);
-        assert(
-          (consoleErrorStub.calls[0].args[0] as string).startsWith(
-            "No command matching",
-          ),
-        );
-      } finally {
-        consoleErrorStub.restore();
-      }
+      client.emit(Events.InteractionCreate, mockInteraction as Interaction);
+      await yieldToEventLoop();
+
+      assertEquals(consoleErrorStub.calls.length, 1);
+      assert(
+        (consoleErrorStub.calls[0].args[0] as string).startsWith(
+          "No command matching",
+        ),
+      );
     });
 
     it("コマンドの実行中にエラーが発生すると、フォロアップメッセージでエラーを報告する", async () => {
-      const followUpSpy = spy((_) => Promise.resolve());
-      const mockExecute = spy(() => Promise.reject(new Error("Test error")));
       const mockCommand: Command = {
-        data: { name: "error-command" },
-        execute: mockExecute,
+        data: new SlashCommandBuilder().setName("error-command"),
+        execute: () => Promise.resolve(), // This will be replaced by the stub
       };
+      using executeSpy = stub(mockCommand, "execute", () =>
+        Promise.reject(new Error("Test error")));
+      client.commands.set(mockCommand.data.name, mockCommand);
 
-      client.commands.set("error-command", mockCommand as any);
+      const mockInteraction = newMockInteractionBuilder("error-command")
+        .withClient(client)
+        .setReplied(true)
+        .build();
 
-      const mockInteraction = {
-        isChatInputCommand: () => true,
-        commandName: "error-command",
-        client: client,
-        replied: true,
-        deferred: false,
-        followUp: followUpSpy,
-      } as unknown as Interaction;
+      client.emit(Events.InteractionCreate, mockInteraction as Interaction);
+      await yieldToEventLoop();
 
-      try {
-        await client.emit(Events.InteractionCreate, mockInteraction);
-
-        assertEquals(mockExecute.calls.length, 1);
-        assertEquals(followUpSpy.calls.length, 1);
-        assertEquals(followUpSpy.calls[0].args[0], {
-          content: "There was an error while executing this command!",
-          ephemeral: true,
-        });
-      } finally {
-        client.commands.delete("error-command");
-      }
+      assertEquals(executeSpy.calls.length, 1);
+      assertEquals(mockInteraction.followUp.calls.length, 1);
+      assertEquals(mockInteraction.followUp.calls[0].args[0], {
+        content: "There was an error while executing this command!",
+        ephemeral: true,
+      });
+      client.commands.delete("error-command");
     });
 
     it("チャットコマンド以外のインタラクションでは、コマンドを実行しない", async () => {
-      const mockExecute = spy(() => Promise.resolve());
       const mockCommand: Command = {
-        data: { name: "test" },
-        execute: mockExecute,
+        data: new SlashCommandBuilder().setName("test"),
+        execute: () => Promise.resolve(),
       };
-      client.commands.set("test", mockCommand as any);
+      using executeSpy = stub(mockCommand, "execute");
+      client.commands.set(mockCommand.data.name, mockCommand);
 
-      const mockInteraction = {
-        isChatInputCommand: () => false,
-      } as unknown as Interaction;
+      const mockInteraction = newMockInteractionBuilder()
+        .withIsChatInputCommand(false)
+        .withClient(client)
+        .build();
 
-      await client.emit(Events.InteractionCreate, mockInteraction);
+      client.emit(Events.InteractionCreate, mockInteraction as Interaction);
+      await yieldToEventLoop();
 
-      assertEquals(mockExecute.calls.length, 0);
+      assertEquals(executeSpy.calls.length, 0);
       client.commands.delete("test");
     });
   });
