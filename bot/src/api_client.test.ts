@@ -2,7 +2,6 @@ import { assertEquals } from "jsr:@std/assert";
 import { describe, it } from "jsr:@std/testing/bdd";
 import { stub } from "jsr:@std/testing/mock";
 import * as apiClient from "./api_client.ts";
-import { hc } from "hono/client";
 
 // Hono's client internally uses `fetch`, so we need to stub `fetch`
 // to mock the API responses.
