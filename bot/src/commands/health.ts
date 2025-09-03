@@ -12,8 +12,8 @@ export async function execute(interaction: CommandInteraction) {
 
   const result = await apiClient.checkHealth();
 
-  if (result.success) {
-    await interaction.editReply(result.message || "The bot is healthy!");
+  if (result.success && result.message) {
+    await interaction.editReply(result.message);
   } else {
     await interaction.editReply(
       `Failed to check the bot's health. ${result.error || ""}`,
