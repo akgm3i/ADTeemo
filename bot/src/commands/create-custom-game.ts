@@ -14,7 +14,10 @@ function parseDate(dateStr: string, timeStr: string): Date | null {
   const [, month, day] = dateMatch.map(Number);
   const [, hours, minutes] = timeMatch.map(Number);
 
-  if (month < 1 || month > 12 || day < 1 || day > 31 || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+  if (
+    month < 1 || month > 12 || day < 1 || day > 31 || hours < 0 || hours > 23 ||
+    minutes < 0 || minutes > 59
+  ) {
     return null;
   }
 
@@ -29,21 +32,32 @@ function parseDate(dateStr: string, timeStr: string): Date | null {
     year += 1;
   }
 
-  const isoString = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:00+09:00`;
+  const isoString = `${year}-${String(month).padStart(2, "0")}-${
+    String(day).padStart(2, "0")
+  }T${String(hours).padStart(2, "0")}:${
+    String(minutes).padStart(2, "0")
+  }:00+09:00`;
   return new Date(isoString);
 }
 
 function formatDate(date: Date): string {
-  const datePart = new Intl.DateTimeFormat('ja-JP', {
-    year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Tokyo'
+  const datePart = new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Tokyo",
   }).format(date);
 
-  const timePart = new Intl.DateTimeFormat('ja-JP', {
-    hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Tokyo'
+  const timePart = new Intl.DateTimeFormat("ja-JP", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Tokyo",
   }).format(date);
 
-  const dayOfWeek = new Intl.DateTimeFormat('ja-JP', {
-    weekday: 'short', timeZone: 'Asia/Tokyo'
+  const dayOfWeek = new Intl.DateTimeFormat("ja-JP", {
+    weekday: "short",
+    timeZone: "Asia/Tokyo",
   }).format(date);
 
   return `${datePart}(${dayOfWeek}) ${timePart}`;
@@ -51,7 +65,9 @@ function formatDate(date: Date): string {
 
 export const data = new SlashCommandBuilder()
   .setName("create-custom-game")
-  .setDescription("新しいカスタムゲームのイベントを作成し、参加者の募集を開始します。")
+  .setDescription(
+    "新しいカスタムゲームのイベントを作成し、参加者の募集を開始します。",
+  )
   .addStringOption((option) =>
     option
       .setName("event-name")
@@ -77,7 +93,10 @@ export async function execute(interaction: CommandInteraction) {
   }
 
   if (!interaction.inGuild() || !interaction.guild || !interaction.channel) {
-    await interaction.reply({ content: "このコマンドはサーバー内でのみ実行できます。", ephemeral: true });
+    await interaction.reply({
+      content: "このコマンドはサーバー内でのみ実行できます。",
+      ephemeral: true,
+    });
     return;
   }
 
@@ -87,7 +106,11 @@ export async function execute(interaction: CommandInteraction) {
 
   const scheduledStartTime = parseDate(dateStr, timeStr);
   if (!scheduledStartTime) {
-    await interaction.reply({ content: "日付または時刻のフォーマットが正しくありません。MM/DD HH:MMの形式で入力してください。", ephemeral: true });
+    await interaction.reply({
+      content:
+        "日付または時刻のフォーマットが正しくありません。MM/DD HH:MMの形式で入力してください。",
+      ephemeral: true,
+    });
     return;
   }
 
@@ -120,7 +143,8 @@ export async function execute(interaction: CommandInteraction) {
   await message.react("🇧");
   await message.react("🇸");
 
-  let replyContent = "カスタムゲームのイベントを作成しました。募集メッセージを投稿します。";
+  let replyContent =
+    "カスタムゲームのイベントを作成しました。募集メッセージを投稿します。";
   const oneMonthFromNow = new Date();
   oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
 
