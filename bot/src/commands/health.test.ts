@@ -2,7 +2,7 @@ import { assertEquals } from "jsr:@std/assert";
 import { describe, it } from "jsr:@std/testing/bdd";
 import { stub } from "jsr:@std/testing/mock";
 import { execute } from "./health.ts";
-import { newMockInteractionBuilder } from "../test_utils.ts";
+import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
 
 describe("Health Command", () => {
   describe("execute", () => {
@@ -22,7 +22,7 @@ describe("Health Command", () => {
         "fetch",
         () => Promise.resolve(response),
       );
-      const interaction = newMockInteractionBuilder().build();
+      const interaction = newMockChatInputCommandInteractionBuilder().build();
 
       await execute(interaction);
 
@@ -41,7 +41,7 @@ describe("Health Command", () => {
         "fetch",
         () => Promise.resolve(response),
       );
-      const interaction = newMockInteractionBuilder().build();
+      const interaction = newMockChatInputCommandInteractionBuilder().build();
 
       await execute(interaction);
 
@@ -59,7 +59,7 @@ describe("Health Command", () => {
         "fetch",
         () => Promise.reject(new Error("Network disconnect")),
       );
-      const interaction = newMockInteractionBuilder().build();
+      const interaction = newMockChatInputCommandInteractionBuilder().build();
 
       await execute(interaction);
 
@@ -72,7 +72,7 @@ describe("Health Command", () => {
     });
 
     it("ChatInputCommandでないInteractionで実行すると、何もせずに処理を中断する", async () => {
-      const interaction = newMockInteractionBuilder()
+      const interaction = newMockChatInputCommandInteractionBuilder()
         .withIsChatInputCommand(false)
         .build();
 

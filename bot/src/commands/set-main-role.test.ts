@@ -2,7 +2,7 @@ import { assertEquals } from "jsr:@std/assert";
 import { describe, it } from "jsr:@std/testing/bdd";
 import { stub } from "jsr:@std/testing/mock";
 import { execute } from "./set-main-role.ts";
-import { newMockInteractionBuilder } from "../test_utils.ts";
+import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
 
 describe("Set Main Role Command", () => {
   describe("execute", () => {
@@ -15,7 +15,7 @@ describe("Set Main Role Command", () => {
             new Response(JSON.stringify({ success: true }), { status: 200 }),
           ),
       );
-      const interaction = newMockInteractionBuilder()
+      const interaction = newMockChatInputCommandInteractionBuilder()
         .withStringOption(() => "Top")
         .build();
 
@@ -40,7 +40,7 @@ describe("Set Main Role Command", () => {
         "fetch",
         () => Promise.resolve(fetchResponse),
       );
-      const interaction = newMockInteractionBuilder()
+      const interaction = newMockChatInputCommandInteractionBuilder()
         .withStringOption(() => "Jungle")
         .build();
 
@@ -55,7 +55,7 @@ describe("Set Main Role Command", () => {
     });
 
     it("ChatInputCommandでないInteractionで実行すると、何もせずに処理を中断する", async () => {
-      const interaction = newMockInteractionBuilder()
+      const interaction = newMockChatInputCommandInteractionBuilder()
         .withIsChatInputCommand(false)
         .build();
       await execute(interaction);

@@ -3,7 +3,7 @@ import { describe, it } from "jsr:@std/testing/bdd";
 import { stub } from "jsr:@std/testing/mock";
 import { Events, type Interaction, SlashCommandBuilder } from "npm:discord.js";
 import { client } from "./main.ts";
-import { newMockInteractionBuilder } from "./test_utils.ts";
+import { newMockChatInputCommandInteractionBuilder } from "./test_utils.ts";
 import type { Command } from "./types.ts";
 
 describe("Main Bot Logic", () => {
@@ -19,7 +19,7 @@ describe("Main Bot Logic", () => {
       using executeSpy = stub(mockCommand, "execute");
       client.commands.set(mockCommand.data.name, mockCommand);
 
-      const mockInteraction = newMockInteractionBuilder("test")
+      const mockInteraction = newMockChatInputCommandInteractionBuilder("test")
         .withClient(client)
         .build();
 
@@ -34,7 +34,9 @@ describe("Main Bot Logic", () => {
     it("未登録のコマンドが実行されると、エラーがログに出力され、コマンドは実行されない", async () => {
       using consoleErrorStub = stub(console, "error");
 
-      const mockInteraction = newMockInteractionBuilder("unregistered-command")
+      const mockInteraction = newMockChatInputCommandInteractionBuilder(
+        "unregistered-command",
+      )
         .withClient(client)
         .build();
 
@@ -61,7 +63,9 @@ describe("Main Bot Logic", () => {
       );
       client.commands.set(mockCommand.data.name, mockCommand);
 
-      const mockInteraction = newMockInteractionBuilder("error-command")
+      const mockInteraction = newMockChatInputCommandInteractionBuilder(
+        "error-command",
+      )
         .withClient(client)
         .setReplied(true)
         .build();
@@ -86,7 +90,7 @@ describe("Main Bot Logic", () => {
       using executeSpy = stub(mockCommand, "execute");
       client.commands.set(mockCommand.data.name, mockCommand);
 
-      const mockInteraction = newMockInteractionBuilder()
+      const mockInteraction = newMockChatInputCommandInteractionBuilder()
         .withIsChatInputCommand(false)
         .withClient(client)
         .build();

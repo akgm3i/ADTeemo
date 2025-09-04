@@ -6,16 +6,19 @@ import {
   DiscordAPIError,
   type Guild,
   type InteractionReplyOptions,
+  MessageFlags,
   RESTJSONErrorCodes,
   type Role,
 } from "npm:discord.js";
 import { execute } from "./setup-roles.ts";
 import { DISCORD_ROLES_TO_MANAGE } from "../constants.ts";
-import { newMockInteractionBuilder } from "../test_utils.ts";
+import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
 
 describe("Setup Roles Command", () => {
   it("ギルド（サーバー）外でコマンドを実行すると、エラーメッセージを返信する", async () => {
-    const interaction = newMockInteractionBuilder().withGuild(null).build();
+    const interaction = newMockChatInputCommandInteractionBuilder().withGuild(
+      null,
+    ).build();
 
     await execute(interaction);
 
@@ -26,7 +29,7 @@ describe("Setup Roles Command", () => {
       replyArgs.content,
       "This command can only be used in a server.",
     );
-    assertEquals(replyArgs.ephemeral, true);
+    assertEquals(replyArgs.flags, MessageFlags.Ephemeral);
   });
 
   it("不足しているロールがある場合にコマンドを実行すると、それらを作成して成功を報告する", async () => {
@@ -41,7 +44,7 @@ describe("Setup Roles Command", () => {
         create: rolesCreateSpy,
       },
     } as unknown as Guild;
-    const interaction = newMockInteractionBuilder()
+    const interaction = newMockChatInputCommandInteractionBuilder()
       .withGuild(mockGuild)
       .build();
 
@@ -69,7 +72,7 @@ describe("Setup Roles Command", () => {
         create: rolesCreateSpy,
       },
     } as unknown as Guild;
-    const interaction = newMockInteractionBuilder()
+    const interaction = newMockChatInputCommandInteractionBuilder()
       .withGuild(mockGuild)
       .build();
 
@@ -104,7 +107,7 @@ describe("Setup Roles Command", () => {
         create: rolesCreateSpy,
       },
     } as unknown as Guild;
-    const interaction = newMockInteractionBuilder()
+    const interaction = newMockChatInputCommandInteractionBuilder()
       .withGuild(mockGuild)
       .build();
 
@@ -129,7 +132,7 @@ describe("Setup Roles Command", () => {
         create: rolesCreateSpy,
       },
     } as unknown as Guild;
-    const interaction = newMockInteractionBuilder()
+    const interaction = newMockChatInputCommandInteractionBuilder()
       .withGuild(mockGuild)
       .build();
 

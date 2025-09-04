@@ -1,9 +1,11 @@
 import {
+  ChannelType,
   CommandInteraction,
   GuildScheduledEventEntityType,
   GuildScheduledEventPrivacyLevel,
+  MessageFlags,
   SlashCommandBuilder,
-} from "discord.js";
+} from "npm:discord.js";
 import { format, parse } from "jsr:@std/datetime";
 
 function parseDate(dateStr: string, timeStr: string): Date | null {
@@ -18,7 +20,7 @@ function parseDate(dateStr: string, timeStr: string): Date | null {
   }
 
   if (targetDate < now) {
-    targetDate.setFullYear(year + 1);
+    targetDate.setFullYear(targetDate.getFullYear() + 1);
   }
 
   return targetDate;
@@ -46,6 +48,13 @@ export const data = new SlashCommandBuilder()
       .setName("start-time")
       .setDescription("開始時刻 (HH:mm形式)")
       .setRequired(true)
+  )
+  .addChannelOption((option) =>
+    option
+      .setName("voice-channel")
+      .setDescription("使用するボイスチャンネル")
+      .setRequired(true)
+      .addChannelTypes(ChannelType.GuildVoice)
   );
 
 export async function execute(interaction: CommandInteraction) {
@@ -64,28 +73,24 @@ export async function execute(interaction: CommandInteraction) {
   const eventName = interaction.options.getString("event-name", true);
   const dateStr = interaction.options.getString("start-date", true);
   const timeStr = interaction.options.getString("start-time", true);
+  const voiceChannel = interaction.options.getChannel("voice-channel", true);
 
   const scheduledStartTime = parseDate(dateStr, timeStr);
   if (!scheduledStartTime) {
     await interaction.reply({
       content:
         "日付または時刻のフォーマットが正しくありません。MM/DD HH:mmの形式で入力してください。",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
-  const scheduledEndTime = parse(
-    format(scheduledStartTime, "yyyy/MM/dd") + " 23:59",
-    "yyyy/MM/dd HH:mm",
-  );
 
   await interaction.guild.scheduledEvents.create({
     name: eventName,
     scheduledStartTime: scheduledStartTime,
-    scheduledEndTime: scheduledEndTime,
     privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
-    entityType: GuildScheduledEventEntityType.External,
-    entityMetadata: { location: "カスタムゲーム" },
+    entityType: GuildScheduledEventEntityType.Voice,
+    channel: voiceChannel.id,
   });
 
   const displayDate = format(scheduledStartTime, "yyyy/MM/dd HH:mm");
