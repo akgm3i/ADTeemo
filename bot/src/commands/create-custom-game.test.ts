@@ -9,6 +9,7 @@ import {
 import { execute } from "./create-custom-game.ts";
 import { newMockInteractionBuilder } from "../test_utils.ts";
 import {
+  Channel,
   ChannelType,
   EmojiIdentifierResolvable,
   Guild,
@@ -67,6 +68,11 @@ describe("Create Custom Game Command", () => {
           scheduledEvents: mockScheduledEvents,
         } as unknown as Guild;
 
+        const mockVoiceChannel = {
+          id: "mock-voice-channel-id",
+          type: ChannelType.GuildVoice,
+        } as unknown as Channel;
+
         const interaction = newMockInteractionBuilder("create-custom-game")
           .withGuild(mockGuild)
           .withStringOption((name) => {
@@ -75,6 +81,7 @@ describe("Create Custom Game Command", () => {
             if (name === "start-time") return "21:00";
             return null;
           })
+          .withChannelOption("voice-channel", mockVoiceChannel)
           .build();
 
         Object.assign(interaction, {
@@ -91,10 +98,9 @@ describe("Create Custom Game Command", () => {
           args: [{
             name: "週末カスタム",
             scheduledStartTime: expectedDate,
-            scheduledEndTime: new Date("2025-09-13T14:59:00.000Z"),
             privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
-            entityType: GuildScheduledEventEntityType.External,
-            entityMetadata: { location: "カスタムゲーム" },
+            entityType: GuildScheduledEventEntityType.Voice,
+            channel: mockVoiceChannel.id,
           }],
         });
 
@@ -152,6 +158,11 @@ describe("Create Custom Game Command", () => {
           scheduledEvents: mockScheduledEvents,
         } as unknown as Guild;
 
+        const mockVoiceChannel = {
+          id: "mock-voice-channel-id",
+          type: ChannelType.GuildVoice,
+        } as unknown as Channel;
+
         const interaction = newMockInteractionBuilder("create-custom-game")
           .withGuild(mockGuild)
           .withStringOption((name) => {
@@ -160,6 +171,7 @@ describe("Create Custom Game Command", () => {
             if (name === "start-time") return "12:00";
             return null;
           })
+          .withChannelOption("voice-channel", mockVoiceChannel)
           .build();
 
         Object.assign(interaction, {
@@ -176,10 +188,9 @@ describe("Create Custom Game Command", () => {
           args: [{
             name: "新年カスタム",
             scheduledStartTime: expectedDate,
-            scheduledEndTime: new Date("2026-01-15T14:59:00.000Z"),
             privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
-            entityType: GuildScheduledEventEntityType.External,
-            entityMetadata: { location: "カスタムゲーム" },
+            entityType: GuildScheduledEventEntityType.Voice,
+            channel: mockVoiceChannel.id,
           }],
         });
       });
@@ -217,6 +228,11 @@ describe("Create Custom Game Command", () => {
           scheduledEvents: mockScheduledEvents,
         } as unknown as Guild;
 
+        const mockVoiceChannel = {
+          id: "mock-voice-channel-id",
+          type: ChannelType.GuildVoice,
+        } as unknown as Channel;
+
         const interaction = newMockInteractionBuilder("create-custom-game")
           .withGuild(mockGuild)
           .withStringOption((name) => {
@@ -225,6 +241,7 @@ describe("Create Custom Game Command", () => {
             if (name === "start-time") return "12:00";
             return null;
           })
+          .withChannelOption("voice-channel", mockVoiceChannel)
           .build();
 
         Object.assign(interaction, {
@@ -261,6 +278,11 @@ describe("Create Custom Game Command", () => {
           scheduledEvents: mockScheduledEvents,
         } as unknown as Guild;
 
+        const mockVoiceChannel = {
+          id: "mock-voice-channel-id",
+          type: ChannelType.GuildVoice,
+        } as unknown as Channel;
+
         const interaction = newMockInteractionBuilder("create-custom-game")
           .withGuild(mockGuild)
           .withStringOption((name) => {
@@ -269,6 +291,7 @@ describe("Create Custom Game Command", () => {
             if (name === "start-time") return "21:00";
             return null;
           })
+          .withChannelOption("voice-channel", mockVoiceChannel)
           .build();
 
         Object.assign(interaction, {

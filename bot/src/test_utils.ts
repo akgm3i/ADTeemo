@@ -7,6 +7,7 @@ import {
   type CommandInteraction,
   type CommandInteractionOptionResolver,
   type Guild,
+  type Channel,
   type InteractionDeferReplyOptions,
   type InteractionEditReplyOptions,
   type MessagePayload,
@@ -26,6 +27,7 @@ type MockOptions = {
   user: { id: string };
   options: {
     getString?: (name: string, required?: boolean) => string | null;
+    getChannel?: (name: string, required?: boolean) => Channel | null;
   };
 };
 
@@ -79,6 +81,17 @@ export function newMockInteractionBuilder(commandName = "test-command") {
       return this;
     },
 
+    withChannelOption(
+      name: string,
+      channel: Channel,
+    ) {
+      props.options.getChannel = (optionName: string) => {
+        if (optionName === name) return channel;
+        return null;
+      };
+      return this;
+    },
+
     setReplied(replied: boolean) {
       props.replied = replied;
       return this;
@@ -115,6 +128,10 @@ export function newMockInteractionBuilder(commandName = "test-command") {
             (name: string, required?: boolean) =>
               props.options.getString?.(name, required),
           ),
+          getChannel: spy(
+            (name: string, required?: boolean) =>
+              props.options.getChannel?.(name, required),
+          ),
         },
       };
 
@@ -127,6 +144,7 @@ export function newMockInteractionBuilder(commandName = "test-command") {
         client: typeof props.client;
         options: {
           getString: Spy<CommandInteractionOptionResolver["getString"]>;
+          getChannel: Spy<CommandInteractionOptionResolver["getChannel"]>;
         };
       };
     },
