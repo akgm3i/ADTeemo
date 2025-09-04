@@ -4,63 +4,24 @@ import {
   GuildScheduledEventPrivacyLevel,
   SlashCommandBuilder,
 } from "discord.js";
+import { format, parse } from "jsr:@std/datetime";
 
 function parseDate(dateStr: string, timeStr: string): Date | null {
-  const dateMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})$/);
-  const timeMatch = timeStr.match(/^(\d{1,2}):(\d{1,2})$/);
+  const now = new Date();
+  const year = now.getFullYear();
 
-  if (!dateMatch || !timeMatch) return null;
-
-  const [, month, day] = dateMatch.map(Number);
-  const [, hours, minutes] = timeMatch.map(Number);
-
-  if (
-    month < 1 || month > 12 || day < 1 || day > 31 || hours < 0 || hours > 23 ||
-    minutes < 0 || minutes > 59
-  ) {
+  let targetDate: Date;
+  try {
+    targetDate = parse(`${year}/${dateStr} ${timeStr}`, "yyyy/MM/dd HH:mm");
+  } catch {
     return null;
   }
 
-  const now = new Date();
-  let year = now.getFullYear();
-
-  const tempDate = new Date();
-  tempDate.setFullYear(year, month - 1, day);
-  tempDate.setHours(hours, minutes, 0, 0);
-
-  if (tempDate < now) {
-    year += 1;
+  if (targetDate < now) {
+    targetDate.setFullYear(year + 1);
   }
 
-  const isoString = `${year}-${String(month).padStart(2, "0")}-${
-    String(day).padStart(2, "0")
-  }T${String(hours).padStart(2, "0")}:${
-    String(minutes).padStart(2, "0")
-  }:00+09:00`;
-  return new Date(isoString);
-}
-
-function formatDate(date: Date): string {
-  const datePart = new Intl.DateTimeFormat("ja-JP", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Asia/Tokyo",
-  }).format(date);
-
-  const timePart = new Intl.DateTimeFormat("ja-JP", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Asia/Tokyo",
-  }).format(date);
-
-  const dayOfWeek = new Intl.DateTimeFormat("ja-JP", {
-    weekday: "short",
-    timeZone: "Asia/Tokyo",
-  }).format(date);
-
-  return `${datePart}(${dayOfWeek}) ${timePart}`;
+  return targetDate;
 }
 
 export const data = new SlashCommandBuilder()
@@ -83,7 +44,7 @@ export const data = new SlashCommandBuilder()
   .addStringOption((option) =>
     option
       .setName("start-time")
-      .setDescription("開始時刻 (HH:MM形式)")
+      .setDescription("開始時刻 (HH:mm形式)")
       .setRequired(true)
   );
 
@@ -108,27 +69,32 @@ export async function execute(interaction: CommandInteraction) {
   if (!scheduledStartTime) {
     await interaction.reply({
       content:
-        "日付または時刻のフォーマットが正しくありません。MM/DD HH:MMの形式で入力してください。",
+        "日付または時刻のフォーマットが正しくありません。MM/DD HH:mmの形式で入力してください。",
       ephemeral: true,
     });
     return;
   }
+  const scheduledEndTime = parse(
+    format(scheduledStartTime, "yyyy/MM/dd") + " 23:59",
+    "yyyy/MM/dd HH:mm",
+  );
 
   await interaction.guild.scheduledEvents.create({
     name: eventName,
     scheduledStartTime: scheduledStartTime,
+    scheduledEndTime: scheduledEndTime,
     privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
     entityType: GuildScheduledEventEntityType.External,
     entityMetadata: { location: "カスタムゲーム" },
   });
 
-  const displayDate = formatDate(scheduledStartTime);
+  const displayDate = format(scheduledStartTime, "yyyy/MM/dd HH:mm");
 
   const recruitmentMessageContent = `### ⚔️ カスタムゲーム参加者募集 ⚔️
 
 @Custom
 
-**${displayDate}** からカスタムゲームを開催します！
+**${displayDate}** からカスタムゲーム **${eventName}** を開催します！
 参加希望の方は、希望するロールのリアクションを押してください。
 
 複数ロールでの参加も可能です。

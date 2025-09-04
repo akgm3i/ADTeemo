@@ -1,6 +1,11 @@
 import { describe, it } from "jsr:@std/testing/bdd";
 import { assertEquals } from "jsr:@std/assert";
-import { assertSpyCall, assertSpyCalls, spy, stub } from "jsr:@std/testing/mock";
+import {
+  assertSpyCall,
+  assertSpyCalls,
+  spy,
+  stub,
+} from "jsr:@std/testing/mock";
 import { execute } from "./create-custom-game.ts";
 import { newMockInteractionBuilder } from "../test_utils.ts";
 import {
@@ -31,8 +36,7 @@ describe("Create Custom Game Command", () => {
         const reactSpy = spy(
           (
             _emoji: EmojiIdentifierResolvable,
-          ): Promise<MessageReaction> =>
-            Promise.resolve({} as MessageReaction),
+          ): Promise<MessageReaction> => Promise.resolve({} as MessageReaction),
         );
 
         const sendSpy = spy(
@@ -87,6 +91,7 @@ describe("Create Custom Game Command", () => {
           args: [{
             name: "週末カスタム",
             scheduledStartTime: expectedDate,
+            scheduledEndTime: new Date("2025-09-13T14:59:00.000Z"),
             privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
             entityType: GuildScheduledEventEntityType.External,
             entityMetadata: { location: "カスタムゲーム" },
@@ -97,7 +102,7 @@ describe("Create Custom Game Command", () => {
 
 @Custom
 
-**2025/09/13(土) 21:00** からカスタムゲームを開催します！
+**2025/09/13 21:00** からカスタムゲーム **週末カスタム** を開催します！
 参加希望の方は、希望するロールのリアクションを押してください。
 
 複数ロールでの参加も可能です。
@@ -120,8 +125,7 @@ describe("Create Custom Game Command", () => {
         const reactSpy = spy(
           (
             _emoji: EmojiIdentifierResolvable,
-          ): Promise<MessageReaction> =>
-            Promise.resolve({} as MessageReaction),
+          ): Promise<MessageReaction> => Promise.resolve({} as MessageReaction),
         );
         const sendSpy = spy(
           (
@@ -172,6 +176,7 @@ describe("Create Custom Game Command", () => {
           args: [{
             name: "新年カスタム",
             scheduledStartTime: expectedDate,
+            scheduledEndTime: new Date("2026-01-15T14:59:00.000Z"),
             privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
             entityType: GuildScheduledEventEntityType.External,
             entityMetadata: { location: "カスタムゲーム" },
@@ -185,8 +190,7 @@ describe("Create Custom Game Command", () => {
         const reactSpy = spy(
           (
             _emoji: EmojiIdentifierResolvable,
-          ): Promise<MessageReaction> =>
-            Promise.resolve({} as MessageReaction),
+          ): Promise<MessageReaction> => Promise.resolve({} as MessageReaction),
         );
         const sendSpy = spy(
           (
@@ -277,7 +281,7 @@ describe("Create Custom Game Command", () => {
         assertSpyCall(interaction.reply, 0, {
           args: [{
             content:
-              "日付または時刻のフォーマットが正しくありません。MM/DD HH:MMの形式で入力してください。",
+              "日付または時刻のフォーマットが正しくありません。MM/DD HH:mmの形式で入力してください。",
             ephemeral: true,
           }],
         });
