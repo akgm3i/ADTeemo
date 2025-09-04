@@ -1,4 +1,8 @@
-import { CommandInteraction, SlashCommandBuilder } from "npm:discord.js";
+import {
+  CommandInteraction,
+  MessageFlags,
+  SlashCommandBuilder,
+} from "npm:discord.js";
 import * as apiClient from "../api_client.ts";
 
 export const data = new SlashCommandBuilder()
@@ -8,7 +12,7 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: CommandInteraction) {
   if (!interaction.isChatInputCommand()) return;
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const result = await apiClient.checkHealth();
 

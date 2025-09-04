@@ -1,13 +1,13 @@
 import { type Spy, spy } from "jsr:@std/testing/mock";
 import {
   type CacheType,
+  type Channel,
   type ChatInputCommandInteraction,
   type Client,
   Collection,
   type CommandInteraction,
   type CommandInteractionOptionResolver,
   type Guild,
-  type Channel,
   type InteractionDeferReplyOptions,
   type InteractionEditReplyOptions,
   type MessagePayload,
@@ -31,7 +31,9 @@ type MockOptions = {
   };
 };
 
-export function newMockInteractionBuilder(commandName = "test-command") {
+export function newMockChatInputCommandInteractionBuilder(
+  commandName = "test-command",
+) {
   const props: MockOptions = {
     commandName,
     isChatInputCommand: true,

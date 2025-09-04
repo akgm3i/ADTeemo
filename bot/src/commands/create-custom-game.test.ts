@@ -7,7 +7,7 @@ import {
   stub,
 } from "jsr:@std/testing/mock";
 import { execute } from "./create-custom-game.ts";
-import { newMockInteractionBuilder } from "../test_utils.ts";
+import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
 import {
   Channel,
   ChannelType,
@@ -20,10 +20,11 @@ import {
   GuildScheduledEventPrivacyLevel,
   Message,
   MessageCreateOptions,
+  MessageFlags,
   MessagePayload,
   MessageReaction,
   TextBasedChannel,
-} from "discord.js";
+} from "npm:discord.js";
 
 describe("Create Custom Game Command", () => {
   describe("execute", () => {
@@ -73,7 +74,9 @@ describe("Create Custom Game Command", () => {
           type: ChannelType.GuildVoice,
         } as unknown as Channel;
 
-        const interaction = newMockInteractionBuilder("create-custom-game")
+        const interaction = newMockChatInputCommandInteractionBuilder(
+          "create-custom-game",
+        )
           .withGuild(mockGuild)
           .withStringOption((name) => {
             if (name === "event-name") return "週末カスタム";
@@ -93,7 +96,7 @@ describe("Create Custom Game Command", () => {
         await execute(interaction);
 
         // Assertions
-        const expectedDate = new Date("2025-09-13T12:00:00.000Z");
+        const expectedDate = new Date("2025-09-13T21:00:00");
         assertSpyCall(createEventSpy, 0, {
           args: [{
             name: "週末カスタム",
@@ -163,7 +166,9 @@ describe("Create Custom Game Command", () => {
           type: ChannelType.GuildVoice,
         } as unknown as Channel;
 
-        const interaction = newMockInteractionBuilder("create-custom-game")
+        const interaction = newMockChatInputCommandInteractionBuilder(
+          "create-custom-game",
+        )
           .withGuild(mockGuild)
           .withStringOption((name) => {
             if (name === "event-name") return "新年カスタム";
@@ -182,7 +187,7 @@ describe("Create Custom Game Command", () => {
         await execute(interaction);
 
         const nextYear = mockNow.getFullYear() + 1;
-        const expectedDate = new Date(`${nextYear}-01-15T03:00:00.000Z`);
+        const expectedDate = new Date(`${nextYear}-01-15T12:00:00`);
 
         assertSpyCall(createEventSpy, 0, {
           args: [{
@@ -233,7 +238,9 @@ describe("Create Custom Game Command", () => {
           type: ChannelType.GuildVoice,
         } as unknown as Channel;
 
-        const interaction = newMockInteractionBuilder("create-custom-game")
+        const interaction = newMockChatInputCommandInteractionBuilder(
+          "create-custom-game",
+        )
           .withGuild(mockGuild)
           .withStringOption((name) => {
             if (name === "event-name") return "未来のカスタム";
@@ -283,7 +290,9 @@ describe("Create Custom Game Command", () => {
           type: ChannelType.GuildVoice,
         } as unknown as Channel;
 
-        const interaction = newMockInteractionBuilder("create-custom-game")
+        const interaction = newMockChatInputCommandInteractionBuilder(
+          "create-custom-game",
+        )
           .withGuild(mockGuild)
           .withStringOption((name) => {
             if (name === "event-name") return "週末カスタム";
@@ -305,14 +314,16 @@ describe("Create Custom Game Command", () => {
           args: [{
             content:
               "日付または時刻のフォーマットが正しくありません。MM/DD HH:mmの形式で入力してください。",
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           }],
         });
         assertSpyCalls(createEventSpy, 0);
       });
 
       it("DMでコマンドが実行された場合、エラーメッセージを返信する", async () => {
-        const interaction = newMockInteractionBuilder("create-custom-game")
+        const interaction = newMockChatInputCommandInteractionBuilder(
+          "create-custom-game",
+        )
           .withGuild(null)
           .build();
         Object.assign(interaction, { inGuild: () => false });

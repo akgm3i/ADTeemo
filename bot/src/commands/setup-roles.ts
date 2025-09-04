@@ -1,5 +1,6 @@
 import {
   CommandInteraction,
+  MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
 } from "npm:discord.js";
@@ -16,12 +17,12 @@ export async function execute(interaction: CommandInteraction) {
   if (!interaction.guild) {
     await interaction.reply({
       content: "This command can only be used in a server.",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const result = await ensureRoles(interaction.guild);
   let message = "";

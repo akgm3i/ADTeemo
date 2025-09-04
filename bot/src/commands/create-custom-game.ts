@@ -3,9 +3,10 @@ import {
   CommandInteraction,
   GuildScheduledEventEntityType,
   GuildScheduledEventPrivacyLevel,
+  MessageFlags,
   SlashCommandBuilder,
-} from "discord.js";
-import { toDate, formatInTimeZone } from "npm:date-fns-tz";
+} from "npm:discord.js";
+import { format, parse } from "jsr:@std/datetime";
 
 function parseDate(dateStr: string, timeStr: string): Date | null {
   const now = new Date();
@@ -13,12 +14,7 @@ function parseDate(dateStr: string, timeStr: string): Date | null {
 
   let targetDate: Date;
   try {
-    const [month, day] = dateStr.split("/");
-    const [hour, minute] = timeStr.split(":");
-    const dateTimeString = `${year}-${month.padStart(2, "0")}-${
-      day.padStart(2, "0")
-    }T${hour.padStart(2, "0")}:${minute.padStart(2, "0")}:00`;
-    targetDate = toDate(dateTimeString, { timeZone: "Asia/Tokyo" });
+    targetDate = parse(`${year}/${dateStr} ${timeStr}`, "yyyy/MM/dd HH:mm");
   } catch {
     return null;
   }
@@ -84,7 +80,7 @@ export async function execute(interaction: CommandInteraction) {
     await interaction.reply({
       content:
         "日付または時刻のフォーマットが正しくありません。MM/DD HH:mmの形式で入力してください。",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -97,11 +93,7 @@ export async function execute(interaction: CommandInteraction) {
     channel: voiceChannel.id,
   });
 
-  const displayDate = formatInTimeZone(
-    scheduledStartTime,
-    "Asia/Tokyo",
-    "yyyy/MM/dd HH:mm",
-  );
+  const displayDate = format(scheduledStartTime, "yyyy/MM/dd HH:mm");
 
   const recruitmentMessageContent = `### ⚔️ カスタムゲーム参加者募集 ⚔️
 

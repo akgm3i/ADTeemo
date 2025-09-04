@@ -1,4 +1,8 @@
-import { CommandInteraction, SlashCommandBuilder } from "npm:discord.js";
+import {
+  CommandInteraction,
+  MessageFlags,
+  SlashCommandBuilder,
+} from "npm:discord.js";
 import { type Lane, lanes } from "@adteemo/api/schema";
 import { ROLE_DISPLAY_NAMES } from "../constants.ts";
 import * as apiClient from "../api_client.ts";
@@ -26,7 +30,7 @@ export async function execute(interaction: CommandInteraction) {
   const role = interaction.options.getString("role", true) as Lane;
   const userId = interaction.user.id;
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const result = await apiClient.setMainRole(userId, role);
 
