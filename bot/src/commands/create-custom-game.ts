@@ -7,6 +7,7 @@ import {
   SlashCommandBuilder,
 } from "npm:discord.js";
 import { format, parse } from "jsr:@std/datetime";
+import { apiClient } from "../api_client.ts";
 
 function parseDate(dateStr: string, timeStr: string): Date | null {
   const now = new Date();
@@ -87,7 +88,7 @@ export async function execute(interaction: CommandInteraction) {
     return;
   }
 
-  await interaction.guild.scheduledEvents.create({
+  const event = await interaction.guild.scheduledEvents.create({
     name: eventName,
     scheduledStartTime: scheduledStartTime,
     privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
@@ -126,4 +127,12 @@ export async function execute(interaction: CommandInteraction) {
   await message.react("🇲");
   await message.react("🇧");
   await message.react("🇸");
+
+  await apiClient.createCustomGameEvent({
+    name: eventName,
+    guildId: interaction.guild.id,
+    creatorId: interaction.user.id,
+    discordScheduledEventId: event.id,
+    recruitmentMessageId: message.id,
+  });
 }

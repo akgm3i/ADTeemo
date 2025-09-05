@@ -3,7 +3,7 @@ import {
   MessageFlags,
   SlashCommandBuilder,
 } from "npm:discord.js";
-import * as apiClient from "../api_client.ts";
+import { apiClient } from "../api_client.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("health")
