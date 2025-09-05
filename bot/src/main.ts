@@ -4,6 +4,7 @@ import {
   Events,
   GatewayIntentBits,
   Interaction,
+  MessageFlags,
 } from "npm:discord.js";
 import { ensureRoles } from "./features/role-management.ts";
 import { loadCommands } from "./common/command_loader.ts";
@@ -53,12 +54,12 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp({
         content: "There was an error while executing this command!",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     } else {
       await interaction.reply({
         content: "There was an error while executing this command!",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }

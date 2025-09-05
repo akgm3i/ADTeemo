@@ -1,6 +1,9 @@
 {
   "workspace": ["./api", "./bot"],
   "tasks": {
+    "dev:all": {"dependencies": ["dev:api", "dev:bot"]},
+    "dev:api": "deno task --cwd=api dev",
+    "dev:bot": "deno task --cwd=bot dev",
     "test:all": "deno test --allow-env --allow-read --allow-sys --allow-ffi",
     "db:push": "deno run --allow-env --allow-read --allow-sys --allow-run --allow-ffi --node-modules-dir npm:drizzle-kit push",
     "db:generate": "deno run --allow-env --allow-read --allow-sys --allow-run npm:drizzle-kit generate",
@@ -26,6 +29,6 @@
     }
   },
   "imports": {
-    "drizzle-kit": "npm:drizzle-kit"
+    "drizzle-kit": "npm:drizzle-kit@^0.31.4"
   }
 }

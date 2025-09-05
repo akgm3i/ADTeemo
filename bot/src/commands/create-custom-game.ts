@@ -65,10 +65,12 @@ export async function execute(interaction: CommandInteraction) {
   if (!interaction.inGuild() || !interaction.guild || !interaction.channel) {
     await interaction.reply({
       content: "このコマンドはサーバー内でのみ実行できます。",
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const eventName = interaction.options.getString("event-name", true);
   const dateStr = interaction.options.getString("start-date", true);
@@ -93,6 +95,17 @@ export async function execute(interaction: CommandInteraction) {
     channel: voiceChannel.id,
   });
 
+  let replyContent =
+    "カスタムゲームのイベントを作成しました。募集メッセージを投稿します。";
+  const oneMonthFromNow = new Date();
+  oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
+
+  if (scheduledStartTime > oneMonthFromNow) {
+    replyContent += "\n⚠️ 警告: 開始日時が1ヶ月以上先です。";
+  }
+
+  await interaction.editReply(replyContent);
+
   const displayDate = format(scheduledStartTime, "yyyy/MM/dd HH:mm");
 
   const recruitmentMessageContent = `### ⚔️ カスタムゲーム参加者募集 ⚔️
@@ -113,18 +126,4 @@ export async function execute(interaction: CommandInteraction) {
   await message.react("🇲");
   await message.react("🇧");
   await message.react("🇸");
-
-  let replyContent =
-    "カスタムゲームのイベントを作成しました。募集メッセージを投稿します。";
-  const oneMonthFromNow = new Date();
-  oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
-
-  if (scheduledStartTime > oneMonthFromNow) {
-    replyContent += "\n⚠️ 警告: 開始日時が1ヶ月以上先です。";
-  }
-
-  await interaction.reply({
-    content: replyContent,
-    ephemeral: true,
-  });
 }

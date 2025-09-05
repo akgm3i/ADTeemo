@@ -10,16 +10,5 @@
   },
   "compilerOptions": {
     "types": ["./src/@types/discord.js.d.ts"]
-  },
-  "imports": {
-    "discord.js": "npm:discord.js",
-    "hono": "npm:hono",
-    "hono/client": "npm:hono/client",
-    "zod": "npm:zod",
-    "@hono/zod-validator": "npm:@hono/zod-validator",
-    "drizzle-orm": "npm:drizzle-orm",
-    "drizzle-orm/sqlite-core": "npm:drizzle-orm/sqlite-core",
-    "drizzle-kit": "npm:drizzle-kit",
-    "@libsql/client": "npm:@libsql/client"
   }
 }

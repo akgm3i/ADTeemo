@@ -1,5 +1,5 @@
-import { Hono } from "hono";
-import { logger } from "hono/logger";
+import { Hono } from "jsr:@hono/hono";
+import { logger } from "jsr:@hono/hono/logger";
 
 import { usersRoutes } from "./routes/users.ts";
 export const app = new Hono()

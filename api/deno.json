@@ -10,13 +10,6 @@
     "test": "deno test -A"
   },
   "imports": {
-    "drizzle-zod": "npm:drizzle-zod@^0.8.3",
-    "hono": "npm:hono",
-    "zod": "npm:zod",
-    "@hono/zod-validator": "npm:@hono/zod-validator",
-    "drizzle-orm": "npm:drizzle-orm",
-    "drizzle-orm/sqlite-core": "npm:drizzle-orm/sqlite-core",
-    "drizzle-kit": "npm:drizzle-kit",
-    "@libsql/client": "npm:@libsql/client"
+    "drizzle-orm": "npm:drizzle-orm@^0.44.5"
   }
 }

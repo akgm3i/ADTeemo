@@ -1,5 +1,5 @@
-import { drizzle } from "drizzle-orm/libsql";
-import { createClient } from "@libsql/client";
+import { drizzle } from "npm:drizzle-orm/libsql";
+import { createClient } from "npm:@libsql/client";
 import * as schema from "./schema.ts";
 
 const url = Deno.env.get("DATABASE_URL");
