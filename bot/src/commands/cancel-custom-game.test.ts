@@ -1,6 +1,12 @@
 import { afterEach, describe, it } from "jsr:@std/testing/bdd";
 import { assertEquals } from "jsr:@std/assert";
-import { assertSpyCall, assertSpyCallArg, assertSpyCallArgs, assertSpyCalls, restore, stub } from "jsr:@std/testing/mock";
+import {
+  assertSpyCall,
+  assertSpyCallArgs,
+  assertSpyCalls,
+  restore,
+  stub,
+} from "jsr:@std/testing/mock";
 import { execute } from "./cancel-custom-game.ts";
 import { apiClient } from "../api_client.ts";
 import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
@@ -43,7 +49,7 @@ describe("Command: cancel-custom-game", () => {
       using getCustomGameEventsStub = stub(
         apiClient,
         "getCustomGameEventsByCreatorId",
-        (id) =>
+        (_id) =>
           Promise.resolve({ success: true, events: mockDbEvents, error: null }),
       );
 
@@ -75,8 +81,10 @@ describe("Command: cancel-custom-game", () => {
 
       await execute(interaction);
 
-      assertSpyCallArgs(getCustomGameEventsStub, 0, ['test-user-id'])
-      assertSpyCallArgs(interaction.deferReply, 0, [{ flags: MessageFlags.Ephemeral }]);
+      assertSpyCallArgs(getCustomGameEventsStub, 0, ["test-user-id"]);
+      assertSpyCallArgs(interaction.deferReply, 0, [{
+        flags: MessageFlags.Ephemeral,
+      }]);
       assertSpyCalls(interaction.editReply, 1);
       const replyOptions = interaction.editReply.calls[0].args[0];
       assertEquals(replyOptions.content, "Select an event to cancel:");

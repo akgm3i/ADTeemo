@@ -3,7 +3,6 @@ import {
   assertSpyCall,
   assertSpyCalls,
   spy,
-  type Spy,
   stub,
 } from "jsr:@std/testing/mock";
 import { execute } from "./create-custom-game.ts";
