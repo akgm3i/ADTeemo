@@ -98,12 +98,19 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           );
         }
 
-        await apiClient.deleteCustomGameEvent(discordEventId);
-
-        await interaction.editReply({
-          content: "The event has been canceled.",
-          components: [],
-        });
+        const result = await apiClient.deleteCustomGameEvent(discordEventId);
+        if (result.success) {
+          await interaction.editReply({
+            content: "The event has been canceled.",
+            components: [],
+          });
+        } else {
+          console.error(`Failed to delete event ${discordEventId} from DB`, result.error);
+          await interaction.editReply({
+            content: "The event was canceled on Discord, but an error occurred while removing it from the database. Please contact an administrator.",
+            components: [],
+          });
+        }
       } catch (e) {
         console.error("Error handling cancel-event-select:", e);
         await interaction.editReply({
