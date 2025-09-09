@@ -1,6 +1,6 @@
 import { afterEach, describe, it } from "jsr:@std/testing/bdd";
 import { assertEquals } from "jsr:@std/assert";
-import { assertSpyCall, restore, stub } from "jsr:@std/testing/mock";
+import { assertSpyCall, assertSpyCallArg, assertSpyCallArgs, assertSpyCalls, restore, stub } from "jsr:@std/testing/mock";
 import { execute } from "./cancel-custom-game.ts";
 import { apiClient } from "../api_client.ts";
 import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
@@ -13,13 +13,13 @@ import {
   MessageFlags,
 } from "npm:discord.js";
 
-describe("Cancel Custom Game Command", () => {
+describe("Command: cancel-custom-game", () => {
   afterEach(() => {
     restore();
   });
 
   describe("execute", () => {
-    it("should display a select menu with active events when there are active events", async () => {
+    it("アクティブなイベントが存在する場合、イベント選択用のセレクトメニューを表示する", async () => {
       const mockDbEvents = [
         {
           id: 1,
@@ -40,10 +40,10 @@ describe("Cancel Custom Game Command", () => {
           recruitmentMessageId: "m",
         },
       ];
-      stub(
+      using getCustomGameEventsStub = stub(
         apiClient,
         "getCustomGameEventsByCreatorId",
-        () =>
+        (id) =>
           Promise.resolve({ success: true, events: mockDbEvents, error: null }),
       );
 
@@ -75,10 +75,9 @@ describe("Cancel Custom Game Command", () => {
 
       await execute(interaction);
 
-      assertSpyCall(interaction.deferReply, 0, {
-        args: [{ flags: MessageFlags.Ephemeral }],
-      });
-      assertSpyCall(interaction.editReply, 0);
+      assertSpyCallArgs(getCustomGameEventsStub, 0, ['test-user-id'])
+      assertSpyCallArgs(interaction.deferReply, 0, [{ flags: MessageFlags.Ephemeral }]);
+      assertSpyCalls(interaction.editReply, 1);
       const replyOptions = interaction.editReply.calls[0].args[0];
       assertEquals(replyOptions.content, "Select an event to cancel:");
       const selectMenu = JSON.parse(
@@ -89,7 +88,7 @@ describe("Cancel Custom Game Command", () => {
       assertEquals(selectMenu.options[0].value, "active-event-id:m");
     });
 
-    it("should display a message when there are no active events", async () => {
+    it("アクティブなイベントが存在しない場合、その旨をメッセージで表示する", async () => {
       const mockDbEvents = [
         {
           id: 1,

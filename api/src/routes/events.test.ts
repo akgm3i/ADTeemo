@@ -1,66 +1,16 @@
-import { afterEach, describe, it } from "jsr:@std/testing/bdd";
-import { assertEquals } from "jsr:@std/assert";
-import { app } from "../app.ts";
+import { testClient } from "jsr:@hono/hono/testing";
+import { assert, assertEquals } from "jsr:@std/assert";
+import { describe, it } from "jsr:@std/testing/bdd";
+import { assertSpyCall, stub } from "jsr:@std/testing/mock";
+import app from "../app.ts";
 import { dbActions } from "../db/actions.ts";
-import { assertSpyCall, restore, stub } from "jsr:@std/testing/mock";
 
-describe("events route", () => {
-  afterEach(() => {
-    restore();
-  });
-
-  describe("GET /events/by-creator/:creatorId", () => {
-    it("should call getCustomGameEventsByCreatorId and return the events", async () => {
-      const mockEvents = [{
-        id: 1,
-        name: "Test Event",
-        guildId: "test-guild",
-        creatorId: "test-creator",
-        discordScheduledEventId: "event-1",
-        recruitmentMessageId: "msg-1",
-        createdAt: new Date(),
-      }];
-      const getEventsStub = stub(
-        dbActions,
-        "getCustomGameEventsByCreatorId",
-        () => Promise.resolve(mockEvents),
-      );
-
-      const req = new Request("http://localhost/events/by-creator/test-creator");
-      const res = await app.fetch(req);
-      const body = await res.json();
-
-      assertEquals(res.status, 200);
-      assertEquals(body.success, true);
-      assertEquals(body.events.length, 1);
-      assertEquals(body.events[0].name, "Test Event");
-      assertSpyCall(getEventsStub, 0, { args: ["test-creator"] });
-    });
-  });
-
-  describe("DELETE /events/:discordEventId", () => {
-    it("should call deleteCustomGameEventByDiscordEventId and return success", async () => {
-      const deleteEventStub = stub(
-        dbActions,
-        "deleteCustomGameEventByDiscordEventId",
-        () => Promise.resolve(),
-      );
-
-      const req = new Request("http://localhost/events/test-event-id", {
-        method: "DELETE",
-      });
-      const res = await app.fetch(req);
-      const body = await res.json();
-
-      assertEquals(res.status, 200);
-      assertEquals(body.success, true);
-      assertSpyCall(deleteEventStub, 0, { args: ["test-event-id"] });
-    });
-  });
+describe("Routes: Guild Scheduled Event", () => {
+  const client = testClient(app);
 
   describe("POST /events", () => {
-    it("should call createCustomGameEvent and return success", async () => {
-      const createEventStub = stub(
+    it("有効なイベントデータでPOSTリクエストを送信すると、成功レスポンスが返される", async () => {
+      using createEventStub = stub(
         dbActions,
         "createCustomGameEvent",
         () => Promise.resolve(),
@@ -74,21 +24,21 @@ describe("events route", () => {
         recruitmentMessageId: "test-recruitment-message-id",
       };
 
-      const req = new Request("http://localhost/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(eventData),
-      });
+      const res = await client.events.$post(
+        {
+          json: eventData,
+        },
+      );
 
-      const res = await app.fetch(req);
+      assert(res.ok);
+
       const body = await res.json();
 
-      assertEquals(res.status, 200);
       assertEquals(body.success, true);
       assertSpyCall(createEventStub, 0, { args: [eventData] });
     });
 
-    it("should return an error if the request body is invalid", async () => {
+    it("無効なイベントデータでPOSTリクエストを送信すると、400エラーが返される", async () => {
       const eventData = {
         name: "Test Event",
         // Missing other required fields
@@ -100,8 +50,61 @@ describe("events route", () => {
         body: JSON.stringify(eventData),
       });
 
-      const res = await app.fetch(req);
+      const res = await app.request(req);
       assertEquals(res.status, 400); // Zod validation should fail
+    });
+  });
+
+  describe("GET /events/by-creator/:creatorId", () => {
+    it("クリエイターIDを指定してGETリクエストを送信すると、関連するイベントが返される", async () => {
+      const mockEvents = [{
+        id: 1,
+        name: "Test Event",
+        guildId: "test-guild",
+        creatorId: "test-creator",
+        discordScheduledEventId: "event-1",
+        recruitmentMessageId: "msg-1",
+        createdAt: new Date(),
+      }];
+      using getEventsStub = stub(
+        dbActions,
+        "getCustomGameEventsByCreatorId",
+        () => Promise.resolve(mockEvents),
+      );
+
+      const res = await client.events["by-creator"][":creatorId"].$get({
+        param: { creatorId: "test-creator" },
+      });
+
+      assert(res.ok);
+
+      const body = await res.json();
+
+      assertEquals(body.success, true);
+      assertEquals(body.events.length, 1);
+      assertEquals(body.events[0].name, "Test Event");
+      assertSpyCall(getEventsStub, 0, { args: ["test-creator"] });
+    });
+  });
+
+  describe("DELETE /events/:discordEventId", () => {
+    it("DiscordイベントIDを指定してDELETEリクエストを送信すると、成功レスポンスが返される", async () => {
+      using deleteEventStub = stub(
+        dbActions,
+        "deleteCustomGameEventByDiscordEventId",
+        () => Promise.resolve(),
+      );
+
+      const res = await client.events[":discordEventId"].$delete(
+        { param: { discordEventId: "test-event-id" } },
+      );
+
+      assert(res.ok);
+
+      const body = await res.json();
+
+      assertEquals(body.success, true);
+      assertSpyCall(deleteEventStub, 0, { args: ["test-event-id"] });
     });
   });
 });

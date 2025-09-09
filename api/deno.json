@@ -1,12 +1,12 @@
 {
   "name": "@adteemo/api",
   "exports": {
-    ".": "./src/index.ts",
+    ".": "./src/app.ts",
     "./hc": "./src/hc.ts",
     "./schema": "./src/db/schema.ts"
   },
   "tasks": {
-    "dev": "DATABASE_URL=file:../data/sqlite.db deno serve -A --watch --env=../.env.dev src/index.ts",
+    "dev": "DATABASE_URL=file:../data/sqlite.db deno serve -A --watch --env=../.env.dev src/app.ts",
     "test": "deno test -A"
   },
   "imports": {

@@ -43,7 +43,9 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     );
 
     if (!command) {
-      console.error(`No command matching ${interaction.commandName} was found.`);
+      console.error(
+        `No command matching ${interaction.commandName} was found.`,
+      );
       return;
     }
 
@@ -71,15 +73,18 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       await interaction.deferUpdate();
 
       try {
-        const [discordEventId, recruitmentMessageId] =
-          interaction.values[0].split(":");
+        const [discordEventId, recruitmentMessageId] = interaction.values[0]
+          .split(":");
 
         // It's possible for the event or message to be deleted by a user before the bot tries to.
         // So we should handle the errors gracefully.
         try {
           await interaction.guild?.scheduledEvents.delete(discordEventId);
         } catch (e) {
-          console.error(`Failed to delete scheduled event ${discordEventId}:`, e);
+          console.error(
+            `Failed to delete scheduled event ${discordEventId}:`,
+            e,
+          );
         }
 
         try {

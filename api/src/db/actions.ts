@@ -1,7 +1,7 @@
 import { eq } from "npm:drizzle-orm";
 import { createInsertSchema, createUpdateSchema } from "npm:drizzle-zod";
 import { db } from "./index.ts";
-import { type Lane, users, customGameEvents } from "./schema.ts";
+import { customGameEvents, type Lane, users } from "./schema.ts";
 
 const userInsertSchema = createInsertSchema(users);
 const userUpdateSchema = createUpdateSchema(users);

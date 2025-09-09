@@ -1,16 +1,12 @@
 import { assertEquals } from "jsr:@std/assert";
-import { afterEach, describe, it } from "jsr:@std/testing/bdd";
-import { restore, stub } from "jsr:@std/testing/mock";
+import { describe, it } from "jsr:@std/testing/bdd";
+import { assertSpyCalls, stub } from "jsr:@std/testing/mock";
 import { apiClient } from "./api_client.ts";
 
 describe("apiClient", () => {
-  afterEach(() => {
-    restore();
-  });
-
   describe("checkHealth", () => {
     it("APIが正常な場合にヘルスチェックを実行すると、成功ステータスとメッセージが返される", async () => {
-      stub(
+      using fetchStub = stub(
         globalThis,
         "fetch",
         () =>
@@ -25,10 +21,12 @@ describe("apiClient", () => {
       assertEquals(result.success, true);
       assertEquals(result.message, "Healthy");
       assertEquals(result.error, null);
+
+      assertSpyCalls(fetchStub, 1);
     });
 
     it("APIが200以外のステータスを返す場合にヘルスチェックを実行すると、エラーステータスが返される", async () => {
-      stub(
+      using fetchStub = stub(
         globalThis,
         "fetch",
         () =>
@@ -42,10 +40,12 @@ describe("apiClient", () => {
       const result = await apiClient.checkHealth();
       assertEquals(result.success, false);
       assertEquals(result.error, "API returned status 500");
+
+      assertSpyCalls(fetchStub, 1);
     });
 
     it("fetchに失敗した場合にヘルスチェックを実行すると、通信失敗のエラーが返される", async () => {
-      stub(
+      using fetchStub = stub(
         globalThis,
         "fetch",
         () => Promise.reject(new Error("Network error")),
@@ -54,6 +54,8 @@ describe("apiClient", () => {
       const result = await apiClient.checkHealth();
       assertEquals(result.success, false);
       assertEquals(result.error, "Failed to communicate with API");
+
+      assertSpyCalls(fetchStub, 1);
     });
   });
 
@@ -62,7 +64,7 @@ describe("apiClient", () => {
     const role = "Top";
 
     it("API呼び出しが成功した場合にメインロールを設定すると、成功ステータスが返される", async () => {
-      stub(
+      using fetchStub = stub(
         globalThis,
         "fetch",
         () =>
@@ -74,10 +76,12 @@ describe("apiClient", () => {
       const result = await apiClient.setMainRole(userId, role);
       assertEquals(result.success, true);
       assertEquals(result.error, null);
+
+      assertSpyCalls(fetchStub, 1);
     });
 
     it("APIが200以外のステータスを返す場合にメインロールを設定すると、エラーステータスが返される", async () => {
-      stub(
+      using fetchStub = stub(
         globalThis,
         "fetch",
         () =>
@@ -91,10 +95,12 @@ describe("apiClient", () => {
       const result = await apiClient.setMainRole(userId, role);
       assertEquals(result.success, false);
       assertEquals(result.error, "API returned status 400");
+
+      assertSpyCalls(fetchStub, 1);
     });
 
     it("fetchに失敗した場合にメインロールを設定すると、通信失敗のエラーが返される", async () => {
-      stub(
+      using fetchStub = stub(
         globalThis,
         "fetch",
         () => Promise.reject(new Error("Network error")),
@@ -103,6 +109,8 @@ describe("apiClient", () => {
       const result = await apiClient.setMainRole(userId, role);
       assertEquals(result.success, false);
       assertEquals(result.error, "Failed to communicate with API");
+
+      assertSpyCalls(fetchStub, 1);
     });
   });
 });

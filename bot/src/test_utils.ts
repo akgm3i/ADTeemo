@@ -190,22 +190,20 @@ export function newMockStringSelectMenuInteractionBuilder(
 
   return {
     build: () =>
-      interaction as unknown as (
-        & {
-          isStringSelectMenu: () => true;
-          deferUpdate: Spy;
-          editReply: Spy;
-          guild: {
-            scheduledEvents: {
-              delete: Spy;
-            };
+      interaction as unknown as ({
+        isStringSelectMenu: () => true;
+        deferUpdate: Spy;
+        editReply: Spy;
+        guild: {
+          scheduledEvents: {
+            delete: Spy;
           };
-          channel: {
-            messages: {
-              delete: Spy;
-            };
+        };
+        channel: {
+          messages: {
+            delete: Spy;
           };
-        }
-      ),
+        };
+      }),
   };
 }

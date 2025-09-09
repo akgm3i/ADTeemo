@@ -1,19 +1,19 @@
 import { afterEach, describe, it } from "jsr:@std/testing/bdd";
 import { assertEquals } from "jsr:@std/assert";
 import { db } from "./index.ts";
-import { users, customGameEvents } from "./schema.ts";
+import { customGameEvents, users } from "./schema.ts";
 import { dbActions } from "./actions.ts";
 import { eq } from "npm:drizzle-orm";
 import { restore } from "jsr:@std/testing/mock";
 
-describe("db actions", () => {
+describe("DB actions", () => {
   afterEach(() => {
     restore();
   });
 
   describe("getCustomGameEventsByCreatorId", () => {
-    it("should return only the events created by the specified user", async () => {
-      // Setup: create two users and three events
+    it("指定したクリエイターが作成したイベントのみを返す", async () => {
+      // Setup: 2人のユーザーと3つのイベントを作成
       await dbActions.upsertUser("test-creator-1");
       await dbActions.upsertUser("test-creator-2");
       const event1 = {
@@ -56,8 +56,8 @@ describe("db actions", () => {
   });
 
   describe("deleteCustomGameEventByDiscordEventId", () => {
-    it("should delete the correct event", async () => {
-      // Setup
+    it("指定したDiscordイベントIDを持つイベントを削除する", async () => {
+      // Set up
       await dbActions.upsertUser("test-creator");
       const event1 = {
         name: "Event 1",
@@ -89,7 +89,7 @@ describe("db actions", () => {
   });
 
   describe("createCustomGameEvent", () => {
-    it("should create a new custom game event and the user if they do not exist", async () => {
+    it("新しいカスタムゲームイベントを作成し、クリエイターが存在しない場合はユーザーも作成する", async () => {
       const eventData = {
         name: "Test Event",
         guildId: "test-guild",
@@ -122,7 +122,9 @@ describe("db actions", () => {
 
       // Cleanup
       if (result) {
-        await db.delete(customGameEvents).where(eq(customGameEvents.id, result.id));
+        await db.delete(customGameEvents).where(
+          eq(customGameEvents.id, result.id),
+        );
       }
       if (userResult) {
         await db.delete(users).where(eq(users.discordId, userResult.discordId));

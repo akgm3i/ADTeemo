@@ -3,6 +3,7 @@ import {
   assertSpyCall,
   assertSpyCalls,
   spy,
+  type Spy,
   stub,
 } from "jsr:@std/testing/mock";
 import { execute } from "./create-custom-game.ts";
@@ -25,7 +26,6 @@ import {
   MessageReaction,
   TextBasedChannel,
 } from "npm:discord.js";
-import { assertEquals } from "jsr:@std/assert";
 
 describe("Create Custom Game Command", () => {
   describe("execute", () => {
@@ -138,7 +138,9 @@ describe("Create Custom Game Command", () => {
           args: [{ flags: MessageFlags.Ephemeral }],
         });
         assertSpyCall(interaction.editReply, 0, {
-          args: ["カスタムゲームのイベントを作成しました。募集メッセージを投稿します。"],
+          args: [
+            "カスタムゲームのイベントを作成しました。募集メッセージを投稿します。",
+          ],
         });
 
         assertSpyCall(createEventStub, 0, {
