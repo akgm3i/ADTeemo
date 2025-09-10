@@ -1,29 +1,57 @@
-version: "3.8"
+volumes:
+  prod-db-data: {}
 
 services:
+  # --- Production services (activate with --profile prod) ---
   api:
+    profiles:
+      - prod
     build:
       context: .
-      dockerfile: ./docker/Dockerfile
+      dockerfile: ./docker/Dockerfile.prod
       target: api
     ports:
       - "8000:8000"
     volumes:
-      - ./data:/app/api/data
-    environment:
-      DATABASE_URL: "file:./data/sqlite.db"
-    # env_file:
-    #   - .env
+      - prod-db-data:/app/api/data
+    env_file:
+      - .env
 
   bot:
+    profiles:
+      - prod
     build:
       context: .
-      dockerfile: ./docker/Dockerfile
+      dockerfile: ./docker/Dockerfile.prod
       target: bot
     depends_on:
       - api
     environment:
       API_URL: http://api:8000
-      DISCORD_TOKEN: ${DISCORD_TOKEN}
-    # env_file:
-    #   - .env
+    env_file:
+      - .env
+
+  # --- Development service (activate with --profile dev) ---
+  dev:
+    profiles:
+      - dev
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile.dev
+    command: tail -f /dev/null
+    working_dir: /app
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/app
+    env_file:
+      - .env.dev
+
+  # --- Tools service (activate with --profile tools) ---
+  db-tools:
+    profiles:
+      - tools
+    image: alpine:latest
+    volumes:
+      - prod-db-data:/prod-data
+      - ./db-backup:/backup

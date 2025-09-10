@@ -1,0 +1,12 @@
+# Dev stage
+FROM denoland/deno:latest
+
+# It is recommended to create a non-root user for security purposes
+# RUN useradd -m deno
+# USER deno
+
+WORKDIR /app
+
+# This Dockerfile is for development.
+# Source code will be mounted from the host.
+# The container will be kept running by the docker-compose command.
