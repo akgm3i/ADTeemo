@@ -36,10 +36,26 @@ export const matchParticipants = sqliteTable("match_participants", {
   lane: text("lane", { enum: lanes }).notNull(),
 });
 
+export const customGameEvents = sqliteTable("custom_game_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  guildId: text("guild_id").notNull(),
+  creatorId: text("creator_id").notNull().references(() => users.discordId, {
+    onDelete: "cascade",
+  }),
+  discordScheduledEventId: text("discord_scheduled_event_id").notNull()
+    .unique(),
+  recruitmentMessageId: text("recruitment_message_id").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(
+    () => new Date(),
+  ),
+});
+
 // --- RELATIONS ---
 
 export const usersRelations = relations(users, ({ many }) => ({
   matchParticipations: many(matchParticipants),
+  createdCustomGameEvents: many(customGameEvents),
 }));
 
 export const matchesRelations = relations(matches, ({ many }) => ({
@@ -55,6 +71,16 @@ export const matchParticipantsRelations = relations(
     }),
     user: one(users, {
       fields: [matchParticipants.userId],
+      references: [users.discordId],
+    }),
+  }),
+);
+
+export const customGameEventsRelations = relations(
+  customGameEvents,
+  ({ one }) => ({
+    creator: one(users, {
+      fields: [customGameEvents.creatorId],
       references: [users.discordId],
     }),
   }),

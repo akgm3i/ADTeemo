@@ -3,8 +3,8 @@ import { Command } from "../types.ts";
 
 export async function loadCommands(): Promise<Command[]> {
   const commands: Command[] = [];
-  const __dirname = path.dirname(path.fromFileUrl(import.meta.url));
-  const commandsPath = path.join(__dirname, "..", "commands");
+  const dirname = path.dirname(path.fromFileUrl(import.meta.url));
+  const commandsPath = path.join(dirname, "..", "commands");
 
   for await (const dirEntry of Deno.readDir(commandsPath)) {
     if (

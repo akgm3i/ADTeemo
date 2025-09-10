@@ -1,22 +1,22 @@
-import { describe, it } from "jsr:@std/testing/bdd";
-import { assertEquals } from "jsr:@std/assert";
+import { afterEach, describe, it } from "jsr:@std/testing/bdd";
 import {
   assertSpyCall,
   assertSpyCalls,
+  restore,
   spy,
   stub,
 } from "jsr:@std/testing/mock";
 import { execute } from "./create-custom-game.ts";
-import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
+import { apiClient } from "../api_client.ts";
+import {
+  newMockChatInputCommandInteractionBuilder,
+  newMockGuildBuilder,
+} from "../test_utils.ts";
 import {
   Channel,
   ChannelType,
   EmojiIdentifierResolvable,
-  Guild,
-  GuildScheduledEvent,
-  GuildScheduledEventCreateOptions,
   GuildScheduledEventEntityType,
-  GuildScheduledEventManager,
   GuildScheduledEventPrivacyLevel,
   Message,
   MessageCreateOptions,
@@ -27,6 +27,10 @@ import {
 } from "npm:discord.js";
 
 describe("Create Custom Game Command", () => {
+  afterEach(() => {
+    restore();
+  });
+
   describe("execute", () => {
     const mockNow = new Date("2025-09-03T10:00:00Z"); // Wednesday
 
@@ -34,25 +38,27 @@ describe("Create Custom Game Command", () => {
       it("有効なイベント名、未来の日付と時刻が指定された場合、Discordイベントを作成し、参加者募集メッセージを投稿する", async () => {
         using _dateMock = stub(Date, "now", () => mockNow.getTime());
 
+        const createEventStub = stub(
+          apiClient,
+          "createCustomGameEvent",
+          () => Promise.resolve({ success: true, error: null }),
+        );
+
         // Setup
         const reactSpy = spy(
-          (
-            _emoji: EmojiIdentifierResolvable,
-          ): Promise<MessageReaction> => Promise.resolve({} as MessageReaction),
+          (_emoji: EmojiIdentifierResolvable): Promise<MessageReaction> =>
+            Promise.resolve({} as MessageReaction),
         );
+
+        const mockMessage = {
+          id: "mock-message-id",
+          react: reactSpy,
+        } as unknown as Message;
 
         const sendSpy = spy(
           (
             _options: string | MessagePayload | MessageCreateOptions,
-          ): Promise<Message> =>
-            Promise.resolve({ react: reactSpy } as unknown as Message),
-        );
-
-        const createEventSpy = spy(
-          (
-            _options: GuildScheduledEventCreateOptions,
-          ): Promise<GuildScheduledEvent> =>
-            Promise.resolve({} as GuildScheduledEvent),
+          ): Promise<Message> => Promise.resolve(mockMessage),
         );
 
         const mockChannel = {
@@ -60,14 +66,9 @@ describe("Create Custom Game Command", () => {
           send: sendSpy,
         } as unknown as TextBasedChannel;
 
-        const mockScheduledEvents = {
-          create: createEventSpy,
-        } as unknown as GuildScheduledEventManager;
-
-        const mockGuild = {
-          id: "mock-guild-id",
-          scheduledEvents: mockScheduledEvents,
-        } as unknown as Guild;
+        const mockGuildBuilder = newMockGuildBuilder();
+        const mockGuild = mockGuildBuilder.build();
+        const createEventSpy = mockGuildBuilder.getCreateEventSpy();
 
         const mockVoiceChannel = {
           id: "mock-voice-channel-id",
@@ -107,24 +108,29 @@ describe("Create Custom Game Command", () => {
           }],
         });
 
-        const expectedMessage = `### ⚔️ カスタムゲーム参加者募集 ⚔️
-
-@Custom
-
-**2025/09/13 21:00** からカスタムゲーム **週末カスタム** を開催します！
-参加希望の方は、希望するロールのリアクションを押してください。
-
-複数ロールでの参加も可能です。
-
-主催者: <@test-user-id>`;
+        const expectedMessage =
+          `### ⚔️ カスタムゲーム参加者募集 ⚔️\n\n@Custom\n\n**2025/09/13 21:00** からカスタムゲーム **週末カスタム** を開催します！\n参加希望の方は、希望するロールのリアクションを押してください。\n\n複数ロールでの参加も可能です。\n\n主催者: <@test-user-id>`;
         assertSpyCall(sendSpy, 0, { args: [expectedMessage] });
         assertSpyCalls(reactSpy, 5);
 
-        assertSpyCalls(interaction.reply, 1);
-        assertEquals(
-          interaction.reply.calls[0].args[0].content,
-          "カスタムゲームのイベントを作成しました。募集メッセージを投稿します。",
-        );
+        assertSpyCall(interaction.deferReply, 0, {
+          args: [{ flags: MessageFlags.Ephemeral }],
+        });
+        assertSpyCall(interaction.editReply, 0, {
+          args: [
+            "カスタムゲームのイベントを作成しました。募集メッセージを投稿します。",
+          ],
+        });
+
+        assertSpyCall(createEventStub, 0, {
+          args: [{
+            name: "週末カスタム",
+            guildId: "mock-guild-id",
+            creatorId: "test-user-id",
+            discordScheduledEventId: "mock-event-id",
+            recruitmentMessageId: "mock-message-id",
+          }],
+        });
       });
 
       it("過去の日付が指定された場合、翌年の日付として扱いイベントを作成する", async () => {
@@ -132,9 +138,8 @@ describe("Create Custom Game Command", () => {
 
         // Setup
         const reactSpy = spy(
-          (
-            _emoji: EmojiIdentifierResolvable,
-          ): Promise<MessageReaction> => Promise.resolve({} as MessageReaction),
+          (_emoji: EmojiIdentifierResolvable): Promise<MessageReaction> =>
+            Promise.resolve({} as MessageReaction),
         );
         const sendSpy = spy(
           (
@@ -142,24 +147,15 @@ describe("Create Custom Game Command", () => {
           ): Promise<Message> =>
             Promise.resolve({ react: reactSpy } as unknown as Message),
         );
-        const createEventSpy = spy(
-          (
-            _options: GuildScheduledEventCreateOptions,
-          ): Promise<GuildScheduledEvent> =>
-            Promise.resolve({} as GuildScheduledEvent),
-        );
 
         const mockChannel = {
           type: ChannelType.GuildText,
           send: sendSpy,
         } as unknown as TextBasedChannel;
-        const mockScheduledEvents = {
-          create: createEventSpy,
-        } as unknown as GuildScheduledEventManager;
-        const mockGuild = {
-          id: "mock-guild-id",
-          scheduledEvents: mockScheduledEvents,
-        } as unknown as Guild;
+
+        const mockGuildBuilder = newMockGuildBuilder();
+        const mockGuild = mockGuildBuilder.build();
+        const createEventSpy = mockGuildBuilder.getCreateEventSpy();
 
         const mockVoiceChannel = {
           id: "mock-voice-channel-id",
@@ -204,9 +200,8 @@ describe("Create Custom Game Command", () => {
         using _dateMock = stub(Date, "now", () => mockNow.getTime());
 
         const reactSpy = spy(
-          (
-            _emoji: EmojiIdentifierResolvable,
-          ): Promise<MessageReaction> => Promise.resolve({} as MessageReaction),
+          (_emoji: EmojiIdentifierResolvable): Promise<MessageReaction> =>
+            Promise.resolve({} as MessageReaction),
         );
         const sendSpy = spy(
           (
@@ -214,24 +209,14 @@ describe("Create Custom Game Command", () => {
           ): Promise<Message> =>
             Promise.resolve({ react: reactSpy } as unknown as Message),
         );
-        const createEventSpy = spy(
-          (
-            _options: GuildScheduledEventCreateOptions,
-          ): Promise<GuildScheduledEvent> =>
-            Promise.resolve({} as GuildScheduledEvent),
-        );
 
         const mockChannel = {
           type: ChannelType.GuildText,
           send: sendSpy,
         } as unknown as TextBasedChannel;
-        const mockScheduledEvents = {
-          create: createEventSpy,
-        } as unknown as GuildScheduledEventManager;
-        const mockGuild = {
-          id: "mock-guild-id",
-          scheduledEvents: mockScheduledEvents,
-        } as unknown as Guild;
+
+        const mockGuildBuilder = newMockGuildBuilder();
+        const mockGuild = mockGuildBuilder.build();
 
         const mockVoiceChannel = {
           id: "mock-voice-channel-id",
@@ -258,32 +243,19 @@ describe("Create Custom Game Command", () => {
 
         await execute(interaction);
 
-        assertSpyCall(interaction.reply, 0, {
-          args: [{
-            content:
-              "カスタムゲームのイベントを作成しました。募集メッセージを投稿します。\n⚠️ 警告: 開始日時が1ヶ月以上先です。",
-            ephemeral: true,
-          }],
+        assertSpyCall(interaction.editReply, 0, {
+          args: [
+            "カスタムゲームのイベントを作成しました。募集メッセージを投稿します。\n⚠️ 警告: 開始日時が1ヶ月以上先です。",
+          ],
         });
       });
     });
 
     describe("異常系", () => {
       it("日付のフォーマットが不正な場合、エラーメッセージを返信する", async () => {
-        const createEventSpy = spy(
-          (
-            _options: GuildScheduledEventCreateOptions,
-          ): Promise<GuildScheduledEvent> =>
-            Promise.resolve({} as GuildScheduledEvent),
-        );
-
-        const mockScheduledEvents = {
-          create: createEventSpy,
-        } as unknown as GuildScheduledEventManager;
-        const mockGuild = {
-          id: "mock-guild-id",
-          scheduledEvents: mockScheduledEvents,
-        } as unknown as Guild;
+        const mockGuildBuilder = newMockGuildBuilder();
+        const mockGuild = mockGuildBuilder.build();
+        const createEventSpy = mockGuildBuilder.getCreateEventSpy();
 
         const mockVoiceChannel = {
           id: "mock-voice-channel-id",
@@ -333,7 +305,7 @@ describe("Create Custom Game Command", () => {
         assertSpyCall(interaction.reply, 0, {
           args: [{
             content: "このコマンドはサーバー内でのみ実行できます。",
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           }],
         });
       });

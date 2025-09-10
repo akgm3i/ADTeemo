@@ -8,6 +8,7 @@ import {
 } from "npm:discord.js";
 import { ensureRoles } from "./features/role-management.ts";
 import { loadCommands } from "./common/command_loader.ts";
+import { apiClient } from "./api_client.ts";
 
 // Create a new client instance
 const client = new Client({
@@ -34,33 +35,97 @@ client.once(Events.ClientReady, (c) => {
   console.log(`Ready! Logged in as ${c.user.tag}`);
 });
 
-// Listen for slash commands
+// Listen for interactions
 client.on(Events.InteractionCreate, async (interaction: Interaction) => {
-  if (!interaction.isChatInputCommand()) return;
+  if (interaction.isChatInputCommand()) {
+    const command = interaction.client.commands.get(
+      interaction.commandName,
+    );
 
-  const command = interaction.client.commands.get(
-    interaction.commandName,
-  );
+    if (!command) {
+      console.error(
+        `No command matching ${interaction.commandName} was found.`,
+      );
+      return;
+    }
 
-  if (!command) {
-    console.error(`No command matching ${interaction.commandName} was found.`);
+    try {
+      await command.execute(interaction);
+    } catch (error) {
+      console.error(error);
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({
+          content: "There was an error while executing this command!",
+          flags: MessageFlags.Ephemeral,
+        });
+      } else {
+        await interaction.reply({
+          content: "There was an error while executing this command!",
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+    }
     return;
   }
 
-  try {
-    await command.execute(interaction);
-  } catch (error) {
-    console.error(error);
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({
-        content: "There was an error while executing this command!",
-        flags: MessageFlags.Ephemeral,
-      });
-    } else {
-      await interaction.reply({
-        content: "There was an error while executing this command!",
-        flags: MessageFlags.Ephemeral,
-      });
+  if (interaction.isStringSelectMenu()) {
+    if (interaction.customId === "cancel-event-select") {
+      await interaction.deferUpdate();
+
+      try {
+        const [discordEventId, recruitmentMessageId] = interaction.values[0]
+          .split(":");
+
+        const deleteResult = await apiClient.deleteCustomGameEvent(
+          discordEventId,
+        );
+
+        if (!deleteResult.success) {
+          console.error(
+            `Failed to delete event ${discordEventId} from DB`,
+            deleteResult.error,
+          );
+          await interaction.editReply({
+            content:
+              "An error occurred while canceling the event. Please try again later.",
+            components: [],
+          });
+          return;
+        }
+
+        // It's possible for the event or message to be deleted by a user before the bot tries to.
+        // So we should handle the errors gracefully.
+        try {
+          await interaction.guild?.scheduledEvents.delete(discordEventId);
+        } catch (e) {
+          console.error(
+            `Failed to delete scheduled event ${discordEventId}:`,
+            e,
+          );
+        }
+
+        try {
+          if (interaction.channel) {
+            await interaction.channel.messages.delete(recruitmentMessageId);
+          }
+        } catch (e) {
+          console.error(
+            `Failed to delete recruitment message ${recruitmentMessageId}:`,
+            e,
+          );
+        }
+
+        await interaction.editReply({
+          content: "The event has been canceled.",
+          components: [],
+        });
+      } catch (e) {
+        console.error("Error handling cancel-event-select:", e);
+        await interaction.editReply({
+          content: "There was an error canceling the event.",
+          components: [],
+        });
+      }
     }
   }
 });
@@ -79,9 +144,9 @@ client.on(Events.GuildCreate, async (guild) => {
         const createdCount = result.summary.created.length;
         if (createdCount > 0) {
           message =
-            `サーバー「${guild.name}」へのご招待ありがとうございます！\n必要なロール (${createdCount}件) を自動作成しました: \`${
+            `サーバー「${guild.name}」へのご招待ありがとうございます！\n必要なロール (${createdCount}件) を自動作成しました: ${
               result.summary.created.join(", ")
-            }\``;
+            }`;
         } else {
           message =
             `サーバー「${guild.name}」へのご招待ありがとうございます！\n必要なロールはすべて存在していたため、何も作成しませんでした。`;

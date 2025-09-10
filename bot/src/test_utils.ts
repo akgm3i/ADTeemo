@@ -8,8 +8,13 @@ import {
   type CommandInteraction,
   type CommandInteractionOptionResolver,
   type Guild,
+  GuildScheduledEvent,
+  GuildScheduledEventCreateOptions,
+  GuildScheduledEventManager,
+  GuildScheduledEventStatus,
   type InteractionDeferReplyOptions,
   type InteractionEditReplyOptions,
+  InteractionType,
   type MessagePayload,
   type Role,
   type RoleManager,
@@ -101,9 +106,12 @@ export function newMockChatInputCommandInteractionBuilder(
 
     build() {
       const interaction = {
+        type: InteractionType.ApplicationCommand,
         isChatInputCommand: (): this is ChatInputCommandInteraction<
           CacheType
         > => props.isChatInputCommand,
+        isStringSelectMenu: () => false,
+        isButton: () => false,
         commandName: props.commandName,
         deferReply: spy(
           (_o?: InteractionDeferReplyOptions) => Promise.resolve(),
@@ -149,6 +157,96 @@ export function newMockChatInputCommandInteractionBuilder(
           getChannel: Spy<CommandInteractionOptionResolver["getChannel"]>;
         };
       };
+    },
+  };
+
+  return builder;
+}
+
+export function newMockStringSelectMenuInteractionBuilder(
+  customId: string,
+  values: string[],
+) {
+  const interaction = {
+    type: InteractionType.MessageComponent,
+    isChatInputCommand: () => false,
+    isStringSelectMenu: () => true,
+    isButton: () => false,
+    customId,
+    values,
+    deferUpdate: spy(() => Promise.resolve()),
+    editReply: spy(
+      (_o: string | MessagePayload | InteractionEditReplyOptions) =>
+        Promise.resolve(),
+    ),
+    guild: {
+      scheduledEvents: {
+        delete: spy(() => Promise.resolve()),
+      },
+    },
+    channel: {
+      messages: {
+        delete: spy(() => Promise.resolve()),
+      },
+    },
+    user: { id: "test-user-id" },
+  };
+
+  return {
+    build: () =>
+      interaction as unknown as ({
+        isStringSelectMenu: () => true;
+        deferUpdate: Spy;
+        editReply: Spy;
+        guild: {
+          scheduledEvents: {
+            delete: Spy;
+          };
+        };
+        channel: {
+          messages: {
+            delete: Spy;
+          };
+        };
+      }),
+  };
+}
+
+export function newMockGuildBuilder(id = "mock-guild-id") {
+  const props = {
+    id,
+    scheduledEvents: new Collection<string, GuildScheduledEvent>(),
+    createEventSpy: spy(
+      (
+        _options: GuildScheduledEventCreateOptions,
+      ): Promise<GuildScheduledEvent> =>
+        Promise.resolve({ id: "mock-event-id" } as GuildScheduledEvent),
+    ),
+  };
+
+  const builder = {
+    withScheduledEvent(
+      event: { id: string; status: GuildScheduledEventStatus },
+    ) {
+      props.scheduledEvents.set(
+        event.id,
+        { id: event.id, status: event.status } as GuildScheduledEvent,
+      );
+      return this;
+    },
+    getCreateEventSpy() {
+      return props.createEventSpy;
+    },
+    build() {
+      const mockScheduledEvents = {
+        fetch: () => Promise.resolve(props.scheduledEvents),
+        create: props.createEventSpy,
+      } as unknown as GuildScheduledEventManager;
+
+      return {
+        id: props.id,
+        scheduledEvents: mockScheduledEvents,
+      } as unknown as Guild;
     },
   };
 
