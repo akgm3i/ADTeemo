@@ -10,7 +10,7 @@ COPY bot/ ./bot/
 # api
 WORKDIR /app/api
 
-RUN deno cache src/index.ts
+RUN deno cache src/app.ts
 
 # bot
 WORKDIR /app/bot
@@ -25,7 +25,9 @@ WORKDIR /app/api
 COPY --from=builder /deno-dir /deno-dir
 COPY --from=builder /app /app
 
-# Specify the command to run on container start
+RUN useradd -m deno
+USER deno
+
 CMD ["serve", "-A", "src/app.ts"]
 
 # Production stage bot
@@ -36,5 +38,7 @@ WORKDIR /app/bot
 COPY --from=builder /deno-dir /deno-dir
 COPY --from=builder /app /app
 
-# Specify the command to run on container start
+RUN useradd -m deno
+USER deno
+
 CMD ["run", "-A", "src/main.ts"]

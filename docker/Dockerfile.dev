@@ -1,11 +1,11 @@
 # Dev stage
 FROM denoland/deno:latest
 
-# It is recommended to create a non-root user for security purposes
-# RUN useradd -m deno
-# USER deno
-
 WORKDIR /app
+
+RUN deno cache api/src/app.ts
+
+RUN deno cache bot/src/main.ts
 
 # This Dockerfile is for development.
 # Source code will be mounted from the host.

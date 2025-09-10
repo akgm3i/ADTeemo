@@ -16,6 +16,8 @@ services:
       - prod-db-data:/app/api/data
     env_file:
       - .env
+    environment:
+      DATABASE_URL: file:./data/sqlite.db
 
   bot:
     profiles:
@@ -26,10 +28,10 @@ services:
       target: bot
     depends_on:
       - api
-    environment:
-      API_URL: http://api:8000
     env_file:
       - .env
+    environment:
+      API_URL: http://api:8000
 
   # --- Development service (activate with --profile dev) ---
   dev:
@@ -54,4 +56,4 @@ services:
     image: alpine:latest
     volumes:
       - prod-db-data:/prod-data
-      - ./db-backup:/backup
+      - ./data:/data
