@@ -76,6 +76,23 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         const [discordEventId, recruitmentMessageId] = interaction.values[0]
           .split(":");
 
+        const deleteResult = await apiClient.deleteCustomGameEvent(
+          discordEventId,
+        );
+
+        if (!deleteResult.success) {
+          console.error(
+            `Failed to delete event ${discordEventId} from DB`,
+            deleteResult.error,
+          );
+          await interaction.editReply({
+            content:
+              "An error occurred while canceling the event. Please try again later.",
+            components: [],
+          });
+          return;
+        }
+
         // It's possible for the event or message to be deleted by a user before the bot tries to.
         // So we should handle the errors gracefully.
         try {
@@ -98,19 +115,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           );
         }
 
-        const result = await apiClient.deleteCustomGameEvent(discordEventId);
-        if (result.success) {
-          await interaction.editReply({
-            content: "The event has been canceled.",
-            components: [],
-          });
-        } else {
-          console.error(`Failed to delete event ${discordEventId} from DB`, result.error);
-          await interaction.editReply({
-            content: "The event was canceled on Discord, but an error occurred while removing it from the database. Please contact an administrator.",
-            components: [],
-          });
-        }
+        await interaction.editReply({
+          content: "The event has been canceled.",
+          components: [],
+        });
       } catch (e) {
         console.error("Error handling cancel-event-select:", e);
         await interaction.editReply({
@@ -136,9 +144,9 @@ client.on(Events.GuildCreate, async (guild) => {
         const createdCount = result.summary.created.length;
         if (createdCount > 0) {
           message =
-            `サーバー「${guild.name}」へのご招待ありがとうございます！\n必要なロール (${createdCount}件) を自動作成しました: \`${
+            `サーバー「${guild.name}」へのご招待ありがとうございます！\n必要なロール (${createdCount}件) を自動作成しました: ${
               result.summary.created.join(", ")
-            }\``;
+            }`;
         } else {
           message =
             `サーバー「${guild.name}」へのご招待ありがとうございます！\n必要なロールはすべて存在していたため、何も作成しませんでした。`;

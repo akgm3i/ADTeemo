@@ -7,7 +7,9 @@ import { eq } from "npm:drizzle-orm";
 import { restore } from "jsr:@std/testing/mock";
 
 describe("DB actions", () => {
-  afterEach(() => {
+  afterEach(async () => {
+    await db.delete(customGameEvents);
+    await db.delete(users);
     restore();
   });
 
@@ -48,10 +50,6 @@ describe("DB actions", () => {
       assertEquals(results.length, 2);
       assertEquals(results[0].name, "Event 1");
       assertEquals(results[1].name, "Event 3");
-
-      // Cleanup
-      await db.delete(customGameEvents);
-      await db.delete(users);
     });
   });
 
@@ -81,10 +79,6 @@ describe("DB actions", () => {
       const results = await db.query.customGameEvents.findMany();
       assertEquals(results.length, 1);
       assertEquals(results[0].name, "Event 2");
-
-      // Cleanup
-      await db.delete(customGameEvents);
-      await db.delete(users);
     });
   });
 
@@ -119,16 +113,6 @@ describe("DB actions", () => {
         eventData.recruitmentMessageId,
       );
       assertEquals(userResult?.discordId, eventData.creatorId);
-
-      // Cleanup
-      if (result) {
-        await db.delete(customGameEvents).where(
-          eq(customGameEvents.id, result.id),
-        );
-      }
-      if (userResult) {
-        await db.delete(users).where(eq(users.discordId, userResult.discordId));
-      }
     });
   });
 });

@@ -8,6 +8,10 @@ import {
   type CommandInteraction,
   type CommandInteractionOptionResolver,
   type Guild,
+  GuildScheduledEvent,
+  GuildScheduledEventCreateOptions,
+  GuildScheduledEventManager,
+  GuildScheduledEventStatus,
   type InteractionDeferReplyOptions,
   type InteractionEditReplyOptions,
   InteractionType,
@@ -206,4 +210,45 @@ export function newMockStringSelectMenuInteractionBuilder(
         };
       }),
   };
+}
+
+export function newMockGuildBuilder(id = "mock-guild-id") {
+  const props = {
+    id,
+    scheduledEvents: new Collection<string, GuildScheduledEvent>(),
+    createEventSpy: spy(
+      (
+        _options: GuildScheduledEventCreateOptions,
+      ): Promise<GuildScheduledEvent> =>
+        Promise.resolve({ id: "mock-event-id" } as GuildScheduledEvent),
+    ),
+  };
+
+  const builder = {
+    withScheduledEvent(
+      event: { id: string; status: GuildScheduledEventStatus },
+    ) {
+      props.scheduledEvents.set(
+        event.id,
+        { id: event.id, status: event.status } as GuildScheduledEvent,
+      );
+      return this;
+    },
+    getCreateEventSpy() {
+      return props.createEventSpy;
+    },
+    build() {
+      const mockScheduledEvents = {
+        fetch: () => Promise.resolve(props.scheduledEvents),
+        create: props.createEventSpy,
+      } as unknown as GuildScheduledEventManager;
+
+      return {
+        id: props.id,
+        scheduledEvents: mockScheduledEvents,
+      } as unknown as Guild;
+    },
+  };
+
+  return builder;
 }

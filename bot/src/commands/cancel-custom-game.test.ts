@@ -9,15 +9,11 @@ import {
 } from "jsr:@std/testing/mock";
 import { execute } from "./cancel-custom-game.ts";
 import { apiClient } from "../api_client.ts";
-import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
 import {
-  Collection,
-  Guild,
-  GuildScheduledEvent,
-  GuildScheduledEventManager,
-  GuildScheduledEventStatus,
-  MessageFlags,
-} from "npm:discord.js";
+  newMockChatInputCommandInteractionBuilder,
+  newMockGuildBuilder,
+} from "../test_utils.ts";
+import { GuildScheduledEventStatus, MessageFlags } from "npm:discord.js";
 
 describe("Command: cancel-custom-game", () => {
   afterEach(() => {
@@ -53,24 +49,16 @@ describe("Command: cancel-custom-game", () => {
           Promise.resolve({ success: true, events: mockDbEvents, error: null }),
       );
 
-      const mockDiscordEvents = new Collection<string, GuildScheduledEvent>();
-      mockDiscordEvents.set("active-event-id", {
-        id: "active-event-id",
-        status: GuildScheduledEventStatus.Scheduled,
-      } as GuildScheduledEvent);
-      mockDiscordEvents.set("finished-event-id", {
-        id: "finished-event-id",
-        status: GuildScheduledEventStatus.Completed,
-      } as GuildScheduledEvent);
-
-      const mockScheduledEvents = {
-        fetch: () => Promise.resolve(mockDiscordEvents),
-      } as unknown as GuildScheduledEventManager;
-
-      const mockGuild = {
-        id: "mock-guild-id",
-        scheduledEvents: mockScheduledEvents,
-      } as unknown as Guild;
+      const mockGuild = newMockGuildBuilder()
+        .withScheduledEvent({
+          id: "active-event-id",
+          status: GuildScheduledEventStatus.Scheduled,
+        })
+        .withScheduledEvent({
+          id: "finished-event-id",
+          status: GuildScheduledEventStatus.Completed,
+        })
+        .build();
 
       const interaction = newMockChatInputCommandInteractionBuilder(
         "cancel-custom-game",
@@ -115,20 +103,12 @@ describe("Command: cancel-custom-game", () => {
           Promise.resolve({ success: true, events: mockDbEvents, error: null }),
       );
 
-      const mockDiscordEvents = new Collection<string, GuildScheduledEvent>();
-      mockDiscordEvents.set("finished-event-id", {
-        id: "finished-event-id",
-        status: GuildScheduledEventStatus.Completed,
-      } as GuildScheduledEvent);
-
-      const mockScheduledEvents = {
-        fetch: () => Promise.resolve(mockDiscordEvents),
-      } as unknown as GuildScheduledEventManager;
-
-      const mockGuild = {
-        id: "mock-guild-id",
-        scheduledEvents: mockScheduledEvents,
-      } as unknown as Guild;
+      const mockGuild = newMockGuildBuilder()
+        .withScheduledEvent({
+          id: "finished-event-id",
+          status: GuildScheduledEventStatus.Completed,
+        })
+        .build();
 
       const interaction = newMockChatInputCommandInteractionBuilder(
         "cancel-custom-game",
