@@ -1,8 +1,4 @@
-import {
-  DiscordAPIError,
-  type Guild,
-  RESTJSONErrorCodes,
-} from "discord.js";
+import { DiscordAPIError, type Guild, RESTJSONErrorCodes } from "discord.js";
 import { DISCORD_ROLES_TO_MANAGE } from "../constants.ts";
 
 export type EnsureRolesResult =

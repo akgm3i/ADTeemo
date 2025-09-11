@@ -1,0 +1,48 @@
+{
+  "setRiotId": {
+    "success": "君のRiot IDは「{riotId}」だね！ これで僕たちも友達だ！ 偵察日誌に書いておくよ！",
+    "invalidFormat": "おっとっと…IDの形が違うみたいだぞ？「<サモナー名>#<タグライン>」の形でもう一回教えてくれるかい？",
+    "notFound": "「{riotId}」…うーん、見つからないなぁ。偵察してみたけど、どこにもいないみたいだ。もう一度確認してみてくれる？"
+  },
+  "setMainRole": {
+    "success": "よし、君の持ち場は「{role}」だね！ 偵察日誌に記録しておくよ。",
+    "invalidRole": "あれ？ その持ち場は聞いたことないなぁ。「`TOP`」、「`JG`」、「`MID`」、「`BOT`」、「`SUP`」の中から選んでくれるかい？"
+  },
+  "createCustomGame": {
+    "success": "よーし！ 新しい冒険の計画を立てたぞ！ 今から仲間を集めるから、開催日時まで待機！",
+    "recruitmentMessage": "### 🗺️ バンドル偵察隊、隊員募集！ 🗺️\n\n@Custom 諸君\n\n**{startTime}** から新しい偵察任務 **{eventName}** を開始する！\n参加したい隊員は、希望の持ち場のリアクションを押してくれ！\n\nいろんな持ち場ができる隊員も大歓迎だ！\n\n隊長: {organizer}"
+  },
+  "startMatching": {
+    "start": "よし、メンバーは揃ったね！ それじゃ、僕が最高のチームに分けてあげる！ ウフフ…",
+    "notEnoughPlayers": "@Custom おっと、隊員が足りないみたいだ！ これじゃ任務を開始できない…。\n今の参加者: {count}人\n足りない持ち場: {roles}\n\n誰か手伝ってくれないかい？",
+    "tooManyPlayers": "{@organizer} わぁ、すごい人気だ！ 希望者が10人より多いみたいだよ！\n今の希望者: {count}人\n\n任務に参加する10人の精鋭を選んでから、もう一度僕を呼んでくれ！"
+  },
+  "teamResult": {
+    "title": "### チーム分け完了！",
+    "body": "チーム分けが終わったぞ！ さぁ、みんな作戦会議室に移動だ！\n僕が案内するね！\n\n---\n\n**BLUE TEAM**\n🛡️ TOP: {player1}\n🌲 JG: {player2}\n🧙 MID: {player3}\n🏹 ADC: {player4}\n❤️ SUP: {player5}\n\n**RED TEAM**\n🛡️ TOP: {player6}\n🌲 JG: {player7}\n🧙 MID: {player8}\n🏹 ADC: {player9}\n❤️ SUP: {player10}",
+    "balanceWarning": "{@organizer} 隊長、ちょっと待って！ 偵察した結果、チームの戦力に差があるみたいだ。\n`/rematch` コマンドでもう一度チーム分けするか、このまま冒険に出るか、判断を求む。"
+  },
+  "moveVc": {
+    "success": "みんな、作戦会議室に転送完了！ 偵察隊の掟第二百十二条、正しい事のために戦うには仲間と力を合わせろ。さぁ、楽しもう！",
+    "failure": "おおっとっと…うまく転送できなかったみたいだ。ごめんね、自分の足で作戦会議室まで来てくれるかい？"
+  },
+  "matchResult": {
+    "title": "### 任務完了報告 - {gameId}",
+    "body": "**{winner}の見事な勝利だ！ イエーイ！**\n\nみんなの活躍は、偵察日誌にしっかり記録しておいたよ。`/my-stats`で自分の武勇伝を確認してね！\n\n---\n\n**BLUE TEAM**\n- {player1}: {kda} ({champion})\n- ...\n\n**RED TEAM**\n- {player6}: {kda} ({champion})\n- ..."
+  },
+  "myStats": {
+    "title": "### {username} の偵察日誌",
+    "body": "- **偵察隊レート**: {rating}\n- **任務記録**: {wins}勝 {losses}敗 (達成率: {winRate}%)\n- **平均KDA**: {k}/{d}/{a}\n- **得意な持ち場**: {role}"
+  },
+  "rematch": {
+    "start": "よーし、今のメンバーでもう一回チームを分けるね！ 次はどんなチームになるかな？ ウフフ！"
+  },
+  "nextGame": {
+    "swapSides": "オーケー！ チームはそのままで、陣地を交代してもう一戦だ！ いくぞ！",
+    "remakeTeams": "了解！ 今のメンバーで、もう一度チームをシャッフルするね！",
+    "newMembers": "新しい仲間を探しに行こう！ もう一度、偵察隊の隊員を募集するね！"
+  },
+  "system": {
+    "ensureRolesSuccess": "偵察隊の掟！ 準備は怠らないこと！ 任務に必要な持ち場（ロール）がなかったから、僕が作っておいたよ！ {roles}"
+  }
+}

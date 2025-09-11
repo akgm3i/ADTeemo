@@ -8,6 +8,7 @@ import {
 } from "discord.js";
 import { apiClient } from "../api_client.ts";
 import { CustomGameEvent } from "../types.ts";
+import { t } from "../messages.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("cancel-custom-game")
@@ -26,12 +27,12 @@ export async function execute(interaction: CommandInteraction) {
   );
 
   if (!dbEventsResult.success) {
-    await interaction.editReply("Failed to fetch your events.");
+    await interaction.editReply(t("cancelCustomGame.fetchEventsError"));
     return;
   }
 
   if (!interaction.guild) {
-    await interaction.editReply("This command can only be used in a server.");
+    await interaction.editReply(t("common.guildOnlyCommand"));
     return;
   }
 
@@ -46,7 +47,7 @@ export async function execute(interaction: CommandInteraction) {
   });
 
   if (activeEvents.length === 0) {
-    await interaction.editReply("You have no active events to cancel.");
+    await interaction.editReply(t("cancelCustomGame.noActiveEvents"));
     return;
   }
 
@@ -57,14 +58,14 @@ export async function execute(interaction: CommandInteraction) {
 
   const selectMenu = new StringSelectMenuBuilder()
     .setCustomId("cancel-event-select")
-    .setPlaceholder("Select an event to cancel")
+    .setPlaceholder(t("cancelCustomGame.selectPlaceholder"))
     .addOptions(options);
 
   const row = new ActionRowBuilder<StringSelectMenuBuilder>()
     .addComponents(selectMenu);
 
   await interaction.editReply({
-    content: "Select an event to cancel:",
+    content: t("cancelCustomGame.selectMessage"),
     components: [row],
   });
 }

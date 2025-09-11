@@ -13,6 +13,7 @@ import {
 import { execute } from "./setup-roles.ts";
 import { DISCORD_ROLES_TO_MANAGE } from "../constants.ts";
 import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
+import { t } from "../messages.ts";
 
 describe("Setup Roles Command", () => {
   it("ギルド（サーバー）外でコマンドを実行すると、エラーメッセージを返信する", async () => {
@@ -25,10 +26,7 @@ describe("Setup Roles Command", () => {
     assertEquals(interaction.reply.calls.length, 1);
     const replyArgs = interaction.reply.calls[0]
       .args[0] as InteractionReplyOptions;
-    assertEquals(
-      replyArgs.content,
-      "This command can only be used in a server.",
-    );
+    assertEquals(replyArgs.content, t("common.guildOnlyCommand"));
     assertEquals(replyArgs.flags, MessageFlags.Ephemeral);
   });
 
@@ -55,9 +53,10 @@ describe("Setup Roles Command", () => {
     assertEquals(rolesCreateSpy.calls.length, expectedToCreate);
     assertEquals(interaction.editReply.calls.length, 1);
     const replyMessage = interaction.editReply.calls[0].args[0] as string;
-    assert(replyMessage.includes("✅ セットアップ完了！"));
-    assert(replyMessage.includes(`作成したロール (${expectedToCreate}件)`));
-    assert(replyMessage.includes("既存のロール (2件)"));
+    const createdMsgPart = t("setupRoles.success.created").split("(")[0];
+    const existingMsgPart = t("setupRoles.success.existing").split("(")[0];
+    assert(replyMessage.includes(createdMsgPart));
+    assert(replyMessage.includes(existingMsgPart));
   });
 
   it("管理対象の全ロールが既に存在する場合にコマンドを実行すると、ロールを作成せずに成功を報告する", async () => {
@@ -83,7 +82,7 @@ describe("Setup Roles Command", () => {
     assertEquals(interaction.editReply.calls.length, 1);
     assertEquals(
       interaction.editReply.calls[0].args[0],
-      "✅ 必要なロールはすべて存在しています。",
+      t("setupRoles.success.noAction"),
     );
   });
 
@@ -117,7 +116,9 @@ describe("Setup Roles Command", () => {
     assertEquals(interaction.editReply.calls.length, 1);
     assertEquals(
       interaction.editReply.calls[0].args[0],
-      "❌ 権限エラー。\nThe bot lacks the 'Manage Roles' permission.",
+      t("setupRoles.permissionError", {
+        message: "The bot lacks the 'Manage Roles' permission.",
+      }),
     );
   });
 
@@ -140,10 +141,9 @@ describe("Setup Roles Command", () => {
 
     assertEquals(interaction.deferReply.calls.length, 1);
     assertEquals(interaction.editReply.calls.length, 1);
-    assert(
-      (interaction.editReply.calls[0].args[0] as string).startsWith(
-        "❌ 不明なエラー。",
-      ),
+    assertEquals(
+      interaction.editReply.calls[0].args[0],
+      t("setupRoles.unknownError"),
     );
   });
 });

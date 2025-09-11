@@ -9,6 +9,7 @@ import {
 import { ensureRoles } from "./features/role-management.ts";
 import { loadCommands } from "./common/command_loader.ts";
 import { apiClient } from "./api_client.ts";
+import { t } from "./messages.ts";
 
 // Create a new client instance
 const client = new Client({
@@ -55,12 +56,12 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       console.error(error);
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp({
-          content: "There was an error while executing this command!",
+          content: t("interaction.commandError"),
           flags: MessageFlags.Ephemeral,
         });
       } else {
         await interaction.reply({
-          content: "There was an error while executing this command!",
+          content: t("interaction.commandError"),
           flags: MessageFlags.Ephemeral,
         });
       }
@@ -86,8 +87,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
             deleteResult.error,
           );
           await interaction.editReply({
-            content:
-              "An error occurred while canceling the event. Please try again later.",
+            content: t("interaction.cancelEventError"),
             components: [],
           });
           return;
@@ -116,13 +116,13 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         }
 
         await interaction.editReply({
-          content: "The event has been canceled.",
+          content: t("interaction.cancelEventSuccess"),
           components: [],
         });
       } catch (e) {
         console.error("Error handling cancel-event-select:", e);
         await interaction.editReply({
-          content: "There was an error canceling the event.",
+          content: t("interaction.cancelEventGenericError"),
           components: [],
         });
       }
@@ -143,23 +143,27 @@ client.on(Events.GuildCreate, async (guild) => {
       case "SUCCESS": {
         const createdCount = result.summary.created.length;
         if (createdCount > 0) {
-          message =
-            `サーバー「${guild.name}」へのご招待ありがとうございます！\n必要なロール (${createdCount}件) を自動作成しました: ${
-              result.summary.created.join(", ")
-            }`;
+          message = t("guildCreate.welcome.createdRoles", {
+            guildName: guild.name,
+            count: createdCount,
+            roles: result.summary.created.join(", "),
+          });
         } else {
-          message =
-            `サーバー「${guild.name}」へのご招待ありがとうございます！\n必要なロールはすべて存在していたため、何も作成しませんでした。`;
+          message = t("guildCreate.welcome.noAction", {
+            guildName: guild.name,
+          });
         }
         break;
       }
       case "PERMISSION_ERROR":
-        message =
-          `サーバー「${guild.name}」に招待されましたが、ロールを作成する権限 (ロールの管理) がありません。サーバー設定を確認してください。`;
+        message = t("guildCreate.welcome.permissionError", {
+          guildName: guild.name,
+        });
         break;
       case "UNKNOWN_ERROR":
-        message =
-          `サーバー「${guild.name}」でロールのセットアップ中に不明なエラーが発生しました。`;
+        message = t("guildCreate.welcome.unknownError", {
+          guildName: guild.name,
+        });
         console.error(
           `Error setting up roles for guild ${guild.id}:`,
           result.error,

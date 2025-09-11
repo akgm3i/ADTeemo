@@ -4,6 +4,7 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import { apiClient } from "../api_client.ts";
+import { t } from "../messages.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("health")
@@ -20,7 +21,7 @@ export async function execute(interaction: CommandInteraction) {
     await interaction.editReply(result.message);
   } else {
     await interaction.editReply(
-      `Failed to check the bot's health. ${result.error || ""}`,
+      t("health.failure", { error: result.error || "" }),
     );
   }
 }

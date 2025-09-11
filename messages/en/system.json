@@ -1,0 +1,86 @@
+{
+  "setRiotId": {
+    "success": "Your Riot ID has been set to {riotId}.",
+    "invalidFormat": "Invalid Riot ID format. Please use the format <SummonerName>#<TagLine>.",
+    "notFound": "Riot ID '{riotId}' not found. Please enter a valid ID."
+  },
+  "setMainRole": {
+    "success": "Your main role has been set to **{role}**.",
+    "invalidRole": "Invalid role. Please specify one of `TOP`, `JG`, `MID`, `BOT`, `SUP`.",
+    "failure": "Failed to set your main role. {error}"
+  },
+  "createCustomGame": {
+    "success": "Created a custom game event. Posting a recruitment message.",
+    "recruitmentMessage": "### ⚔️ Custom Game Recruitment ⚔️\n\n@Custom\n\nStarting a custom game **{eventName}** at **{startTime}**!\nIf you want to participate, please react with your desired role.\n\nMultiple roles are welcome.\n\nOrganizer: {organizer}",
+    "invalidDateTimeFormat": "Invalid date or time format. Please use MM/DD HH:mm format.",
+    "dateTooFarWarning": "\n⚠️ Warning: The start date is more than a month away."
+  },
+  "startMatching": {
+    "start": "参加者を確定し、チーム分けを開始します。",
+    "notEnoughPlayers": "@Custom 参加者が10名に満たないため、マッチングを開始できません。\n現在の参加者: {count}名\n不足ロール: {roles}\n\n参加できる方はいませんか？",
+    "tooManyPlayers": "{@organizer} 参加希望者が10名を超えています。\n現在の希望者: {count}名\n\n参加者を10名に絞ってから、再度コマンドを実行してください。"
+  },
+  "teamResult": {
+    "title": "### チーム分け結果",
+    "body": "チーム分けが完了しました！\n各チームのボイスチャンネルに参加者を移動します。\n\n---\n\n**BLUE TEAM**\n🛡️ TOP: {player1}\n🌲 JG: {player2}\n🧙 MID: {player3}\n🏹 ADC: {player4}\n❤️ SUP: {player5}\n\n**RED TEAM**\n🛡️ TOP: {player6}\n🌲 JG: {player7}\n🧙 MID: {player8}\n🏹 ADC: {player9}\n❤️ SUP: {player10}",
+    "balanceWarning": "{@organizer} ⚠️ **警告**: 両チームの戦力に大きな差があります。\n`/rematch` コマンドで再マッチングを行うか、このままゲームを開始するか判断してください。"
+  },
+  "moveVc": {
+    "success": "参加者を各チームのボイスチャンネルに移動しました。",
+    "failure": "ボイスチャンネルへの自動移動に失敗しました。お手数ですが、手動でご移動ください。"
+  },
+  "matchResult": {
+    "title": "### 試合結果 - {gameId}",
+    "body": "**{winner}の勝利！**\n\n戦績が記録されました。詳細は `/my-stats` で確認できます。\n\n---\n\n**BLUE TEAM**\n- {player1}: {kda} ({champion})\n- ...\n\n**RED TEAM**\n- {player6}: {kda} ({champion})\n- ..."
+  },
+  "myStats": {
+    "title": "### {username} の戦績",
+    "body": "- **内部レート**: {rating}\n- **通算成績**: {wins}勝 {losses}敗 (勝率: {winRate}%)\n- **平均KDA**: {k}/{d}/{a}\n- **メインロール**: {role}"
+  },
+  "rematch": {
+    "start": "現在の参加者で、再度チーム分けを行います。"
+  },
+  "nextGame": {
+    "swapSides": "チーム編成はそのままで、サイドを交代して次の試合を開始します。",
+    "remakeTeams": "現在の参加者で、再度チーム分けを行います。",
+    "newMembers": "参加者の再募集を開始します。"
+  },
+  "system": {
+    "ensureRolesSuccess": "The following roles were created because they did not exist on the server: {roles}"
+  },
+  "common": {
+    "guildOnlyCommand": "This command can only be run in a server."
+  },
+  "health": {
+    "failure": "Failed to check the bot's health. {error}"
+  },
+  "setupRoles": {
+    "success": {
+      "created": "✅ Setup complete! Created roles ({count}): `{roles}`",
+      "existing": "\nExisting roles ({count}): `{roles}`",
+      "noAction": "✅ All necessary roles already exist."
+    },
+    "permissionError": "❌ Permission Error.\n{message}",
+    "unknownError": "❌ Unknown Error.\nAn error occurred while setting up roles."
+  },
+  "cancelCustomGame": {
+    "fetchEventsError": "Failed to fetch your events.",
+    "noActiveEvents": "You have no active events to cancel.",
+    "selectPlaceholder": "Select an event to cancel",
+    "selectMessage": "Select an event to cancel:"
+  },
+  "interaction": {
+    "commandError": "There was an error while executing this command!",
+    "cancelEventError": "An error occurred while canceling the event. Please try again later.",
+    "cancelEventSuccess": "The event has been canceled.",
+    "cancelEventGenericError": "There was an error canceling the event."
+  },
+  "guildCreate": {
+    "welcome": {
+      "createdRoles": "Thank you for inviting me to your server, \"{guildName}\"!\nI have automatically created the necessary roles ({count}): {roles}",
+      "noAction": "Thank you for inviting me to your server, \"{guildName}\"!\nAll necessary roles already existed, so I didn't need to create any.",
+      "permissionError": "I was invited to \"{guildName}\", but I don't have the \"Manage Roles\" permission. Please check the server settings.",
+      "unknownError": "An unknown error occurred while setting up roles in \"{guildName}\"."
+    }
+  }
+}
