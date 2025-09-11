@@ -25,7 +25,7 @@ import {
   MessageReaction,
   TextBasedChannel,
 } from "discord.js";
-import { t } from "../messages.ts";
+import { t, m } from "@adteemo/messages";
 
 describe("Create Custom Game Command", () => {
   afterEach(() => {
@@ -109,7 +109,7 @@ describe("Create Custom Game Command", () => {
           }],
         });
 
-        const expectedMessage = t("createCustomGame.recruitmentMessage", {
+        const expectedMessage = t(m.customGame.create.recruitmentMessage, {
           startTime: "2025/09/13 21:00",
           eventName: "週末カスタム",
           organizer: "<@test-user-id>",
@@ -121,7 +121,7 @@ describe("Create Custom Game Command", () => {
           args: [{ flags: MessageFlags.Ephemeral }],
         });
         assertSpyCall(interaction.editReply, 0, {
-          args: [t("createCustomGame.success")],
+          args: [t(m.customGame.create.success)],
         });
 
         assertSpyCall(createEventStub, 0, {
@@ -247,8 +247,8 @@ describe("Create Custom Game Command", () => {
 
         assertSpyCall(interaction.editReply, 0, {
           args: [
-            t("createCustomGame.success") +
-            t("createCustomGame.dateTooFarWarning"),
+            t(m.customGame.create.success) +
+            t(m.customGame.create.info.dateTooFarWarning),
           ],
         });
       });
@@ -287,7 +287,7 @@ describe("Create Custom Game Command", () => {
 
         assertSpyCall(interaction.reply, 0, {
           args: [{
-            content: t("createCustomGame.invalidDateTimeFormat"),
+            content: t(m.customGame.create.error.invalidDateTimeFormat),
             flags: MessageFlags.Ephemeral,
           }],
         });
@@ -306,7 +306,7 @@ describe("Create Custom Game Command", () => {
 
         assertSpyCall(interaction.reply, 0, {
           args: [{
-            content: t("common.guildOnlyCommand"),
+            content: t(m.common.info.guildOnlyCommand),
             flags: MessageFlags.Ephemeral,
           }],
         });

@@ -8,7 +8,7 @@ import {
 } from "discord.js";
 import { format, parse } from "@std/datetime";
 import { apiClient } from "../api_client.ts";
-import { t } from "../messages.ts";
+import { t, m } from "@adteemo/messages";
 
 function parseDate(dateStr: string, timeStr: string): Date | null {
   const now = new Date();
@@ -66,7 +66,7 @@ export async function execute(interaction: CommandInteraction) {
 
   if (!interaction.inGuild() || !interaction.guild || !interaction.channel) {
     await interaction.reply({
-      content: t("common.guildOnlyCommand"),
+      content: t(m.common.info.guildOnlyCommand),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -82,7 +82,7 @@ export async function execute(interaction: CommandInteraction) {
   const scheduledStartTime = parseDate(dateStr, timeStr);
   if (!scheduledStartTime) {
     await interaction.reply({
-      content: t("createCustomGame.invalidDateTimeFormat"),
+      content: t(m.customGame.create.error.invalidDateTimeFormat),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -96,19 +96,19 @@ export async function execute(interaction: CommandInteraction) {
     channel: voiceChannel.id,
   });
 
-  let replyContent = t("createCustomGame.success");
+  let replyContent = t(m.customGame.create.success);
   const oneMonthFromNow = new Date();
   oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
 
   if (scheduledStartTime > oneMonthFromNow) {
-    replyContent += t("createCustomGame.dateTooFarWarning");
+    replyContent += t(m.customGame.create.info.dateTooFarWarning);
   }
 
   await interaction.editReply(replyContent);
 
   const displayDate = format(scheduledStartTime, "yyyy/MM/dd HH:mm");
 
-  const recruitmentMessageContent = t("createCustomGame.recruitmentMessage", {
+  const recruitmentMessageContent = t(m.customGame.create.recruitmentMessage, {
     startTime: displayDate,
     eventName,
     organizer: `<@${interaction.user.id}>`,

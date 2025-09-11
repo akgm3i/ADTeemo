@@ -3,7 +3,7 @@ import { describe, it } from "@std/testing/bdd";
 import { stub } from "@std/testing/mock";
 import { execute } from "./health.ts";
 import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
-import { t } from "../messages.ts";
+import { t, m } from "@adteemo/messages";
 
 describe("Health Command", () => {
   describe("execute", () => {
@@ -50,7 +50,7 @@ describe("Health Command", () => {
       assertEquals(interaction.editReply.calls.length, 1);
       assertEquals(
         interaction.editReply.calls[0].args[0],
-        t("health.failure", { error: "API returned status 500" }),
+        t(m.health.error.failure, { error: "API returned status 500" }),
       );
     });
 
@@ -68,7 +68,7 @@ describe("Health Command", () => {
       assertEquals(interaction.editReply.calls.length, 1);
       assertEquals(
         interaction.editReply.calls[0].args[0],
-        t("health.failure", { error: "Failed to communicate with API" }),
+        t(m.health.error.failure, { error: "Failed to communicate with API" }),
       );
     });
 

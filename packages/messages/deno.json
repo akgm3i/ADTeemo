@@ -1,0 +1,8 @@
+{
+  "name": "@adteemo/messages",
+  "exports": "./src/main.ts",
+  "imports": {
+    "@std/path": "jsr:@std/path@^1.1.2",
+    "zod": "npm:zod@^3.23.8"
+  }
+}

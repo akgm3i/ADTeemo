@@ -6,7 +6,7 @@ import {
 import { type Lane, lanes } from "@adteemo/api/schema";
 import { ROLE_DISPLAY_NAMES } from "../constants.ts";
 import { apiClient } from "../api_client.ts";
-import { t } from "../messages.ts";
+import { t, m } from "@adteemo/messages";
 
 export const data = new SlashCommandBuilder()
   .setName("set-main-role")
@@ -36,10 +36,12 @@ export async function execute(interaction: CommandInteraction) {
   const result = await apiClient.setMainRole(userId, role);
 
   if (result.success) {
-    await interaction.editReply(t("setMainRole.success", { role }));
+    await interaction.editReply(
+      t(m.userManagement.setMainRole.success, { role }),
+    );
   } else {
     await interaction.editReply(
-      t("setMainRole.failure", { error: result.error || "" }),
+      t(m.userManagement.setMainRole.failure, { error: result.error || "" }),
     );
   }
 }

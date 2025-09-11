@@ -3,7 +3,7 @@ import { describe, it } from "@std/testing/bdd";
 import { stub } from "@std/testing/mock";
 import { execute } from "./set-main-role.ts";
 import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
-import { t } from "../messages.ts";
+import { t, m } from "@adteemo/messages";
 
 describe("Set Main Role Command", () => {
   describe("execute", () => {
@@ -27,7 +27,7 @@ describe("Set Main Role Command", () => {
       assertEquals(interaction.editReply.calls.length, 1);
       assertEquals(
         interaction.editReply.calls[0].args[0],
-        t("setMainRole.success", { role: "Top" }),
+        t(m.userManagement.setMainRole.success, { role: "Top" }),
       );
     });
 
@@ -51,7 +51,7 @@ describe("Set Main Role Command", () => {
       assertEquals(interaction.editReply.calls.length, 1);
       assertEquals(
         interaction.editReply.calls[0].args[0],
-        t("setMainRole.failure", {
+        t(m.userManagement.setMainRole.failure, {
           error: "API returned status 500",
         }),
       );

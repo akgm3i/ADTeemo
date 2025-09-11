@@ -9,7 +9,7 @@ import {
 import { ensureRoles } from "./features/role-management.ts";
 import { loadCommands } from "./common/command_loader.ts";
 import { apiClient } from "./api_client.ts";
-import { t } from "./messages.ts";
+import { t, m } from "@adteemo/messages";
 
 // Create a new client instance
 const client = new Client({
@@ -56,12 +56,12 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       console.error(error);
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp({
-          content: t("interaction.commandError"),
+          content: t(m.common.error.command),
           flags: MessageFlags.Ephemeral,
         });
       } else {
         await interaction.reply({
-          content: t("interaction.commandError"),
+          content: t(m.common.error.command),
           flags: MessageFlags.Ephemeral,
         });
       }
@@ -87,7 +87,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
             deleteResult.error,
           );
           await interaction.editReply({
-            content: t("interaction.cancelEventError"),
+            content: t(m.customGame.cancel.error.interaction),
             components: [],
           });
           return;
@@ -116,13 +116,13 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         }
 
         await interaction.editReply({
-          content: t("interaction.cancelEventSuccess"),
+          content: t(m.customGame.cancel.success),
           components: [],
         });
       } catch (e) {
         console.error("Error handling cancel-event-select:", e);
         await interaction.editReply({
-          content: t("interaction.cancelEventGenericError"),
+          content: t(m.customGame.cancel.error.generic),
           components: [],
         });
       }
@@ -143,25 +143,25 @@ client.on(Events.GuildCreate, async (guild) => {
       case "SUCCESS": {
         const createdCount = result.summary.created.length;
         if (createdCount > 0) {
-          message = t("guildCreate.welcome.createdRoles", {
+          message = t(m.guild.welcome.success.createdRoles, {
             guildName: guild.name,
             count: createdCount,
             roles: result.summary.created.join(", "),
           });
         } else {
-          message = t("guildCreate.welcome.noAction", {
+          message = t(m.guild.welcome.success.noAction, {
             guildName: guild.name,
           });
         }
         break;
       }
       case "PERMISSION_ERROR":
-        message = t("guildCreate.welcome.permissionError", {
+        message = t(m.guild.welcome.error.permission, {
           guildName: guild.name,
         });
         break;
       case "UNKNOWN_ERROR":
-        message = t("guildCreate.welcome.unknownError", {
+        message = t(m.guild.welcome.error.unknown, {
           guildName: guild.name,
         });
         console.error(

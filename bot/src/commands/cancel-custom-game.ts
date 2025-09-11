@@ -8,7 +8,7 @@ import {
 } from "discord.js";
 import { apiClient } from "../api_client.ts";
 import { CustomGameEvent } from "../types.ts";
-import { t } from "../messages.ts";
+import { t, m } from "@adteemo/messages";
 
 export const data = new SlashCommandBuilder()
   .setName("cancel-custom-game")
@@ -27,12 +27,12 @@ export async function execute(interaction: CommandInteraction) {
   );
 
   if (!dbEventsResult.success) {
-    await interaction.editReply(t("cancelCustomGame.fetchEventsError"));
+    await interaction.editReply(t(m.customGame.cancel.error.fetchEvents));
     return;
   }
 
   if (!interaction.guild) {
-    await interaction.editReply(t("common.guildOnlyCommand"));
+    await interaction.editReply(t(m.common.info.guildOnlyCommand));
     return;
   }
 
@@ -47,7 +47,7 @@ export async function execute(interaction: CommandInteraction) {
   });
 
   if (activeEvents.length === 0) {
-    await interaction.editReply(t("cancelCustomGame.noActiveEvents"));
+    await interaction.editReply(t(m.customGame.cancel.info.noActiveEvents));
     return;
   }
 
@@ -58,14 +58,14 @@ export async function execute(interaction: CommandInteraction) {
 
   const selectMenu = new StringSelectMenuBuilder()
     .setCustomId("cancel-event-select")
-    .setPlaceholder(t("cancelCustomGame.selectPlaceholder"))
+    .setPlaceholder(t(m.customGame.cancel.info.selectPlaceholder))
     .addOptions(options);
 
   const row = new ActionRowBuilder<StringSelectMenuBuilder>()
     .addComponents(selectMenu);
 
   await interaction.editReply({
-    content: t("cancelCustomGame.selectMessage"),
+    content: t(m.customGame.cancel.info.selectMessage),
     components: [row],
   });
 }

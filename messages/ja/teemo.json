@@ -1,86 +1,70 @@
 {
-  "setRiotId": {
-    "success": "君のRiot IDは「{riotId}」だね！ これで僕たちも友達だ！ 偵察日誌に書いておくよ！",
-    "invalidFormat": "おっとっと…IDの形が違うみたいだぞ？「<サモナー名>#<タグライン>」の形でもう一回教えてくれるかい？",
-    "notFound": "「{riotId}」…うーん、見つからないなぁ。偵察してみたけど、どこにもいないみたいだ。もう一度確認してみてくれる？"
+  "userManagement": {
+    "setMainRole": {
+      "success": "よし、君の持ち場は「{role}」だね！ 偵察日誌に記録しておくよ。",
+      "failure": "あれれ？ 持ち場の設定に失敗しちゃったみたいだ。{error}",
+      "invalidRole": "あれ？ その持ち場は聞いたことないなぁ。「`TOP`」、「`JG`」、「`MID`」、「`BOT`」、「`SUP`」の中から選んでくれるかい？"
+    }
   },
-  "setMainRole": {
-    "success": "よし、君の持ち場は「{role}」だね！ 偵察日誌に記録しておくよ。",
-    "invalidRole": "あれ？ その持ち場は聞いたことないなぁ。「`TOP`」、「`JG`」、「`MID`」、「`BOT`」、「`SUP`」の中から選んでくれるかい？",
-    "failure": "あれれ？ 持ち場の設定に失敗しちゃったみたいだ。{error}"
+  "customGame": {
+    "create": {
+      "success": "よーし！ 新しい冒険の計画を立てたぞ！ 今から仲間を集めるから、開催日時まで待機！",
+      "recruitmentMessage": "### 🗺️ バンドル偵察隊、隊員募集！ 🗺️\n\n@Custom 諸君\n\n**{startTime}** から新しい偵察任務 **{eventName}** を開始する！\n参加したい隊員は、希望の持ち場のリアクションを押してくれ！\n\nいろんな持ち場ができる隊員も大歓迎だ！\n\n隊長: {organizer}",
+      "error": {
+        "invalidDateTimeFormat": "あれれ？ 日付か時間の書き方が違うみたいだぞ？ MM/DD HH:mm の形で教えてくれる？"
+      },
+      "info": {
+        "dateTooFarWarning": "\n⚠️ 注意！ 任務開始まで1ヶ月以上あるぞ。待ちきれないな！"
+      }
+    },
+    "cancel": {
+      "success": "よし、この冒険は中止だ！次の計画を立てよう！",
+      "error": {
+        "fetchEvents": "ありゃ、君の冒険の計画が見つからないや。",
+        "generic": "任務を中止しようとしたら、何か問題が起きたみたいだ…。",
+        "interaction": "任務中止の信号を送ったけど、うまく伝わらなかったみたいだ。ちょっと時間を置いてもう一回試してみてくれる？"
+      },
+      "info": {
+        "noActiveEvents": "中止できる冒険の計画がないみたいだね。",
+        "selectPlaceholder": "中止する冒険を選ぶんだ！",
+        "selectMessage": "どの冒険を中止するんだい？"
+      }
+    }
   },
-  "createCustomGame": {
-    "success": "よーし！ 新しい冒険の計画を立てたぞ！ 今から仲間を集めるから、開催日時まで待機！",
-    "recruitmentMessage": "### 🗺️ バンドル偵察隊、隊員募集！ 🗺️\n\n@Custom 諸君\n\n**{startTime}** から新しい偵察任務 **{eventName}** を開始する！\n参加したい隊員は、希望の持ち場のリアクションを押してくれ！\n\nいろんな持ち場ができる隊員も大歓迎だ！\n\n隊長: {organizer}",
-    "invalidDateTimeFormat": "あれれ？ 日付か時間の書き方が違うみたいだぞ？ MM/DD HH:mm の形で教えてくれる？",
-    "dateTooFarWarning": "\n⚠️ 注意！ 任務開始まで1ヶ月以上あるぞ。待ちきれないな！"
-  },
-  "startMatching": {
-    "start": "よし、メンバーは揃ったね！ それじゃ、僕が最高のチームに分けてあげる！ ウフフ…",
-    "notEnoughPlayers": "@Custom おっと、隊員が足りないみたいだ！ これじゃ任務を開始できない…。\n今の参加者: {count}人\n足りない持ち場: {roles}\n\n誰か手伝ってくれないかい？",
-    "tooManyPlayers": "{@organizer} わぁ、すごい人気だ！ 希望者が10人より多いみたいだよ！\n今の希望者: {count}人\n\n任務に参加する10人の精鋭を選んでから、もう一度僕を呼んでくれ！"
-  },
-  "teamResult": {
-    "title": "### チーム分け完了！",
-    "body": "チーム分けが終わったぞ！ さぁ、みんな作戦会議室に移動だ！\n僕が案内するね！\n\n---\n\n**BLUE TEAM**\n🛡️ TOP: {player1}\n🌲 JG: {player2}\n🧙 MID: {player3}\n🏹 ADC: {player4}\n❤️ SUP: {player5}\n\n**RED TEAM**\n🛡️ TOP: {player6}\n🌲 JG: {player7}\n🧙 MID: {player8}\n🏹 ADC: {player9}\n❤️ SUP: {player10}",
-    "balanceWarning": "{@organizer} 隊長、ちょっと待って！ 偵察した結果、チームの戦力に差があるみたいだ。\n`/rematch` コマンドでもう一度チーム分けするか、このまま冒険に出るか、判断を求む。"
-  },
-  "moveVc": {
-    "success": "みんな、作戦会議室に転送完了！ 偵察隊の掟第二百十二条、正しい事のために戦うには仲間と力を合わせろ。さぁ、楽しもう！",
-    "failure": "おおっとっと…うまく転送できなかったみたいだ。ごめんね、自分の足で作戦会議室まで来てくれるかい？"
-  },
-  "matchResult": {
-    "title": "### 任務完了報告 - {gameId}",
-    "body": "**{winner}の見事な勝利だ！ イエーイ！**\n\nみんなの活躍は、偵察日誌にしっかり記録しておいたよ。`/my-stats`で自分の武勇伝を確認してね！\n\n---\n\n**BLUE TEAM**\n- {player1}: {kda} ({champion})\n- ...\n\n**RED TEAM**\n- {player6}: {kda} ({champion})\n- ..."
-  },
-  "myStats": {
-    "title": "### {username} の偵察日誌",
-    "body": "- **偵察隊レート**: {rating}\n- **任務記録**: {wins}勝 {losses}敗 (達成率: {winRate}%)\n- **平均KDA**: {k}/{d}/{a}\n- **得意な持ち場**: {role}"
-  },
-  "rematch": {
-    "start": "よーし、今のメンバーでもう一回チームを分けるね！ 次はどんなチームになるかな？ ウフフ！"
-  },
-  "nextGame": {
-    "swapSides": "オーケー！ チームはそのままで、陣地を交代してもう一戦だ！ いくぞ！",
-    "remakeTeams": "了解！ 今のメンバーで、もう一度チームをシャッフルするね！",
-    "newMembers": "新しい仲間を探しに行こう！ もう一度、偵察隊の隊員を募集するね！"
-  },
-  "system": {
-    "ensureRolesSuccess": "偵察隊の掟！ 準備は怠らないこと！ 任務に必要な持ち場（ロール）がなかったから、僕が作っておいたよ！ {roles}"
+  "guild": {
+    "setup": {
+      "success": {
+        "created": "よーし、任務の準備完了だ！ 新しい持ち場を作っておいたよ ({count}件): `{roles}`",
+        "existing": "\nもともとあった持ち場 ({count}件): `{roles}`",
+        "noAction": "偵察したけど、持ち場は全部そろってるみたいだ！ 準備万端だね！"
+      },
+      "error": {
+        "permission": "おっとっと、キノコを置く許可がないみたいだ…。{message}",
+        "unknown": "うーん、何かがおかしいぞ。持ち場の準備がうまくできなかった…。"
+      }
+    },
+    "welcome": {
+      "success": {
+        "createdRoles": "やぁ、{guildName}の偵察に来たよ！任務に必要な持ち場がなかったから、僕が作っておいたよ ({count}件): {roles}",
+        "noAction": "やぁ、{guildName}の偵察に来たよ！持ち場は全部そろってたから、僕の出番はなかったね！"
+      },
+      "error": {
+        "permission": "{guildName}に偵察に来たんだけど、キノコを置く許可がないみたいだ。持ち場を作れるようにしてくれると助かるな！",
+        "unknown": "{guildName}で持ち場の準備をしてたら、何か問題が起きたみたいだ…。"
+      }
+    }
   },
   "common": {
-    "guildOnlyCommand": "おっと、この命令はここじゃ使えないみたいだ。サーバーの中で試してくれるかい？"
+    "error": {
+      "command": "おっと！何かが爆発したみたいだ！コマンドがうまく動かなかったよ。"
+    },
+    "info": {
+      "guildOnlyCommand": "おっと、この命令はここじゃ使えないみたいだ。サーバーの中で試してくれるかい？"
+    }
   },
   "health": {
-    "failure": "うーん、僕の偵察用キノコがうまく作動しないみたいだ…。 {error}"
-  },
-  "setupRoles": {
-    "success": {
-      "created": "よーし、任務の準備完了だ！ 新しい持ち場を作っておいたよ ({count}件): `{roles}`",
-      "existing": "\nもともとあった持ち場 ({count}件): `{roles}`",
-      "noAction": "偵察したけど、持ち場は全部そろってるみたいだ！ 準備万端だね！"
-    },
-    "permissionError": "おっとっと、キノコを置く許可がないみたいだ…。{message}",
-    "unknownError": "うーん、何かがおかしいぞ。持ち場の準備がうまくできなかった…。"
-  },
-  "cancelCustomGame": {
-    "fetchEventsError": "ありゃ、君の冒険の計画が見つからないや。",
-    "noActiveEvents": "中止できる冒険の計画がないみたいだね。",
-    "selectPlaceholder": "中止する冒険を選ぶんだ！",
-    "selectMessage": "どの冒険を中止するんだい？"
-  },
-  "interaction": {
-    "commandError": "おっと！何かが爆発したみたいだ！コマンドがうまく動かなかったよ。",
-    "cancelEventError": "任務中止の信号を送ったけど、うまく伝わらなかったみたいだ。ちょっと時間を置いてもう一回試してみてくれる？",
-    "cancelEventSuccess": "よし、この冒険は中止だ！次の計画を立てよう！",
-    "cancelEventGenericError": "任務を中止しようとしたら、何か問題が起きたみたいだ…。"
-  },
-  "guildCreate": {
-    "welcome": {
-      "createdRoles": "やぁ、{guildName}の偵察に来たよ！任務に必要な持ち場がなかったから、僕が作っておいたよ ({count}件): {roles}",
-      "noAction": "やぁ、{guildName}の偵察に来たよ！持ち場は全部そろってたから、僕の出番はなかったね！",
-      "permissionError": "{guildName}に偵察に来たんだけど、キノコを置く許可がないみたいだ。持ち場を作れるようにしてくれると助かるな！",
-      "unknownError": "{guildName}で持ち場の準備をしてたら、何か問題が起きたみたいだ…。"
+    "error": {
+      "failure": "うーん、僕の偵察用キノコがうまく作動しないみたいだ…。 {error}"
     }
   }
 }

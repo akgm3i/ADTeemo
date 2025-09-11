@@ -13,7 +13,7 @@ import {
 import { execute } from "./setup-roles.ts";
 import { DISCORD_ROLES_TO_MANAGE } from "../constants.ts";
 import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
-import { t } from "../messages.ts";
+import { t, m } from "@adteemo/messages";
 
 describe("Setup Roles Command", () => {
   it("ギルド（サーバー）外でコマンドを実行すると、エラーメッセージを返信する", async () => {
@@ -26,7 +26,7 @@ describe("Setup Roles Command", () => {
     assertEquals(interaction.reply.calls.length, 1);
     const replyArgs = interaction.reply.calls[0]
       .args[0] as InteractionReplyOptions;
-    assertEquals(replyArgs.content, t("common.guildOnlyCommand"));
+    assertEquals(replyArgs.content, t(m.common.info.guildOnlyCommand));
     assertEquals(replyArgs.flags, MessageFlags.Ephemeral);
   });
 
@@ -53,8 +53,8 @@ describe("Setup Roles Command", () => {
     assertEquals(rolesCreateSpy.calls.length, expectedToCreate);
     assertEquals(interaction.editReply.calls.length, 1);
     const replyMessage = interaction.editReply.calls[0].args[0] as string;
-    const createdMsgPart = t("setupRoles.success.created").split("(")[0];
-    const existingMsgPart = t("setupRoles.success.existing").split("(")[0];
+    const createdMsgPart = t(m.guild.setup.success.created).split("(")[0];
+    const existingMsgPart = t(m.guild.setup.success.existing).split("(")[0];
     assert(replyMessage.includes(createdMsgPart));
     assert(replyMessage.includes(existingMsgPart));
   });
@@ -82,7 +82,7 @@ describe("Setup Roles Command", () => {
     assertEquals(interaction.editReply.calls.length, 1);
     assertEquals(
       interaction.editReply.calls[0].args[0],
-      t("setupRoles.success.noAction"),
+      t(m.guild.setup.success.noAction),
     );
   });
 
@@ -116,7 +116,7 @@ describe("Setup Roles Command", () => {
     assertEquals(interaction.editReply.calls.length, 1);
     assertEquals(
       interaction.editReply.calls[0].args[0],
-      t("setupRoles.permissionError", {
+      t(m.guild.setup.error.permission, {
         message: "The bot lacks the 'Manage Roles' permission.",
       }),
     );
@@ -143,7 +143,7 @@ describe("Setup Roles Command", () => {
     assertEquals(interaction.editReply.calls.length, 1);
     assertEquals(
       interaction.editReply.calls[0].args[0],
-      t("setupRoles.unknownError"),
+      t(m.guild.setup.error.unknown),
     );
   });
 });

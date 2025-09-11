@@ -10,7 +10,7 @@ import {
 import { client } from "./main.ts";
 import { newMockChatInputCommandInteractionBuilder } from "./test_utils.ts";
 import type { Command } from "./types.ts";
-import { t } from "./messages.ts";
+import { t, m } from "@adteemo/messages";
 
 describe("Main Bot Logic", () => {
   describe("InteractionCreate Event", () => {
@@ -82,7 +82,7 @@ describe("Main Bot Logic", () => {
       assertEquals(executeSpy.calls.length, 1);
       assertEquals(mockInteraction.followUp.calls.length, 1);
       assertEquals(mockInteraction.followUp.calls[0].args[0], {
-        content: t("interaction.commandError"),
+        content: t(m.common.error.command),
         flags: MessageFlags.Ephemeral,
       });
       client.commands.delete("error-command");
