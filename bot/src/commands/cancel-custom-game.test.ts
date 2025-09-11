@@ -13,7 +13,7 @@ import {
   newMockChatInputCommandInteractionBuilder,
   newMockGuildBuilder,
 } from "../test_utils.ts";
-import { GuildScheduledEventStatus, MessageFlags } from "npm:discord.js";
+import { GuildScheduledEventStatus, MessageFlags } from "discord.js";
 
 describe("Command: cancel-custom-game", () => {
   afterEach(() => {

@@ -1,5 +1,6 @@
 volumes:
   prod-db-data: {}
+  deno-cache: {}
 
 services:
   # --- Production services (activate with --profile prod) ---
@@ -46,6 +47,7 @@ services:
       - "8000:8000"
     volumes:
       - ./:/app
+      - deno-cache:/deno-dir
     env_file:
       - .env.dev
 

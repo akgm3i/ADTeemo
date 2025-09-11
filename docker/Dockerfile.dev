@@ -3,12 +3,6 @@ FROM denoland/deno:latest
 
 WORKDIR /app
 
-USER deno
-
-RUN deno cache api/src/app.ts
-
-RUN deno cache bot/src/main.ts
-
 # This Dockerfile is for development.
 # Source code will be mounted from the host.
 # The container will be kept running by the docker-compose command.
