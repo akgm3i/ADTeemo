@@ -3,7 +3,7 @@ import {
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
-} from "npm:discord.js";
+} from "discord.js";
 import { ensureRoles } from "../features/role-management.ts";
 
 export const data = new SlashCommandBuilder()

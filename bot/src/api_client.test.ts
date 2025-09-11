@@ -1,6 +1,6 @@
-import { assertEquals } from "jsr:@std/assert";
-import { describe, it } from "jsr:@std/testing/bdd";
-import { assertSpyCalls, stub } from "jsr:@std/testing/mock";
+import { assertEquals } from "@std/assert";
+import { describe, it } from "@std/testing/bdd";
+import { assertSpyCalls, stub } from "@std/testing/mock";
 import { apiClient } from "./api_client.ts";
 
 describe("apiClient", () => {

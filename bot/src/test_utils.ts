@@ -1,4 +1,4 @@
-import { type Spy, spy } from "jsr:@std/testing/mock";
+import { type Spy, spy } from "@std/testing/mock";
 import {
   type CacheType,
   type Channel,
@@ -19,7 +19,7 @@ import {
   type Role,
   type RoleManager,
   type Snowflake,
-} from "npm:discord.js";
+} from "discord.js";
 import type { Command } from "./types.ts";
 
 type MockOptions = {

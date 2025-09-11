@@ -1,12 +1,12 @@
-import { assert, assertEquals } from "jsr:@std/assert";
-import { describe, it } from "jsr:@std/testing/bdd";
-import { stub } from "jsr:@std/testing/mock";
+import { assert, assertEquals } from "@std/assert";
+import { describe, it } from "@std/testing/bdd";
+import { stub } from "@std/testing/mock";
 import {
   Events,
   type Interaction,
   MessageFlags,
   SlashCommandBuilder,
-} from "npm:discord.js";
+} from "discord.js";
 import { client } from "./main.ts";
 import { newMockChatInputCommandInteractionBuilder } from "./test_utils.ts";
 import type { Command } from "./types.ts";

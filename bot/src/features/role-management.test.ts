@@ -1,6 +1,6 @@
-import { assertEquals, assertExists } from "jsr:@std/assert";
-import { describe, it } from "jsr:@std/testing/bdd";
-import { spy } from "jsr:@std/testing/mock";
+import { assertEquals, assertExists } from "@std/assert";
+import { describe, it } from "@std/testing/bdd";
+import { spy } from "@std/testing/mock";
 import {
   Collection,
   DiscordAPIError,
@@ -8,7 +8,7 @@ import {
   RESTJSONErrorCodes,
   type Role,
   type RoleCreateOptions,
-} from "npm:discord.js";
+} from "discord.js";
 import { ensureRoles } from "./role-management.ts";
 import { DISCORD_ROLES_TO_MANAGE } from "../constants.ts";
 

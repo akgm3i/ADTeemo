@@ -1,11 +1,11 @@
-import { afterEach, describe, it } from "jsr:@std/testing/bdd";
+import { afterEach, describe, it } from "@std/testing/bdd";
 import {
   assertSpyCall,
   assertSpyCalls,
   restore,
   spy,
   stub,
-} from "jsr:@std/testing/mock";
+} from "@std/testing/mock";
 import { execute } from "./create-custom-game.ts";
 import { apiClient } from "../api_client.ts";
 import {
@@ -24,7 +24,7 @@ import {
   MessagePayload,
   MessageReaction,
   TextBasedChannel,
-} from "npm:discord.js";
+} from "discord.js";
 
 describe("Create Custom Game Command", () => {
   afterEach(() => {

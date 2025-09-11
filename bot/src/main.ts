@@ -5,7 +5,7 @@ import {
   GatewayIntentBits,
   Interaction,
   MessageFlags,
-} from "npm:discord.js";
+} from "discord.js";
 import { ensureRoles } from "./features/role-management.ts";
 import { loadCommands } from "./common/command_loader.ts";
 import { apiClient } from "./api_client.ts";

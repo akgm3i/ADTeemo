@@ -5,7 +5,7 @@ import {
   MessageFlags,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
-} from "npm:discord.js";
+} from "discord.js";
 import { apiClient } from "../api_client.ts";
 import { CustomGameEvent } from "../types.ts";
 

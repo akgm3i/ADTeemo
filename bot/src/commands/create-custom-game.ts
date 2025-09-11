@@ -5,8 +5,8 @@ import {
   GuildScheduledEventPrivacyLevel,
   MessageFlags,
   SlashCommandBuilder,
-} from "npm:discord.js";
-import { format, parse } from "jsr:@std/datetime";
+} from "discord.js";
+import { format, parse } from "@std/datetime";
 import { apiClient } from "../api_client.ts";
 
 function parseDate(dateStr: string, timeStr: string): Date | null {
