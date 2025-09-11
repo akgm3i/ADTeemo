@@ -2,7 +2,7 @@ import {
   CommandInteraction,
   MessageFlags,
   SlashCommandBuilder,
-} from "npm:discord.js";
+} from "discord.js";
 import { apiClient } from "../api_client.ts";
 
 export const data = new SlashCommandBuilder()

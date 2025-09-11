@@ -1,5 +1,5 @@
-import { Hono } from "jsr:@hono/hono";
-import { logger } from "jsr:@hono/hono/logger";
+import { Hono } from "@hono/hono";
+import { logger } from "@hono/hono/logger";
 import { usersRoutes } from "./routes/users.ts";
 import { eventsRoutes } from "./routes/events.ts";
 

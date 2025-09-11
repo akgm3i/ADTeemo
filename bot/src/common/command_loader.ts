@@ -1,4 +1,4 @@
-import * as path from "jsr:@std/path";
+import * as path from "@std/path";
 import { Command } from "../types.ts";
 
 export async function loadCommands(): Promise<Command[]> {

@@ -1,6 +1,6 @@
-import { Hono } from "jsr:@hono/hono";
-import { zValidator } from "jsr:@hono/zod-validator";
-import { z } from "npm:zod";
+import { Hono } from "@hono/hono";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
 import { lanes } from "../db/schema.ts";
 import { dbActions } from "../db/actions.ts";
 

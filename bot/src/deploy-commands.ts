@@ -5,7 +5,7 @@ import {
   RESTPutAPIApplicationCommandsResult,
   RESTPutAPIApplicationGuildCommandsResult,
   Routes,
-} from "npm:discord.js";
+} from "discord.js";
 import { loadCommands } from "./common/command_loader.ts";
 
 const token = Deno.env.get("DISCORD_TOKEN");

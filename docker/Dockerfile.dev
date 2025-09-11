@@ -1,0 +1,8 @@
+# Dev stage
+FROM denoland/deno:latest
+
+WORKDIR /app
+
+# This Dockerfile is for development.
+# Source code will be mounted from the host.
+# The container will be kept running by the docker-compose command.

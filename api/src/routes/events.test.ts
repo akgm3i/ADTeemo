@@ -1,7 +1,7 @@
-import { testClient } from "jsr:@hono/hono/testing";
-import { assert, assertEquals } from "jsr:@std/assert";
-import { describe, it } from "jsr:@std/testing/bdd";
-import { assertSpyCall, stub } from "jsr:@std/testing/mock";
+import { testClient } from "@hono/hono/testing";
+import { assert, assertEquals } from "@std/assert";
+import { describe, it } from "@std/testing/bdd";
+import { assertSpyCall, stub } from "@std/testing/mock";
 import app from "../app.ts";
 import { dbActions } from "../db/actions.ts";
 

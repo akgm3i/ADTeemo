@@ -1,10 +1,10 @@
-import { afterEach, describe, it } from "jsr:@std/testing/bdd";
-import { assertEquals } from "jsr:@std/assert";
+import { afterEach, describe, it } from "@std/testing/bdd";
+import { assertEquals } from "@std/assert";
 import { db } from "./index.ts";
 import { customGameEvents, users } from "./schema.ts";
 import { dbActions } from "./actions.ts";
-import { eq } from "npm:drizzle-orm";
-import { restore } from "jsr:@std/testing/mock";
+import { eq } from "drizzle-orm";
+import { restore } from "@std/testing/mock";
 
 describe("DB actions", () => {
   afterEach(async () => {

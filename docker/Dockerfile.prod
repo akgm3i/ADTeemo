@@ -3,29 +3,26 @@ FROM denoland/deno:latest AS builder
 
 WORKDIR /app
 
+USER deno
+
 COPY deno.json .
+COPY deno.lock .
+
 COPY api/ ./api/
 COPY bot/ ./bot/
 
-# api
-WORKDIR /app/api
-
-RUN deno cache src/index.ts
-
-# bot
-WORKDIR /app/bot
-
-RUN deno cache src/main.ts
+RUN deno install
 
 # Production stage api
 FROM denoland/deno:latest AS api
 
 WORKDIR /app/api
 
+USER deno
+
 COPY --from=builder /deno-dir /deno-dir
 COPY --from=builder /app /app
 
-# Specify the command to run on container start
 CMD ["serve", "-A", "src/app.ts"]
 
 # Production stage bot
@@ -33,8 +30,9 @@ FROM denoland/deno:latest AS bot
 
 WORKDIR /app/bot
 
+USER deno
+
 COPY --from=builder /deno-dir /deno-dir
 COPY --from=builder /app /app
 
-# Specify the command to run on container start
 CMD ["run", "-A", "src/main.ts"]

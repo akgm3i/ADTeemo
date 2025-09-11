@@ -1,6 +1,6 @@
-import { assert, assertEquals } from "jsr:@std/assert";
-import { describe, it } from "jsr:@std/testing/bdd";
-import { spy } from "jsr:@std/testing/mock";
+import { assert, assertEquals } from "@std/assert";
+import { describe, it } from "@std/testing/bdd";
+import { spy } from "@std/testing/mock";
 import {
   Collection,
   DiscordAPIError,
@@ -9,7 +9,7 @@ import {
   MessageFlags,
   RESTJSONErrorCodes,
   type Role,
-} from "npm:discord.js";
+} from "discord.js";
 import { execute } from "./setup-roles.ts";
 import { DISCORD_ROLES_TO_MANAGE } from "../constants.ts";
 import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";

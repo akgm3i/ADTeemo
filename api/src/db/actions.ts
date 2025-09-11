@@ -1,5 +1,5 @@
-import { eq } from "npm:drizzle-orm";
-import { createInsertSchema, createUpdateSchema } from "npm:drizzle-zod";
+import { eq } from "drizzle-orm";
+import { createInsertSchema, createUpdateSchema } from "drizzle-zod";
 import { db } from "./index.ts";
 import { customGameEvents, type Lane, users } from "./schema.ts";
 

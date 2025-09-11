@@ -1,6 +1,6 @@
-import { testClient } from "jsr:@hono/hono/testing";
-import { assertEquals } from "jsr:@std/assert";
-import { describe, it } from "jsr:@std/testing/bdd";
+import { testClient } from "@hono/hono/testing";
+import { assertEquals } from "@std/assert";
+import { describe, it } from "@std/testing/bdd";
 import app from "./app.ts";
 
 describe("Other routes", () => {

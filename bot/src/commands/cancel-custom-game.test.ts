@@ -1,19 +1,19 @@
-import { afterEach, describe, it } from "jsr:@std/testing/bdd";
-import { assertEquals } from "jsr:@std/assert";
+import { afterEach, describe, it } from "@std/testing/bdd";
+import { assertEquals } from "@std/assert";
 import {
   assertSpyCall,
   assertSpyCallArgs,
   assertSpyCalls,
   restore,
   stub,
-} from "jsr:@std/testing/mock";
+} from "@std/testing/mock";
 import { execute } from "./cancel-custom-game.ts";
 import { apiClient } from "../api_client.ts";
 import {
   newMockChatInputCommandInteractionBuilder,
   newMockGuildBuilder,
 } from "../test_utils.ts";
-import { GuildScheduledEventStatus, MessageFlags } from "npm:discord.js";
+import { GuildScheduledEventStatus, MessageFlags } from "discord.js";
 
 describe("Command: cancel-custom-game", () => {
   afterEach(() => {

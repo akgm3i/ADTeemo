@@ -5,10 +5,13 @@
     "dev:api": "deno task --cwd=api dev",
     "dev:bot": "deno task --cwd=bot dev",
     "test:all": "deno test --allow-env --allow-read --allow-sys --allow-ffi",
+    "test:allcov": "deno test --allow-env --allow-read --allow-sys --allow-ffi --coverage",
+    "deploy-commands": "deno run --allow-net --allow-read --allow-env --allow-ffi --env=.env.dev bot/src/deploy-commands.ts",
     "db:push": "deno run --allow-env --allow-read --allow-sys --allow-run --allow-ffi --node-modules-dir npm:drizzle-kit push",
     "db:generate": "deno run --allow-env --allow-read --allow-sys --allow-run --allow-ffi --allow-write --node-modules-dir npm:drizzle-kit generate",
     "db:migrate": "deno run --allow-ffi --node-modules-dir npm:drizzle-kit migrate",
-    "deploy-commands": "deno run --allow-net --allow-read --allow-env --allow-ffi --env=.env.dev bot/src/deploy-commands.ts"
+    "db:backup": "mkdir -p data && docker compose --profile tools run --rm db-tools cp /prod-data/sqlite.db /data/sqlite.prod.backup.db",
+    "db:restore-local": "cp ./data/sqlite.prod.backup.db ./data/sqlite.db"
   },
   "compilerOptions": {
     "strict": true

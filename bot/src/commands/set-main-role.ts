@@ -2,7 +2,7 @@ import {
   CommandInteraction,
   MessageFlags,
   SlashCommandBuilder,
-} from "npm:discord.js";
+} from "discord.js";
 import { type Lane, lanes } from "@adteemo/api/schema";
 import { ROLE_DISPLAY_NAMES } from "../constants.ts";
 import { apiClient } from "../api_client.ts";
