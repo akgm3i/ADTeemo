@@ -14,7 +14,7 @@ import {
   newMockGuildBuilder,
 } from "../test_utils.ts";
 import { GuildScheduledEventStatus, MessageFlags } from "discord.js";
-import { t, m } from "@adteemo/messages";
+import { m, t } from "@adteemo/messages";
 
 describe("Command: cancel-custom-game", () => {
   afterEach(() => {

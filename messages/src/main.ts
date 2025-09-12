@@ -1,6 +1,6 @@
 import * as path from "@std/path";
 import { z } from "zod";
-import systemMessages from "../../../messages/ja/system.json" with {
+import systemMessages from "../ja/system.json" with {
   type: "json",
 };
 
@@ -16,9 +16,9 @@ const messagesSchema = z.record(messageValueSchema);
 
 // Utility type to generate all dot-separated paths of a nested object.
 type NestedKey<T> = T extends object ? {
-    [K in keyof T]-?: K extends string | number ?
-      `${K}` | `${K}.${NestedKey<T[K]>}`
-    : never;
+    [K in keyof T]-?: K extends string | number
+      ? `${K}` | `${K}.${NestedKey<T[K]>}`
+      : never;
   }[keyof T]
   : "";
 
@@ -32,17 +32,23 @@ type NestedKeyObject<T> = {
 
 // --- Message loading and validation ---
 
-function loadMessages(lang: string, theme: string): z.infer<typeof messagesSchema> {
-    const filePath = path.join(Deno.cwd(), "messages", lang, `${theme}.json`);
-    try {
-        const fileContent = Deno.readTextFileSync(filePath);
-        const parsedJson = JSON.parse(fileContent);
-        return messagesSchema.parse(parsedJson);
-    } catch (error) {
-        console.error(`Failed to load or validate message file: ${filePath}`, error);
-        // If any file fails, we might not want to start, but for now, we'll return an empty object.
-        return {};
-    }
+function loadMessages(
+  lang: string,
+  theme: string,
+): z.infer<typeof messagesSchema> {
+  const filePath = path.join(Deno.cwd(), "messages", lang, `${theme}.json`);
+  try {
+    const fileContent = Deno.readTextFileSync(filePath);
+    const parsedJson = JSON.parse(fileContent);
+    return messagesSchema.parse(parsedJson);
+  } catch (error) {
+    console.error(
+      `Failed to load or validate message file: ${filePath}`,
+      error,
+    );
+    // If any file fails, we might not want to start, but for now, we'll return an empty object.
+    return {};
+  }
 }
 
 // TODO: Make language configurable
@@ -53,9 +59,8 @@ const defaultMessages = loadMessages("ja", "system");
 let primaryMessages = defaultMessages;
 
 if (lang !== "ja" || theme !== "system") {
-    primaryMessages = loadMessages(lang, theme);
+  primaryMessages = loadMessages(lang, theme);
 }
-
 
 // --- Key mirror generation for type-safe access ---
 
@@ -77,18 +82,21 @@ function createKeyMirror<T extends object>(
 export const m = createKeyMirror(systemMessages);
 
 // --- t function ---
-function getMessage(messages: Record<string, unknown>, key: string): string | undefined {
-    const keys = key.split(".");
-    let message: unknown = messages;
+function getMessage(
+  messages: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const keys = key.split(".");
+  let message: unknown = messages;
 
-    for (const k of keys) {
-        if (message && typeof message === "object" && k in message) {
-            message = (message as Record<string, unknown>)[k];
-        } else {
-            return undefined;
-        }
+  for (const k of keys) {
+    if (message && typeof message === "object" && k in message) {
+      message = (message as Record<string, unknown>)[k];
+    } else {
+      return undefined;
     }
-    return typeof message === 'string' ? message : undefined;
+  }
+  return typeof message === "string" ? message : undefined;
 }
 
 /**
@@ -101,7 +109,8 @@ export function t(
   key: MessageKey,
   replacements?: Record<string, string | number>,
 ): string {
-  let message = getMessage(primaryMessages, key) ?? getMessage(defaultMessages, key);
+  let message = getMessage(primaryMessages, key) ??
+    getMessage(defaultMessages, key);
 
   if (message === undefined) {
     console.warn(`Message key not found: ${key}`);

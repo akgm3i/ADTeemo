@@ -4,7 +4,7 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import { apiClient } from "../api_client.ts";
-import { t, m } from "@adteemo/messages";
+import { m, t } from "@adteemo/messages";
 
 export const data = new SlashCommandBuilder()
   .setName("health")

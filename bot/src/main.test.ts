@@ -10,7 +10,7 @@ import {
 import { client } from "./main.ts";
 import { newMockChatInputCommandInteractionBuilder } from "./test_utils.ts";
 import type { Command } from "./types.ts";
-import { t, m } from "@adteemo/messages";
+import { m, t } from "@adteemo/messages";
 
 describe("Main Bot Logic", () => {
   describe("InteractionCreate Event", () => {

@@ -13,7 +13,7 @@ import {
 import { execute } from "./setup-roles.ts";
 import { DISCORD_ROLES_TO_MANAGE } from "../constants.ts";
 import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
-import { t, m } from "@adteemo/messages";
+import { m, t } from "@adteemo/messages";
 
 describe("Setup Roles Command", () => {
   it("ギルド（サーバー）外でコマンドを実行すると、エラーメッセージを返信する", async () => {

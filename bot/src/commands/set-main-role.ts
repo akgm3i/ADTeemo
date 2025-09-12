@@ -6,7 +6,7 @@ import {
 import { type Lane, lanes } from "@adteemo/api/schema";
 import { ROLE_DISPLAY_NAMES } from "../constants.ts";
 import { apiClient } from "../api_client.ts";
-import { t, m } from "@adteemo/messages";
+import { m, t } from "@adteemo/messages";
 
 export const data = new SlashCommandBuilder()
   .setName("set-main-role")

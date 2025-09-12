@@ -8,7 +8,7 @@ import {
 } from "discord.js";
 import { format, parse } from "@std/datetime";
 import { apiClient } from "../api_client.ts";
-import { t, m } from "@adteemo/messages";
+import { m, t } from "@adteemo/messages";
 
 function parseDate(dateStr: string, timeStr: string): Date | null {
   const now = new Date();

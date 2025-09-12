@@ -3,7 +3,7 @@
     "setMainRole": {
       "success": "メインロールを「{role}」に設定しました。",
       "failure": "メインロールの設定に失敗しました。 {error}",
-      "invalidRole": "無効なロールです。 `TOP`, `JG`, `MID`, `BOT`, `SUP` のいずれかを指定してください。"
+      "invalidRole": "無効なロールです。 `Top`、`JG`、`Mid`、`Bot`、`Sup` のいずれかを指定してください。"
     }
   },
   "customGame": {

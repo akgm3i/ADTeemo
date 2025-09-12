@@ -21,13 +21,12 @@ function loadJson(filePath: string): Record<string, unknown> {
 }
 
 function get(obj: Record<string, unknown>, keyPath: string): unknown {
-  return keyPath.split(".").reduce(
-    (acc, key) =>
-      (acc && typeof acc === "object" && key in acc)
-        ? (acc as Record<string, unknown>)[key]
-        : undefined,
-    obj,
-  );
+  return keyPath.split(".").reduce((acc: unknown, key): unknown => {
+    if (acc && typeof acc === "object" && key in acc) {
+      return (acc as Record<string, unknown>)[key];
+    }
+    return undefined;
+  }, obj);
 }
 
 function getAllKeys(

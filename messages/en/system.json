@@ -3,7 +3,7 @@
     "setMainRole": {
       "success": "Your main role has been set to **{role}**.",
       "failure": "Failed to set your main role. {error}",
-      "invalidRole": "Invalid role. Please specify one of `TOP`, `JG`, `MID`, `BOT`, `SUP`."
+      "invalidRole": "Invalid role. Please specify one of `Top`、`JG`、`Mid`、`Bot`、`Sup`."
     }
   },
   "customGame": {

@@ -8,7 +8,7 @@ import {
 } from "discord.js";
 import { apiClient } from "../api_client.ts";
 import { CustomGameEvent } from "../types.ts";
-import { t, m } from "@adteemo/messages";
+import { m, t } from "@adteemo/messages";
 
 export const data = new SlashCommandBuilder()
   .setName("cancel-custom-game")

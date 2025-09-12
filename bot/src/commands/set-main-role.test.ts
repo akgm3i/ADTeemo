@@ -3,7 +3,7 @@ import { describe, it } from "@std/testing/bdd";
 import { stub } from "@std/testing/mock";
 import { execute } from "./set-main-role.ts";
 import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
-import { t, m } from "@adteemo/messages";
+import { m, t } from "@adteemo/messages";
 
 describe("Set Main Role Command", () => {
   describe("execute", () => {

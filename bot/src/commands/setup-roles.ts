@@ -5,7 +5,7 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import { ensureRoles } from "../features/role-management.ts";
-import { t, m } from "@adteemo/messages";
+import { m, t } from "@adteemo/messages";
 
 export const data = new SlashCommandBuilder()
   .setName("setup-roles")

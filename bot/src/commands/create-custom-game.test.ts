@@ -25,7 +25,7 @@ import {
   MessageReaction,
   TextBasedChannel,
 } from "discord.js";
-import { t, m } from "@adteemo/messages";
+import { m, t } from "@adteemo/messages";
 
 describe("Create Custom Game Command", () => {
   afterEach(() => {
