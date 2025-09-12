@@ -773,7 +773,9 @@
       },
       "messages": {
         "dependencies": [
+          "jsr:@std/assert@^1.0.14",
           "jsr:@std/path@^1.1.2",
+          "jsr:@std/testing@^1.0.15",
           "npm:zod@^3.23.8"
         ]
       }

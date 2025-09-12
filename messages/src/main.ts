@@ -42,25 +42,46 @@ function loadMessages(
     const parsedJson = JSON.parse(fileContent);
     return messagesSchema.parse(parsedJson);
   } catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      // Return empty object if file not found, so fallback can be used.
+      return {};
+    }
     console.error(
       `Failed to load or validate message file: ${filePath}`,
       error,
     );
-    // If any file fails, we might not want to start, but for now, we'll return an empty object.
     return {};
   }
 }
 
-// TODO: Make language configurable
-const lang = "ja";
-const theme = Deno.env.get("BOT_MESSAGE_THEME") || "system";
+let defaultMessages: z.infer<typeof messagesSchema> = {};
+let primaryMessages: z.infer<typeof messagesSchema> = {};
 
-const defaultMessages = loadMessages("ja", "system");
-let primaryMessages = defaultMessages;
-
-if (lang !== "ja" || theme !== "system") {
-  primaryMessages = loadMessages(lang, theme);
+interface InitializeMessagesOptions {
+  lang: string;
+  theme?: string;
 }
+
+export function initializeMessages(
+  options: InitializeMessagesOptions = { lang: "ja" },
+) {
+  const { lang } = options;
+  const theme = options.theme ?? Deno.env.get("BOT_MESSAGE_THEME") ?? "system";
+
+  defaultMessages = loadMessages("ja", "system");
+  primaryMessages = defaultMessages;
+
+  if (lang !== "ja" || theme !== "system") {
+    const loaded = loadMessages(lang, theme);
+    if (Object.keys(loaded).length > 0) {
+      primaryMessages = loaded;
+    }
+  }
+}
+
+// Initialize on load for non-test environments.
+// In tests, this can be called again to override.
+initializeMessages();
 
 // --- Key mirror generation for type-safe access ---
 
@@ -81,21 +102,14 @@ function createKeyMirror<T extends object>(
 
 export const m = createKeyMirror(systemMessages);
 
+import { get as getMessageValue } from "./object-path.ts";
+
 // --- t function ---
 function getMessage(
   messages: Record<string, unknown>,
   key: string,
 ): string | undefined {
-  const keys = key.split(".");
-  let message: unknown = messages;
-
-  for (const k of keys) {
-    if (message && typeof message === "object" && k in message) {
-      message = (message as Record<string, unknown>)[k];
-    } else {
-      return undefined;
-    }
-  }
+  const message = getMessageValue(messages, key);
   return typeof message === "string" ? message : undefined;
 }
 

@@ -1,4 +1,5 @@
-import * as path from "jsr:@std/path@^1.1.2";
+import * as path from "@std/path";
+import { get, getAllKeys } from "./object-path.ts";
 
 const CWD = Deno.cwd();
 const MESSAGES_DIR = path.join(CWD, "messages");
@@ -10,47 +11,43 @@ const TARGET_FILES = [
   path.join(MESSAGES_DIR, "en", "teemo.json"),
 ];
 
-function loadJson(filePath: string): Record<string, unknown> {
+function loadJson(filePath: string): Record<string, unknown> | null {
   try {
     const content = Deno.readTextFileSync(filePath);
     return JSON.parse(content);
   } catch (error) {
-    console.error(`Error loading JSON from ${filePath}:`, error);
+    if (error instanceof Deno.errors.NotFound) {
+      return null;
+    }
+    console.error(`Error processing file ${filePath}:`, error);
     Deno.exit(1);
   }
 }
 
-function get(obj: Record<string, unknown>, keyPath: string): unknown {
-  return keyPath.split(".").reduce((acc: unknown, key): unknown => {
-    if (acc && typeof acc === "object" && key in acc) {
-      return (acc as Record<string, unknown>)[key];
-    }
-    return undefined;
-  }, obj);
-}
-
-function getAllKeys(
-  obj: Record<string, unknown>,
-  prefix = "",
-): string[] {
-  return Object.entries(obj).flatMap(([key, value]) => {
-    const newKey = prefix ? `${prefix}.${key}` : key;
-    if (typeof value === "object" && value !== null) {
-      return getAllKeys(value as Record<string, unknown>, newKey);
-    }
-    return newKey;
-  });
-}
-
-function main() {
+export function main() {
   console.log(`Source of truth: ${path.relative(CWD, SOURCE_FILE)}`);
   const sourceMessages = loadJson(SOURCE_FILE);
+  if (sourceMessages === null) {
+    console.error(
+      `❌ Source file not found, stopping: ${path.relative(CWD, SOURCE_FILE)}`,
+    );
+    Deno.exit(1);
+  }
   const sourceKeys = getAllKeys(sourceMessages);
   let missingKeysFound = false;
+  let filesSkipped = false;
 
   for (const targetFile of TARGET_FILES) {
-    console.log(`\nChecking: ${path.relative(CWD, targetFile)}`);
+    console.log(`
+Checking: ${path.relative(CWD, targetFile)}`);
     const targetMessages = loadJson(targetFile);
+
+    if (targetMessages === null) {
+      console.warn(`  - File not found, skipping.`);
+      filesSkipped = true;
+      continue;
+    }
+
     let missingCount = 0;
 
     for (const key of sourceKeys) {
@@ -73,8 +70,15 @@ function main() {
 
   if (missingKeysFound) {
     console.error(
-      "\nSome message files are out of sync with the source of truth.",
+      "\n❌ Some message files are out of sync with the source of truth.",
     );
+  }
+
+  if (filesSkipped) {
+    console.error("\n❌ Some target files were not found and were skipped.");
+  }
+
+  if (missingKeysFound || filesSkipped) {
     Deno.exit(1);
   } else {
     console.log("\n✨ All message files are in sync!");
