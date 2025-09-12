@@ -1,0 +1,70 @@
+{
+  "userManagement": {
+    "setMainRole": {
+      "success": "Your main role has been set to **{role}**.",
+      "failure": "Failed to set your main role. {error}",
+      "invalidRole": "Invalid role. Please specify one of `Top`、`JG`、`Mid`、`Bot`、`Sup`."
+    }
+  },
+  "customGame": {
+    "create": {
+      "success": "Created a custom game event. Posting a recruitment message.",
+      "recruitmentMessage": "### ⚔️ Custom Game Recruitment ⚔️\n\n@Custom\n\nStarting a custom game **{eventName}** at **{startTime}**!\nIf you want to participate, please react with your desired role.\n\nMultiple roles are welcome.\n\nOrganizer: {organizer}",
+      "error": {
+        "invalidDateTimeFormat": "Invalid date or time format. Please use MM/DD HH:mm format."
+      },
+      "info": {
+        "dateTooFarWarning": "\n⚠️ Warning: The start date is more than a month away."
+      }
+    },
+    "cancel": {
+      "success": "The event has been canceled.",
+      "error": {
+        "fetchEvents": "Failed to fetch your events.",
+        "generic": "There was an error canceling the event.",
+        "interaction": "An error occurred while canceling the event. Please try again later."
+      },
+      "info": {
+        "noActiveEvents": "You have no active events to cancel.",
+        "selectPlaceholder": "Select an event to cancel",
+        "selectMessage": "Select an event to cancel:"
+      }
+    }
+  },
+  "guild": {
+    "setup": {
+      "success": {
+        "created": "✅ Setup complete! Created roles ({count}): `{roles}`",
+        "existing": "\nExisting roles ({count}): `{roles}`",
+        "noAction": "✅ All necessary roles already exist."
+      },
+      "error": {
+        "permission": "❌ Permission Error.\n{message}",
+        "unknown": "❌ Unknown Error.\nAn error occurred while setting up roles."
+      }
+    },
+    "welcome": {
+      "success": {
+        "createdRoles": "Thank you for inviting me to your server, \"{guildName}\"!\nI have automatically created the necessary roles ({count}): {roles}",
+        "noAction": "Thank you for inviting me to your server, \"{guildName}\"!\nAll necessary roles already existed, so I didn't need to create any."
+      },
+      "error": {
+        "permission": "I was invited to \"{guildName}\", but I don't have the \"Manage Roles\" permission. Please check the server settings.",
+        "unknown": "An unknown error occurred while setting up roles in \"{guildName}\"."
+      }
+    }
+  },
+  "common": {
+    "error": {
+      "command": "There was an error while executing this command!"
+    },
+    "info": {
+      "guildOnlyCommand": "This command can only be used in a server."
+    }
+  },
+  "health": {
+    "error": {
+      "failure": "Failed to check the bot's health. {error}"
+    }
+  }
+}

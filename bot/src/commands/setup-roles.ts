@@ -5,6 +5,7 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import { ensureRoles } from "../features/role-management.ts";
+import { formatMessage, messageKeys } from "../messages.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("setup-roles")
@@ -16,7 +17,7 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: CommandInteraction) {
   if (!interaction.guild) {
     await interaction.reply({
-      content: "This command can only be used in a server.",
+      content: formatMessage(messageKeys.common.info.guildOnlyCommand),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -31,26 +32,28 @@ export async function execute(interaction: CommandInteraction) {
     case "SUCCESS": {
       const { created, existing } = result.summary;
       if (created.length > 0) {
-        message =
-          `✅ セットアップ完了！\n作成したロール (${created.length}件): \`${
-            created.join(", ")
-          }\``;
+        message = formatMessage(messageKeys.guild.setup.success.created, {
+          count: created.length,
+          roles: created.join(", "),
+        });
         if (existing.length > 0) {
-          message += `\n既存のロール (${existing.length}件): \`${
-            existing.join(", ")
-          }\``;
+          message += formatMessage(messageKeys.guild.setup.success.existing, {
+            count: existing.length,
+            roles: existing.join(", "),
+          });
         }
       } else {
-        message = `✅ 必要なロールはすべて存在しています。`;
+        message = formatMessage(messageKeys.guild.setup.success.noAction);
       }
       break;
     }
     case "PERMISSION_ERROR":
-      message = `❌ 権限エラー。\n${result.message}`;
+      message = formatMessage(messageKeys.guild.setup.error.permission, {
+        message: result.message,
+      });
       break;
     case "UNKNOWN_ERROR":
-      message =
-        `❌ 不明なエラー。\nロールのセットアップ中にエラーが発生しました。`;
+      message = formatMessage(messageKeys.guild.setup.error.unknown);
       console.error(
         `Error setting up roles via command in guild ${interaction.guild.id}:`,
         result.error,

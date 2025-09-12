@@ -1,5 +1,5 @@
 {
-  "workspace": ["./api", "./bot"],
+  "workspace": ["./api", "./bot", "./messages"],
   "tasks": {
     "dev:all": {"dependencies": ["dev:api", "dev:bot"]},
     "dev:api": "deno task --cwd=api dev",
@@ -7,6 +7,7 @@
     "test:all": "deno test --allow-env --allow-read --allow-sys --allow-ffi",
     "test:allcov": "deno test --allow-env --allow-read --allow-sys --allow-ffi --coverage",
     "deploy-commands": "deno run --allow-net --allow-read --allow-env --allow-ffi --env=.env.dev bot/src/deploy-commands.ts",
+    "check:messages": "deno run --allow-read messages/src/check-messages.ts",
     "db:push": "deno run --allow-env --allow-read --allow-sys --allow-run --allow-ffi --node-modules-dir npm:drizzle-kit push",
     "db:generate": "deno run --allow-env --allow-read --allow-sys --allow-run --allow-ffi --allow-write --node-modules-dir npm:drizzle-kit generate",
     "db:migrate": "deno run --allow-ffi --node-modules-dir npm:drizzle-kit migrate",
@@ -17,7 +18,7 @@
     "strict": true
   },
   "fmt": {
-    "include": ["api/", "bot/"],
+    "include": ["api/", "bot/", "messages/"],
     "exclude": ["node_modules/", "coverage/"],
     "useTabs": false,
     "indentWidth": 2,
@@ -25,7 +26,7 @@
     "proseWrap": "preserve"
   },
   "lint": {
-    "include": ["api/", "bot/"],
+    "include": ["api/", "bot/", "messages/"],
     "exclude": ["node_modules/", "coeverage/"],
     "rules": {
       "tags": ["recommended"]

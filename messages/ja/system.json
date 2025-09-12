@@ -1,0 +1,70 @@
+{
+  "userManagement": {
+    "setMainRole": {
+      "success": "メインロールを「{role}」に設定しました。",
+      "failure": "メインロールの設定に失敗しました。 {error}",
+      "invalidRole": "無効なロールです。 `Top`、`JG`、`Mid`、`Bot`、`Sup` のいずれかを指定してください。"
+    }
+  },
+  "customGame": {
+    "create": {
+      "success": "カスタムゲームのイベントを作成しました。募集メッセージを投稿します。",
+      "recruitmentMessage": "### ⚔️ カスタムゲーム参加者募集 ⚔️\n\n@Custom\n\n**{startTime}** からカスタムゲーム **{eventName}** を開催します！\n参加希望の方は、希望するロールのリアクションを押してください。\n\n複数ロールでの参加も可能です。\n\n主催者: {organizer}",
+      "error": {
+        "invalidDateTimeFormat": "日付または時刻のフォーマットが正しくありません。MM/DD HH:mmの形式で入力してください。"
+      },
+      "info": {
+        "dateTooFarWarning": "\n⚠️ 警告: 開始日時が1ヶ月以上先です。"
+      }
+    },
+    "cancel": {
+      "success": "イベントはキャンセルされました。",
+      "error": {
+        "fetchEvents": "イベントの取得に失敗しました。",
+        "generic": "イベントのキャンセル中にエラーが発生しました。",
+        "interaction": "イベントのキャンセル中にエラーが発生しました。後でもう一度お試しください。"
+      },
+      "info": {
+        "noActiveEvents": "キャンセルできるアクティブなイベントがありません。",
+        "selectPlaceholder": "キャンセルするイベントを選択",
+        "selectMessage": "キャンセルするイベントを選択してください:"
+      }
+    }
+  },
+  "guild": {
+    "setup": {
+      "success": {
+        "created": "✅ セットアップ完了！\n作成したロール ({count}件): `{roles}`",
+        "existing": "\n既存のロール ({count}件): `{roles}`",
+        "noAction": "✅ 必要なロールはすべて存在しています。"
+      },
+      "error": {
+        "permission": "❌ 権限エラー。\n{message}",
+        "unknown": "❌ 不明なエラー。\nロールのセットアップ中にエラーが発生しました。"
+      }
+    },
+    "welcome": {
+      "success": {
+        "createdRoles": "サーバー「{guildName}」へのご招待ありがとうございます！\n必要なロール ({count}件) を自動作成しました: {roles}",
+        "noAction": "サーバー「{guildName}」へのご招待ありがとうございます！\n必要なロールはすべて存在していたため、何も作成しませんでした。"
+      },
+      "error": {
+        "permission": "サーバー「{guildName}」に招待されましたが、ロールを作成する権限 (ロールの管理) がありません。サーバー設定を確認してください。",
+        "unknown": "サーバー「{guildName}」でロールのセットアップ中に不明なエラーが発生しました。"
+      }
+    }
+  },
+  "common": {
+    "error": {
+      "command": "コマンドの実行中にエラーが発生しました！"
+    },
+    "info": {
+      "guildOnlyCommand": "このコマンドはサーバー内でのみ実行できます。"
+    }
+  },
+  "health": {
+    "error": {
+      "failure": "ボットのヘルスチェックに失敗しました。 {error}"
+    }
+  }
+}

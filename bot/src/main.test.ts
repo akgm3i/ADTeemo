@@ -10,6 +10,7 @@ import {
 import { client } from "./main.ts";
 import { newMockChatInputCommandInteractionBuilder } from "./test_utils.ts";
 import type { Command } from "./types.ts";
+import { formatMessage, messageKeys } from "./messages.ts";
 
 describe("Main Bot Logic", () => {
   describe("InteractionCreate Event", () => {
@@ -81,7 +82,7 @@ describe("Main Bot Logic", () => {
       assertEquals(executeSpy.calls.length, 1);
       assertEquals(mockInteraction.followUp.calls.length, 1);
       assertEquals(mockInteraction.followUp.calls[0].args[0], {
-        content: "There was an error while executing this command!",
+        content: formatMessage(messageKeys.common.error.command),
         flags: MessageFlags.Ephemeral,
       });
       client.commands.delete("error-command");

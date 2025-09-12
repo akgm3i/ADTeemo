@@ -14,6 +14,7 @@ import {
   newMockGuildBuilder,
 } from "../test_utils.ts";
 import { GuildScheduledEventStatus, MessageFlags } from "discord.js";
+import { formatMessage, messageKeys } from "../messages.ts";
 
 describe("Command: cancel-custom-game", () => {
   afterEach(() => {
@@ -75,7 +76,10 @@ describe("Command: cancel-custom-game", () => {
       }]);
       assertSpyCalls(interaction.editReply, 1);
       const replyOptions = interaction.editReply.calls[0].args[0];
-      assertEquals(replyOptions.content, "Select an event to cancel:");
+      assertEquals(
+        replyOptions.content,
+        formatMessage(messageKeys.customGame.cancel.info.selectMessage),
+      );
       const selectMenu = JSON.parse(
         JSON.stringify(replyOptions.components[0].components[0]),
       );
@@ -123,7 +127,9 @@ describe("Command: cancel-custom-game", () => {
         args: [{ flags: MessageFlags.Ephemeral }],
       });
       assertSpyCall(interaction.editReply, 0, {
-        args: ["You have no active events to cancel."],
+        args: [
+          formatMessage(messageKeys.customGame.cancel.info.noActiveEvents),
+        ],
       });
     });
   });

@@ -17,9 +17,11 @@
     "npm:@libsql/client@~0.15.15": "0.15.15",
     "npm:@types/node@*": "24.2.0",
     "npm:discord.js@^14.22.1": "14.22.1",
+    "npm:drizzle-kit@*": "0.31.4_esbuild@0.25.9",
     "npm:drizzle-kit@~0.31.4": "0.31.4_esbuild@0.25.9",
     "npm:drizzle-orm@~0.44.5": "0.44.5_@libsql+client@0.15.15",
     "npm:drizzle-zod@~0.8.3": "0.8.3_drizzle-orm@0.44.5__@libsql+client@0.15.15_zod@4.1.5_@libsql+client@0.15.15",
+    "npm:zod@^3.23.8": "3.25.76",
     "npm:zod@^4.0.5": "4.1.5",
     "npm:zod@^4.1.5": "4.1.5"
   },
@@ -561,7 +563,7 @@
       "integrity": "sha512-66yVOuvGhKJnTdiqj1/Xaaz9/qzOdRJADpDa68enqS6g3t0kpNkwNYjUuaeXgZfO/UWuIM9HIhSlJ6C5ZraMww==",
       "dependencies": [
         "drizzle-orm",
-        "zod"
+        "zod@4.1.5"
       ]
     },
     "esbuild-register@3.6.0_esbuild@0.25.9": {
@@ -736,6 +738,9 @@
     "ws@8.18.3": {
       "integrity": "sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg=="
     },
+    "zod@3.25.76": {
+      "integrity": "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="
+    },
     "zod@4.1.5": {
       "integrity": "sha512-rcUUZqlLJgBC33IT3PNMgsCq6TzLQEG/Ei/KTCU0PedSWRMAXoOUN+4t/0H+Q8bdnLPdqUYnvboJT0bn/229qg=="
     }
@@ -764,6 +769,14 @@
           "jsr:@std/path@^1.1.2",
           "jsr:@std/testing@^1.0.15",
           "npm:discord.js@^14.22.1"
+        ]
+      },
+      "messages": {
+        "dependencies": [
+          "jsr:@std/assert@^1.0.14",
+          "jsr:@std/path@^1.1.2",
+          "jsr:@std/testing@^1.0.15",
+          "npm:zod@^3.23.8"
         ]
       }
     }

@@ -25,6 +25,7 @@ import {
   MessageReaction,
   TextBasedChannel,
 } from "discord.js";
+import { formatMessage, messageKeys } from "../messages.ts";
 
 describe("Create Custom Game Command", () => {
   afterEach(() => {
@@ -108,8 +109,14 @@ describe("Create Custom Game Command", () => {
           }],
         });
 
-        const expectedMessage =
-          `### ⚔️ カスタムゲーム参加者募集 ⚔️\n\n@Custom\n\n**2025/09/13 21:00** からカスタムゲーム **週末カスタム** を開催します！\n参加希望の方は、希望するロールのリアクションを押してください。\n\n複数ロールでの参加も可能です。\n\n主催者: <@test-user-id>`;
+        const expectedMessage = formatMessage(
+          messageKeys.customGame.create.recruitmentMessage,
+          {
+            startTime: "2025/09/13 21:00",
+            eventName: "週末カスタム",
+            organizer: "<@test-user-id>",
+          },
+        );
         assertSpyCall(sendSpy, 0, { args: [expectedMessage] });
         assertSpyCalls(reactSpy, 5);
 
@@ -117,9 +124,7 @@ describe("Create Custom Game Command", () => {
           args: [{ flags: MessageFlags.Ephemeral }],
         });
         assertSpyCall(interaction.editReply, 0, {
-          args: [
-            "カスタムゲームのイベントを作成しました。募集メッセージを投稿します。",
-          ],
+          args: [formatMessage(messageKeys.customGame.create.success)],
         });
 
         assertSpyCall(createEventStub, 0, {
@@ -245,7 +250,8 @@ describe("Create Custom Game Command", () => {
 
         assertSpyCall(interaction.editReply, 0, {
           args: [
-            "カスタムゲームのイベントを作成しました。募集メッセージを投稿します。\n⚠️ 警告: 開始日時が1ヶ月以上先です。",
+            formatMessage(messageKeys.customGame.create.success) +
+            formatMessage(messageKeys.customGame.create.info.dateTooFarWarning),
           ],
         });
       });
@@ -284,8 +290,9 @@ describe("Create Custom Game Command", () => {
 
         assertSpyCall(interaction.reply, 0, {
           args: [{
-            content:
-              "日付または時刻のフォーマットが正しくありません。MM/DD HH:mmの形式で入力してください。",
+            content: formatMessage(
+              messageKeys.customGame.create.error.invalidDateTimeFormat,
+            ),
             flags: MessageFlags.Ephemeral,
           }],
         });
@@ -304,7 +311,7 @@ describe("Create Custom Game Command", () => {
 
         assertSpyCall(interaction.reply, 0, {
           args: [{
-            content: "このコマンドはサーバー内でのみ実行できます。",
+            content: formatMessage(messageKeys.common.info.guildOnlyCommand),
             flags: MessageFlags.Ephemeral,
           }],
         });

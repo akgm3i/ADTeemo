@@ -8,6 +8,7 @@ import {
 } from "discord.js";
 import { format, parse } from "@std/datetime";
 import { apiClient } from "../api_client.ts";
+import { formatMessage, messageKeys } from "../messages.ts";
 
 function parseDate(dateStr: string, timeStr: string): Date | null {
   const now = new Date();
@@ -65,7 +66,7 @@ export async function execute(interaction: CommandInteraction) {
 
   if (!interaction.inGuild() || !interaction.guild || !interaction.channel) {
     await interaction.reply({
-      content: "このコマンドはサーバー内でのみ実行できます。",
+      content: formatMessage(messageKeys.common.info.guildOnlyCommand),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -81,8 +82,9 @@ export async function execute(interaction: CommandInteraction) {
   const scheduledStartTime = parseDate(dateStr, timeStr);
   if (!scheduledStartTime) {
     await interaction.reply({
-      content:
-        "日付または時刻のフォーマットが正しくありません。MM/DD HH:mmの形式で入力してください。",
+      content: formatMessage(
+        messageKeys.customGame.create.error.invalidDateTimeFormat,
+      ),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -96,29 +98,28 @@ export async function execute(interaction: CommandInteraction) {
     channel: voiceChannel.id,
   });
 
-  let replyContent =
-    "カスタムゲームのイベントを作成しました。募集メッセージを投稿します。";
+  let replyContent = formatMessage(messageKeys.customGame.create.success);
   const oneMonthFromNow = new Date();
   oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
 
   if (scheduledStartTime > oneMonthFromNow) {
-    replyContent += "\n⚠️ 警告: 開始日時が1ヶ月以上先です。";
+    replyContent += formatMessage(
+      messageKeys.customGame.create.info.dateTooFarWarning,
+    );
   }
 
   await interaction.editReply(replyContent);
 
   const displayDate = format(scheduledStartTime, "yyyy/MM/dd HH:mm");
 
-  const recruitmentMessageContent = `### ⚔️ カスタムゲーム参加者募集 ⚔️
-
-@Custom
-
-**${displayDate}** からカスタムゲーム **${eventName}** を開催します！
-参加希望の方は、希望するロールのリアクションを押してください。
-
-複数ロールでの参加も可能です。
-
-主催者: <@${interaction.user.id}>`;
+  const recruitmentMessageContent = formatMessage(
+    messageKeys.customGame.create.recruitmentMessage,
+    {
+      startTime: displayDate,
+      eventName,
+      organizer: `<@${interaction.user.id}>`,
+    },
+  );
 
   const message = await interaction.channel.send(recruitmentMessageContent);
 
