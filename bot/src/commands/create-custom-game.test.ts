@@ -25,7 +25,7 @@ import {
   MessageReaction,
   TextBasedChannel,
 } from "discord.js";
-import { m, t } from "@adteemo/messages";
+import { formatMessage, messageKeys } from "../messages.ts";
 
 describe("Create Custom Game Command", () => {
   afterEach(() => {
@@ -109,11 +109,14 @@ describe("Create Custom Game Command", () => {
           }],
         });
 
-        const expectedMessage = t(m.customGame.create.recruitmentMessage, {
-          startTime: "2025/09/13 21:00",
-          eventName: "週末カスタム",
-          organizer: "<@test-user-id>",
-        });
+        const expectedMessage = formatMessage(
+          messageKeys.customGame.create.recruitmentMessage,
+          {
+            startTime: "2025/09/13 21:00",
+            eventName: "週末カスタム",
+            organizer: "<@test-user-id>",
+          },
+        );
         assertSpyCall(sendSpy, 0, { args: [expectedMessage] });
         assertSpyCalls(reactSpy, 5);
 
@@ -121,7 +124,7 @@ describe("Create Custom Game Command", () => {
           args: [{ flags: MessageFlags.Ephemeral }],
         });
         assertSpyCall(interaction.editReply, 0, {
-          args: [t(m.customGame.create.success)],
+          args: [formatMessage(messageKeys.customGame.create.success)],
         });
 
         assertSpyCall(createEventStub, 0, {
@@ -247,8 +250,8 @@ describe("Create Custom Game Command", () => {
 
         assertSpyCall(interaction.editReply, 0, {
           args: [
-            t(m.customGame.create.success) +
-            t(m.customGame.create.info.dateTooFarWarning),
+            formatMessage(messageKeys.customGame.create.success) +
+            formatMessage(messageKeys.customGame.create.info.dateTooFarWarning),
           ],
         });
       });
@@ -287,7 +290,9 @@ describe("Create Custom Game Command", () => {
 
         assertSpyCall(interaction.reply, 0, {
           args: [{
-            content: t(m.customGame.create.error.invalidDateTimeFormat),
+            content: formatMessage(
+              messageKeys.customGame.create.error.invalidDateTimeFormat,
+            ),
             flags: MessageFlags.Ephemeral,
           }],
         });
@@ -306,7 +311,7 @@ describe("Create Custom Game Command", () => {
 
         assertSpyCall(interaction.reply, 0, {
           args: [{
-            content: t(m.common.info.guildOnlyCommand),
+            content: formatMessage(messageKeys.common.info.guildOnlyCommand),
             flags: MessageFlags.Ephemeral,
           }],
         });

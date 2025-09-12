@@ -14,7 +14,7 @@ import {
   newMockGuildBuilder,
 } from "../test_utils.ts";
 import { GuildScheduledEventStatus, MessageFlags } from "discord.js";
-import { m, t } from "@adteemo/messages";
+import { formatMessage, messageKeys } from "../messages.ts";
 
 describe("Command: cancel-custom-game", () => {
   afterEach(() => {
@@ -78,7 +78,7 @@ describe("Command: cancel-custom-game", () => {
       const replyOptions = interaction.editReply.calls[0].args[0];
       assertEquals(
         replyOptions.content,
-        t(m.customGame.cancel.info.selectMessage),
+        formatMessage(messageKeys.customGame.cancel.info.selectMessage),
       );
       const selectMenu = JSON.parse(
         JSON.stringify(replyOptions.components[0].components[0]),
@@ -127,7 +127,9 @@ describe("Command: cancel-custom-game", () => {
         args: [{ flags: MessageFlags.Ephemeral }],
       });
       assertSpyCall(interaction.editReply, 0, {
-        args: [t(m.customGame.cancel.info.noActiveEvents)],
+        args: [
+          formatMessage(messageKeys.customGame.cancel.info.noActiveEvents),
+        ],
       });
     });
   });

@@ -5,7 +5,7 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import { ensureRoles } from "../features/role-management.ts";
-import { m, t } from "@adteemo/messages";
+import { formatMessage, messageKeys } from "../messages.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("setup-roles")
@@ -17,7 +17,7 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: CommandInteraction) {
   if (!interaction.guild) {
     await interaction.reply({
-      content: t(m.common.info.guildOnlyCommand),
+      content: formatMessage(messageKeys.common.info.guildOnlyCommand),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -32,26 +32,28 @@ export async function execute(interaction: CommandInteraction) {
     case "SUCCESS": {
       const { created, existing } = result.summary;
       if (created.length > 0) {
-        message = t(m.guild.setup.success.created, {
+        message = formatMessage(messageKeys.guild.setup.success.created, {
           count: created.length,
           roles: created.join(", "),
         });
         if (existing.length > 0) {
-          message += t(m.guild.setup.success.existing, {
+          message += formatMessage(messageKeys.guild.setup.success.existing, {
             count: existing.length,
             roles: existing.join(", "),
           });
         }
       } else {
-        message = t(m.guild.setup.success.noAction);
+        message = formatMessage(messageKeys.guild.setup.success.noAction);
       }
       break;
     }
     case "PERMISSION_ERROR":
-      message = t(m.guild.setup.error.permission, { message: result.message });
+      message = formatMessage(messageKeys.guild.setup.error.permission, {
+        message: result.message,
+      });
       break;
     case "UNKNOWN_ERROR":
-      message = t(m.guild.setup.error.unknown);
+      message = formatMessage(messageKeys.guild.setup.error.unknown);
       console.error(
         `Error setting up roles via command in guild ${interaction.guild.id}:`,
         result.error,

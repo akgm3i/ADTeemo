@@ -4,7 +4,7 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import { apiClient } from "../api_client.ts";
-import { m, t } from "@adteemo/messages";
+import { formatMessage, messageKeys } from "../messages.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("health")
@@ -21,7 +21,9 @@ export async function execute(interaction: CommandInteraction) {
     await interaction.editReply(result.message);
   } else {
     await interaction.editReply(
-      t(m.health.error.failure, { error: result.error || "" }),
+      formatMessage(messageKeys.health.error.failure, {
+        error: result.error || "",
+      }),
     );
   }
 }

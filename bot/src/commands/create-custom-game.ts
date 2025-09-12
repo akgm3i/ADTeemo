@@ -8,7 +8,7 @@ import {
 } from "discord.js";
 import { format, parse } from "@std/datetime";
 import { apiClient } from "../api_client.ts";
-import { m, t } from "@adteemo/messages";
+import { formatMessage, messageKeys } from "../messages.ts";
 
 function parseDate(dateStr: string, timeStr: string): Date | null {
   const now = new Date();
@@ -66,7 +66,7 @@ export async function execute(interaction: CommandInteraction) {
 
   if (!interaction.inGuild() || !interaction.guild || !interaction.channel) {
     await interaction.reply({
-      content: t(m.common.info.guildOnlyCommand),
+      content: formatMessage(messageKeys.common.info.guildOnlyCommand),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -82,7 +82,9 @@ export async function execute(interaction: CommandInteraction) {
   const scheduledStartTime = parseDate(dateStr, timeStr);
   if (!scheduledStartTime) {
     await interaction.reply({
-      content: t(m.customGame.create.error.invalidDateTimeFormat),
+      content: formatMessage(
+        messageKeys.customGame.create.error.invalidDateTimeFormat,
+      ),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -96,23 +98,28 @@ export async function execute(interaction: CommandInteraction) {
     channel: voiceChannel.id,
   });
 
-  let replyContent = t(m.customGame.create.success);
+  let replyContent = formatMessage(messageKeys.customGame.create.success);
   const oneMonthFromNow = new Date();
   oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
 
   if (scheduledStartTime > oneMonthFromNow) {
-    replyContent += t(m.customGame.create.info.dateTooFarWarning);
+    replyContent += formatMessage(
+      messageKeys.customGame.create.info.dateTooFarWarning,
+    );
   }
 
   await interaction.editReply(replyContent);
 
   const displayDate = format(scheduledStartTime, "yyyy/MM/dd HH:mm");
 
-  const recruitmentMessageContent = t(m.customGame.create.recruitmentMessage, {
-    startTime: displayDate,
-    eventName,
-    organizer: `<@${interaction.user.id}>`,
-  });
+  const recruitmentMessageContent = formatMessage(
+    messageKeys.customGame.create.recruitmentMessage,
+    {
+      startTime: displayDate,
+      eventName,
+      organizer: `<@${interaction.user.id}>`,
+    },
+  );
 
   const message = await interaction.channel.send(recruitmentMessageContent);
 

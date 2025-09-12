@@ -2,7 +2,7 @@ import { assertEquals } from "@std/assert";
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
 import { assertSpyCalls, spy, stub } from "@std/testing/mock";
 import type { Stub } from "@std/testing/mock";
-import { initializeMessages, t } from "./main.ts";
+import { initializeMessages } from "./main.ts";
 import type { MessageKey } from "./main.ts";
 
 const MOCK_JA_SYSTEM = {
@@ -20,8 +20,12 @@ const MOCK_JA_TEEMO = {
   },
 };
 
-describe("t (Message Translation)", () => {
+describe("formatMessage (Message Translation)", () => {
   let readTextFileSyncStub: Stub<typeof Deno>;
+  let formatMessage: (
+    key: MessageKey,
+    replacements?: Record<string, string | number>,
+  ) => string;
 
   beforeEach(() => {
     readTextFileSyncStub = stub(Deno, "readTextFileSync", (path) => {
@@ -45,7 +49,7 @@ describe("t (Message Translation)", () => {
 
     beforeEach(() => {
       envStub = stub(Deno.env, "get", () => undefined);
-      initializeMessages({ lang: "ja" });
+      ({ formatMessage } = initializeMessages({ lang: "ja" }));
     });
 
     afterEach(() => {
@@ -53,12 +57,12 @@ describe("t (Message Translation)", () => {
     });
 
     it("指定したキーのメッセージを返す", () => {
-      assertEquals(t("common.ok" as MessageKey), "はい");
+      assertEquals(formatMessage("common.ok" as MessageKey), "はい");
     });
 
     it("プレースホルダーを置換したメッセージを返す", () => {
       assertEquals(
-        t("greeting" as MessageKey, { name: "ゲスト" }),
+        formatMessage("greeting" as MessageKey, { name: "ゲスト" }),
         "こんにちは、ゲストさん",
       );
     });
@@ -66,7 +70,7 @@ describe("t (Message Translation)", () => {
     it("見つからないキーについては、警告を表示しキー自体を文字列として返す", () => {
       const missingKey = "a.b.c" as MessageKey;
       using consoleWarnSpy = spy(console, "warn");
-      assertEquals(t(missingKey), missingKey);
+      assertEquals(formatMessage(missingKey), missingKey);
       assertSpyCalls(consoleWarnSpy, 1);
     });
   });
@@ -80,7 +84,7 @@ describe("t (Message Translation)", () => {
         "get",
         (key) => (key === "BOT_MESSAGE_THEME" ? "teemo" : undefined),
       );
-      initializeMessages({ lang: "ja", theme: "teemo" });
+      ({ formatMessage } = initializeMessages({ lang: "ja", theme: "teemo" }));
     });
 
     afterEach(() => {
@@ -89,14 +93,14 @@ describe("t (Message Translation)", () => {
 
     it("テーマに存在するキーは、テーマのメッセージを優先して返す", () => {
       assertEquals(
-        t("greeting" as MessageKey, { name: "隊長" }),
+        formatMessage("greeting" as MessageKey, { name: "隊長" }),
         "やぁ、隊長！",
       );
-      assertEquals(t("common.ok" as MessageKey), "調子はどう？");
+      assertEquals(formatMessage("common.ok" as MessageKey), "調子はどう？");
     });
 
     it("テーマに存在しないがデフォルトには存在するキーは、デフォルトのメッセージを返す", () => {
-      assertEquals(t("common.cancel" as MessageKey), "キャンセル");
+      assertEquals(formatMessage("common.cancel" as MessageKey), "キャンセル");
     });
   });
 });

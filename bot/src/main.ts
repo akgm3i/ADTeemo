@@ -9,7 +9,7 @@ import {
 import { ensureRoles } from "./features/role-management.ts";
 import { loadCommands } from "./common/command_loader.ts";
 import { apiClient } from "./api_client.ts";
-import { m, t } from "@adteemo/messages";
+import { formatMessage, messageKeys } from "./messages.ts";
 
 // Create a new client instance
 const client = new Client({
@@ -56,12 +56,12 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       console.error(error);
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp({
-          content: t(m.common.error.command),
+          content: formatMessage(messageKeys.common.error.command),
           flags: MessageFlags.Ephemeral,
         });
       } else {
         await interaction.reply({
-          content: t(m.common.error.command),
+          content: formatMessage(messageKeys.common.error.command),
           flags: MessageFlags.Ephemeral,
         });
       }
@@ -87,7 +87,9 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
             deleteResult.error,
           );
           await interaction.editReply({
-            content: t(m.customGame.cancel.error.interaction),
+            content: formatMessage(
+              messageKeys.customGame.cancel.error.interaction,
+            ),
             components: [],
           });
           return;
@@ -116,13 +118,13 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         }
 
         await interaction.editReply({
-          content: t(m.customGame.cancel.success),
+          content: formatMessage(messageKeys.customGame.cancel.success),
           components: [],
         });
       } catch (e) {
         console.error("Error handling cancel-event-select:", e);
         await interaction.editReply({
-          content: t(m.customGame.cancel.error.generic),
+          content: formatMessage(messageKeys.customGame.cancel.error.generic),
           components: [],
         });
       }
@@ -143,25 +145,28 @@ client.on(Events.GuildCreate, async (guild) => {
       case "SUCCESS": {
         const createdCount = result.summary.created.length;
         if (createdCount > 0) {
-          message = t(m.guild.welcome.success.createdRoles, {
-            guildName: guild.name,
-            count: createdCount,
-            roles: result.summary.created.join(", "),
-          });
+          message = formatMessage(
+            messageKeys.guild.welcome.success.createdRoles,
+            {
+              guildName: guild.name,
+              count: createdCount,
+              roles: result.summary.created.join(", "),
+            },
+          );
         } else {
-          message = t(m.guild.welcome.success.noAction, {
+          message = formatMessage(messageKeys.guild.welcome.success.noAction, {
             guildName: guild.name,
           });
         }
         break;
       }
       case "PERMISSION_ERROR":
-        message = t(m.guild.welcome.error.permission, {
+        message = formatMessage(messageKeys.guild.welcome.error.permission, {
           guildName: guild.name,
         });
         break;
       case "UNKNOWN_ERROR":
-        message = t(m.guild.welcome.error.unknown, {
+        message = formatMessage(messageKeys.guild.welcome.error.unknown, {
           guildName: guild.name,
         });
         console.error(

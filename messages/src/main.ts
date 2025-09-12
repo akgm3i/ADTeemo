@@ -3,6 +3,7 @@ import { z } from "zod";
 import systemMessages from "../ja/system.json" with {
   type: "json",
 };
+import { get as getMessageValue } from "./object-path.ts";
 
 // Zod schema for a single message entry, which can be a string or a nested object.
 type MessageValue = string | { [key: string]: MessageValue };
@@ -54,9 +55,6 @@ function loadMessages(
   }
 }
 
-let defaultMessages: z.infer<typeof messagesSchema> = {};
-let primaryMessages: z.infer<typeof messagesSchema> = {};
-
 interface InitializeMessagesOptions {
   lang: string;
   theme?: string;
@@ -68,20 +66,57 @@ export function initializeMessages(
   const { lang } = options;
   const theme = options.theme ?? Deno.env.get("BOT_MESSAGE_THEME") ?? "system";
 
-  defaultMessages = loadMessages("ja", "system");
-  primaryMessages = defaultMessages;
+  const defaultMessages = loadMessages("ja", "system");
 
-  if (lang !== "ja" || theme !== "system") {
-    const loaded = loadMessages(lang, theme);
-    if (Object.keys(loaded).length > 0) {
-      primaryMessages = loaded;
-    }
+  const langSystemMessages = (lang === "ja")
+    ? defaultMessages
+    : loadMessages(lang, "system");
+
+  const themeMessages = (theme && theme !== "system")
+    ? loadMessages(lang, theme)
+    : {};
+
+  function getMessage(
+    messages: Record<string, unknown>,
+    key: string,
+  ): string | undefined {
+    const message = getMessageValue(messages, key);
+    return typeof message === "string" ? message : undefined;
   }
-}
 
-// Initialize on load for non-test environments.
-// In tests, this can be called again to override.
-initializeMessages();
+  /**
+   * Retrieves a message string by its key and replaces placeholders.
+   * @param key The key of the message (e.g., messageKeys.customGame.create.success).
+   * @param replacements An object of placeholders to replace (e.g., { eventName: "My Event" }).
+   * @returns The formatted message string.
+   */
+  function formatMessage(
+    key: MessageKey,
+    replacements?: Record<string, string | number>,
+  ): string {
+    let message = getMessage(themeMessages, key) ??
+      getMessage(langSystemMessages, key) ??
+      getMessage(defaultMessages, key);
+
+    if (message === undefined) {
+      console.warn(`Message key not found: ${key}`);
+      return key;
+    }
+
+    if (replacements) {
+      for (const [placeholder, value] of Object.entries(replacements)) {
+        message = message.replace(
+          new RegExp(`{${placeholder}}`, "g"),
+          String(value),
+        );
+      }
+    }
+
+    return message;
+  }
+
+  return { formatMessage };
+}
 
 // --- Key mirror generation for type-safe access ---
 
@@ -100,45 +135,4 @@ function createKeyMirror<T extends object>(
   ) as NestedKeyObject<T>;
 }
 
-export const m = createKeyMirror(systemMessages);
-
-import { get as getMessageValue } from "./object-path.ts";
-
-// --- t function ---
-function getMessage(
-  messages: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  const message = getMessageValue(messages, key);
-  return typeof message === "string" ? message : undefined;
-}
-
-/**
- * Retrieves a message string by its key and replaces placeholders.
- * @param key The key of the message (e.g., m.customGame.create.success).
- * @param replacements An object of placeholders to replace (e.g., { eventName: "My Event" }).
- * @returns The formatted message string.
- */
-export function t(
-  key: MessageKey,
-  replacements?: Record<string, string | number>,
-): string {
-  let message = getMessage(primaryMessages, key) ??
-    getMessage(defaultMessages, key);
-
-  if (message === undefined) {
-    console.warn(`Message key not found: ${key}`);
-    return key;
-  }
-
-  if (replacements) {
-    for (const [placeholder, value] of Object.entries(replacements)) {
-      message = message.replace(
-        new RegExp(`\\{${placeholder}\\}`, "g"),
-        String(value),
-      );
-    }
-  }
-
-  return message;
-}
+export const messageKeys = createKeyMirror(systemMessages);
