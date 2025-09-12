@@ -11,14 +11,13 @@ const client: Client = hcWithType(API_URL);
 async function checkHealth() {
   try {
     const res = await client.health.$get();
-    if (res.ok) {
-      const data = await res.json();
-      return { success: data.ok, message: data.message, error: null };
-    } else {
+    if (!res.ok) {
       const errorBody = await res.text();
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return { success: false, error: `API returned status ${res.status}` };
     }
+    const data = await res.json();
+    return { success: data.ok, message: data.message, error: null };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return { success: false, error: "Failed to communicate with API" };
@@ -32,14 +31,13 @@ async function setMainRole(userId: string, role: Lane) {
       json: { role: role },
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      return { success: data.success, error: null };
-    } else {
+    if (!res.ok) {
       const errorBody = await res.text();
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return { success: false, error: `API returned status ${res.status}` };
     }
+    const data = await res.json();
+    return { success: data.success, error: null };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return { success: false, error: "Failed to communicate with API" };
@@ -56,14 +54,13 @@ async function createCustomGameEvent(event: {
   try {
     const res = await client.events.$post({ json: event });
 
-    if (res.ok) {
-      const data = await res.json();
-      return { success: data.success, error: null };
-    } else {
+    if (!res.ok) {
       const errorBody = await res.text();
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return { success: false, error: `API returned status ${res.status}` };
     }
+    const data = await res.json();
+    return { success: data.success, error: null };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return { success: false, error: "Failed to communicate with API" };
@@ -76,10 +73,7 @@ async function getCustomGameEventsByCreatorId(creatorId: string) {
       param: { creatorId },
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      return { success: data.success, events: data.events, error: null };
-    } else {
+    if (!res.ok) {
       const errorBody = await res.text();
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return {
@@ -88,6 +82,8 @@ async function getCustomGameEventsByCreatorId(creatorId: string) {
         error: `API returned status ${res.status}`,
       };
     }
+    const data = await res.json();
+    return { success: data.success, events: data.events, error: null };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return {
@@ -104,14 +100,13 @@ async function deleteCustomGameEvent(discordEventId: string) {
       param: { discordEventId },
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      return { success: data.success, error: null };
-    } else {
+    if (!res.ok) {
       const errorBody = await res.text();
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return { success: false, error: `API returned status ${res.status}` };
     }
+    const data = await res.json();
+    return { success: data.success, error: null };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return { success: false, error: "Failed to communicate with API" };
@@ -124,21 +119,24 @@ async function getTodaysCustomGameEventByCreatorId(creatorId: string) {
       param: { creatorId },
     });
 
-    const data = await res.json();
     if (!res.ok) {
-      console.error(`API Error: ${res.status} ${res.statusText}`, data);
-      const error = (data as {error?: string}).error || `API returned status ${res.status}`;
-      return { success: false, event: null, error };
+      const errorBody = await res.text();
+      console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
+      try {
+        const errorJson = JSON.parse(errorBody);
+        const error = (errorJson as { error?: string }).error || `API returned status ${res.status}`;
+        return { success: false, event: null, error };
+      } catch {
+        return { success: false, event: null, error: `API returned status ${res.status}` };
+      }
     }
 
-    // Hono's hc client treats any 2xx as "ok", so we still need to check our custom success flag.
+    const data = await res.json();
     if ("success" in data && data.success) {
       return { success: true, event: data.event, error: null };
     }
+    return { success: false, event: null, error: (data as {error?: string}).error ?? "API returned a non-success response" };
 
-    // This case handles 2xx responses that are not logical successes.
-    const error = (data as { error?: string }).error || "API returned a non-success response";
-    return { success: false, event: null, error };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return {
