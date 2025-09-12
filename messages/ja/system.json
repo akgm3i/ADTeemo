@@ -29,6 +29,16 @@
         "selectPlaceholder": "キャンセルするイベントを選択",
         "selectMessage": "キャンセルするイベントを選択してください:"
       }
+    },
+    "split": {
+      "success": "### チーム分け完了！\n\n各プレイヤーをボイスチャンネルに移動しました。\n\n**Team 1 (Red Team)**\n{teamA}\n**Team 2 (Blue Team)**\n{teamB}",
+      "error": {
+        "noEventFound": "あなたが今日作成したアクティブなイベントが見つかりませんでした。",
+        "noRecruitmentMessage": "参加者募集メッセージが見つかりませんでした。",
+        "invalidPlayerCount": "参加者が10人ではありません（現在 {count}人）。",
+        "invalidRoleCount": "ロール「{role}」の参加者が2人ではありません。",
+        "noVoiceChannels": "「Red Team」または「Blue Team」のボイスチャンネルが見つかりませんでした。"
+      }
     }
   },
   "guild": {

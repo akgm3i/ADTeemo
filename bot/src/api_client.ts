@@ -118,10 +118,42 @@ async function deleteCustomGameEvent(discordEventId: string) {
   }
 }
 
+async function getTodaysCustomGameEventByCreatorId(creatorId: string) {
+  try {
+    const res = await client.events.today["by-creator"][":creatorId"].$get({
+      param: { creatorId },
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      console.error(`API Error: ${res.status} ${res.statusText}`, data);
+      const error = (data as {error?: string}).error || `API returned status ${res.status}`;
+      return { success: false, event: null, error };
+    }
+
+    // Hono's hc client treats any 2xx as "ok", so we still need to check our custom success flag.
+    if ("success" in data && data.success) {
+      return { success: true, event: data.event, error: null };
+    }
+
+    // This case handles 2xx responses that are not logical successes.
+    const error = (data as { error?: string }).error || "API returned a non-success response";
+    return { success: false, event: null, error };
+  } catch (error) {
+    console.error("Failed to communicate with API", error);
+    return {
+      success: false,
+      event: null,
+      error: "Failed to communicate with API",
+    };
+  }
+}
+
 export const apiClient = {
   checkHealth,
   setMainRole,
   createCustomGameEvent,
   getCustomGameEventsByCreatorId,
   deleteCustomGameEvent,
+  getTodaysCustomGameEventByCreatorId,
 };

@@ -1,5 +1,5 @@
-import { afterEach, describe, it } from "@std/testing/bdd";
-import { assertEquals } from "@std/assert";
+import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
+import { assertEquals, assertExists } from "@std/assert";
 import { db } from "./index.ts";
 import { customGameEvents, users } from "./schema.ts";
 import { dbActions } from "./actions.ts";
@@ -113,6 +113,67 @@ describe("DB actions", () => {
         eventData.recruitmentMessageId,
       );
       assertEquals(userResult?.discordId, eventData.creatorId);
+    });
+  });
+
+  describe("getTodaysCustomGameEventByCreatorId", () => {
+    const creatorId = "today-creator";
+    const otherCreatorId = "other-creator";
+
+    beforeEach(async () => {
+      await dbActions.upsertUser(creatorId);
+      await dbActions.upsertUser(otherCreatorId);
+
+      // Event created today by the target creator
+      await db.insert(customGameEvents).values({
+        name: "Event Today",
+        guildId: "test-guild",
+        creatorId: creatorId,
+        discordScheduledEventId: "event-today",
+        recruitmentMessageId: "msg-today",
+        createdAt: new Date(),
+      });
+
+      // Event created yesterday by the target creator
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      await db.insert(customGameEvents).values({
+        name: "Event Yesterday",
+        guildId: "test-guild",
+        creatorId: creatorId,
+        discordScheduledEventId: "event-yesterday",
+        recruitmentMessageId: "msg-yesterday",
+        createdAt: yesterday,
+      });
+
+      // Event created today by another creator
+      await db.insert(customGameEvents).values({
+        name: "Event Today Other Creator",
+        guildId: "test-guild",
+        creatorId: otherCreatorId,
+        discordScheduledEventId: "event-today-other",
+        recruitmentMessageId: "msg-today-other",
+        createdAt: new Date(),
+      });
+    });
+
+    it("指定したクリエイターが今日作成したイベントを返す", async () => {
+      const result = await dbActions.getTodaysCustomGameEventByCreatorId(
+        creatorId,
+      );
+      assertExists(result);
+      assertEquals(result.name, "Event Today");
+    });
+
+    it("指定したクリエイターが今日作成したイベントがない場合はnullを返す", async () => {
+      // Delete the event for 'today-creator'
+      await db
+        .delete(customGameEvents)
+        .where(eq(customGameEvents.discordScheduledEventId, "event-today"));
+      const result = await dbActions.getTodaysCustomGameEventByCreatorId(
+        creatorId,
+      );
+      assertEquals(result, undefined);
     });
   });
 });

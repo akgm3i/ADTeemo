@@ -29,6 +29,16 @@
         "selectPlaceholder": "Select an event to cancel",
         "selectMessage": "Select an event to cancel:"
       }
+    },
+    "split": {
+      "success": "### Team Split Complete!\n\nI have moved everyone to their voice channels.\n\n**Team 1 (Red Team)**\n{teamA}\n**Team 2 (Blue Team)**\n{teamB}",
+      "error": {
+        "noEventFound": "Could not find an active event created by you for today.",
+        "noRecruitmentMessage": "Could not find the recruitment message.",
+        "invalidPlayerCount": "There must be exactly 10 players to start (currently {count}).",
+        "invalidRoleCount": "There must be exactly 2 players for the {role} role.",
+        "noVoiceChannels": "Could not find the 'Red Team' or 'Blue Team' voice channels."
+      }
     }
   },
   "guild": {

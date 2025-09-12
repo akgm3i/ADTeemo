@@ -107,4 +107,50 @@ describe("Routes: Guild Scheduled Event", () => {
       assertSpyCall(deleteEventStub, 0, { args: ["test-event-id"] });
     });
   });
+
+  describe("GET /events/today/by-creator/:creatorId", () => {
+    it("クリエイターIDを指定してGETリクエストを送信すると、今日作成されたイベントが返される", async () => {
+      const mockEvent = {
+        id: 1,
+        name: "Today's Event",
+        creatorId: "test-creator",
+        createdAt: new Date(),
+        guildId: "guild-id",
+        discordScheduledEventId: "discord-id",
+        recruitmentMessageId: "rec-id",
+      };
+      using getEventStub = stub(
+        dbActions,
+        "getTodaysCustomGameEventByCreatorId",
+        () => Promise.resolve(mockEvent),
+      );
+
+      const res = await client.events.today["by-creator"][":creatorId"].$get({
+        param: { creatorId: "test-creator" },
+      });
+
+      assert(res.ok);
+      const body = await res.json();
+      assertEquals(body.success, true);
+      assertEquals(body.event.name, "Today's Event");
+      assertSpyCall(getEventStub, 0, { args: ["test-creator"] });
+    });
+
+    it("今日作成されたイベントがない場合、404エラーが返される", async () => {
+      using getEventStub = stub(
+        dbActions,
+        "getTodaysCustomGameEventByCreatorId",
+        () => Promise.resolve(undefined),
+      );
+
+      const res = await client.events.today["by-creator"][":creatorId"].$get({
+        param: { creatorId: "non-existent" },
+      });
+
+      assertEquals(res.status, 404);
+      const body = await res.json();
+      assertEquals(body.success, false);
+      assertSpyCall(getEventStub, 0, { args: ["non-existent"] });
+    });
+  });
 });
