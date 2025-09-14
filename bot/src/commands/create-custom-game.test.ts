@@ -134,6 +134,7 @@ describe("Create Custom Game Command", () => {
             creatorId: "test-user-id",
             discordScheduledEventId: "mock-event-id",
             recruitmentMessageId: "mock-message-id",
+            scheduledStartAt: expectedDate,
           }],
         });
       });

@@ -135,5 +135,6 @@ export async function execute(interaction: CommandInteraction) {
     creatorId: interaction.user.id,
     discordScheduledEventId: event.id,
     recruitmentMessageId: message.id,
+    scheduledStartAt: scheduledStartTime,
   });
 }

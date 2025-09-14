@@ -28,6 +28,7 @@ async function createCustomGameEvent(event: {
   creatorId: string;
   discordScheduledEventId: string;
   recruitmentMessageId: string;
+  scheduledStartAt: Date;
 }) {
   // Ensure the creator exists as a user.
   await upsertUser(event.creatorId);
@@ -47,7 +48,7 @@ async function deleteCustomGameEventByDiscordEventId(discordEventId: string) {
   ).execute();
 }
 
-async function getTodaysCustomGameEventByCreatorId(creatorId: string) {
+async function getEventStartingTodayByCreatorId(creatorId: string) {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
@@ -57,8 +58,8 @@ async function getTodaysCustomGameEventByCreatorId(creatorId: string) {
   return await db.query.customGameEvents.findFirst({
     where: and(
       eq(customGameEvents.creatorId, creatorId),
-      gte(customGameEvents.createdAt, todayStart),
-      lte(customGameEvents.createdAt, todayEnd),
+      gte(customGameEvents.scheduledStartAt, todayStart),
+      lte(customGameEvents.scheduledStartAt, todayEnd),
     ),
   });
 }
@@ -69,5 +70,5 @@ export const dbActions = {
   createCustomGameEvent,
   getCustomGameEventsByCreatorId,
   deleteCustomGameEventByDiscordEventId,
-  getTodaysCustomGameEventByCreatorId,
+  getEventStartingTodayByCreatorId,
 };

@@ -22,6 +22,7 @@ describe("Routes: Guild Scheduled Event", () => {
         creatorId: "test-creator",
         discordScheduledEventId: "test-discord-event-id",
         recruitmentMessageId: "test-recruitment-message-id",
+        scheduledStartAt: new Date(),
       };
 
       const res = await client.events.$post(
@@ -64,6 +65,7 @@ describe("Routes: Guild Scheduled Event", () => {
         creatorId: "test-creator",
         discordScheduledEventId: "event-1",
         recruitmentMessageId: "msg-1",
+        scheduledStartAt: new Date(),
         createdAt: new Date(),
       }];
       using getEventsStub = stub(
@@ -109,19 +111,22 @@ describe("Routes: Guild Scheduled Event", () => {
   });
 
   describe("GET /events/today/by-creator/:creatorId", () => {
-    it("クリエイターIDを指定してGETリクエストを送信すると、今日作成されたイベントが返される", async () => {
+    it("クリエイターIDを指定してGETリクエストを送信すると、今日開始のイベントが返される", async () => {
+      const today = new Date();
       const mockEvent = {
         id: 1,
-        name: "Today's Event",
+        name: "Test Event Today",
         creatorId: "test-creator",
-        createdAt: new Date(),
         guildId: "guild-id",
         discordScheduledEventId: "discord-id",
         recruitmentMessageId: "rec-id",
+        scheduledStartAt: today,
+        createdAt: new Date(),
       };
+
       using getEventStub = stub(
         dbActions,
-        "getTodaysCustomGameEventByCreatorId",
+        "getEventStartingTodayByCreatorId",
         () => Promise.resolve(mockEvent),
       );
 
@@ -132,14 +137,14 @@ describe("Routes: Guild Scheduled Event", () => {
       assert(res.ok);
       const body = await res.json();
       assertEquals(body.success, true);
-      assertEquals(body.event.name, "Today's Event");
+      assertEquals(body.event.name, "Test Event Today");
       assertSpyCall(getEventStub, 0, { args: ["test-creator"] });
     });
 
-    it("今日作成されたイベントがない場合、404エラーが返される", async () => {
+    it("今日開始のイベントがない場合、404エラーが返される", async () => {
       using getEventStub = stub(
         dbActions,
-        "getTodaysCustomGameEventByCreatorId",
+        "getEventStartingTodayByCreatorId",
         () => Promise.resolve(undefined),
       );
 
