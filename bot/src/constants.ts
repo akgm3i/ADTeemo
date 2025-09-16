@@ -16,3 +16,14 @@ export const DISCORD_ROLES_TO_MANAGE = [
   "Custom",
 ] as const;
 export type DiscordRole = (typeof DISCORD_ROLES_TO_MANAGE)[number];
+
+export const TEAM_A_VC_NAME = "Red Team";
+export const TEAM_B_VC_NAME = "Blue Team";
+
+export const ROLE_EMOJIS: Record<Lane, string> = {
+  Top: "🇹",
+  Jungle: "🇯",
+  Middle: "🇲",
+  Bottom: "🇧",
+  Support: "🇸",
+};

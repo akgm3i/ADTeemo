@@ -1,5 +1,5 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { relations } from "drizzle-orm";
+import { type InferSelectModel, relations } from "drizzle-orm";
 
 export const lanes = ["Top", "Jungle", "Middle", "Bottom", "Support"] as const;
 export type Lane = (typeof lanes)[number];
@@ -52,6 +52,8 @@ export const customGameEvents = sqliteTable("custom_game_events", {
     () => new Date(),
   ),
 });
+
+export type Event = InferSelectModel<typeof customGameEvents>;
 
 // --- RELATIONS ---
 
