@@ -10,8 +10,9 @@ import {
 import { formatMessage, messageKeys } from "../messages.ts";
 import { matchTracker } from "../features/match_tracking.ts";
 import { apiClient, type MatchParticipant } from "../api_client.ts";
-import { askForStat } from "../features/stat_collector.ts";
-import { v4 as uuidv4 } from "npm:uuid@^9.0.1";
+import { statCollector } from "../features/stat_collector.ts";
+import { v4 as uuidv4 } from "uuid";
+import { MessageFlags } from "discord.js";
 
 export const data = new SlashCommandBuilder()
   .setName("record-match")
@@ -51,8 +52,7 @@ export async function execute(interaction: CommandInteraction) {
     ) as Team;
 
     const reply = await interaction.deferReply({
-      ephemeral: true,
-      fetchReply: true,
+      flags: MessageFlags.Ephemeral,
     });
 
     const participants = await matchTracker.getActiveParticipants();
@@ -61,7 +61,7 @@ export async function execute(interaction: CommandInteraction) {
     for (const participant of participants) {
       const stats: Partial<Stats> = {};
 
-      const kdaString = await askForStat<string>(
+      const kdaString = await statCollector.askForStat<string>(
         interaction,
         participant.user.username,
         /^\d+\/\d+\/\d+$/,
@@ -74,7 +74,7 @@ export async function execute(interaction: CommandInteraction) {
       stats.deaths = d;
       stats.assists = a;
 
-      const cs = await askForStat<number>(
+      const cs = await statCollector.askForStat<number>(
         interaction,
         participant.user.username,
         /^\d+$/,
@@ -84,7 +84,7 @@ export async function execute(interaction: CommandInteraction) {
       if (cs === null) return;
       stats.cs = cs;
 
-      const gold = await askForStat<number>(
+      const gold = await statCollector.askForStat<number>(
         interaction,
         participant.user.username,
         /^\d+$/,

@@ -2,7 +2,7 @@ import { Hono } from "@hono/hono";
 import { logger } from "@hono/hono/logger";
 import { usersRoutes } from "./routes/users.ts";
 import { eventsRoutes } from "./routes/events.ts";
-import matches from "./routes/matches.ts";
+import { matchesRoutes } from "./routes/matches.ts";
 
 const app = new Hono()
   .use("*", logger())
@@ -11,7 +11,7 @@ const app = new Hono()
   })
   .route("/users", usersRoutes)
   .route("/events", eventsRoutes)
-  .route("/matches", matches);
+  .route("/matches", matchesRoutes);
 
 export default app satisfies Deno.ServeDefaultExport;
 export type AppType = typeof app;

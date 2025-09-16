@@ -36,6 +36,7 @@ type MockOptions = {
     getString?: (name: string, required?: boolean) => string | null;
     getChannel?: (name: string, required?: boolean) => Channel | null;
   };
+  deferReplyFn?: (options?: InteractionDeferReplyOptions) => Promise<Message | void>;
 };
 
 export function newMockChatInputCommandInteractionBuilder(
@@ -112,6 +113,13 @@ export function newMockChatInputCommandInteractionBuilder(
       return this;
     },
 
+    withDeferReply(
+      fn: (options?: InteractionDeferReplyOptions) => Promise<Message | void>,
+    ) {
+      props.deferReplyFn = fn;
+      return this;
+    },
+
     setReplied(replied: boolean) {
       props.replied = replied;
       return this;
@@ -127,7 +135,8 @@ export function newMockChatInputCommandInteractionBuilder(
         isButton: () => false,
         commandName: props.commandName,
         deferReply: spy(
-          (_o?: InteractionDeferReplyOptions) => Promise.resolve(),
+          props.deferReplyFn ??
+            ((_o?: InteractionDeferReplyOptions) => Promise.resolve()),
         ),
         editReply: spy(
           (_o: string | MessagePayload | InteractionEditReplyOptions) =>
