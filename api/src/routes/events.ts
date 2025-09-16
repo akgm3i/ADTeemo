@@ -9,6 +9,7 @@ const createEventSchema = z.object({
   creatorId: z.string(),
   discordScheduledEventId: z.string(),
   recruitmentMessageId: z.string(),
+  scheduledStartAt: z.coerce.date(),
 });
 
 export const eventsRoutes = new Hono()
@@ -35,7 +36,7 @@ export const eventsRoutes = new Hono()
   .get("/today/by-creator/:creatorId", async (c) => {
     const { creatorId } = c.req.param();
     try {
-      const event = await dbActions.getTodaysCustomGameEventByCreatorId(
+      const event = await dbActions.getEventStartingTodayByCreatorId(
         creatorId,
       );
       if (!event) {

@@ -36,7 +36,7 @@ export const command: Command = {
     await interaction.deferReply({ ephemeral: true });
 
     // 1. Fetch event for today by the creator
-    const eventResult = await apiClient.getTodaysCustomGameEventByCreatorId(
+    const eventResult = await apiClient.getEventStartingTodayByCreatorId(
       interaction.user.id,
     );
     if (eventResult.success === false || !eventResult.event) {

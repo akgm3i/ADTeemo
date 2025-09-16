@@ -50,6 +50,7 @@ async function createCustomGameEvent(event: {
   creatorId: string;
   discordScheduledEventId: string;
   recruitmentMessageId: string;
+  scheduledStartAt: Date;
 }) {
   try {
     const res = await client.events.$post({ json: event });
@@ -113,7 +114,7 @@ async function deleteCustomGameEvent(discordEventId: string) {
   }
 }
 
-async function getTodaysCustomGameEventByCreatorId(creatorId: string) {
+async function getEventStartingTodayByCreatorId(creatorId: string) {
   try {
     const res = await client.events.today["by-creator"][":creatorId"].$get({
       param: { creatorId },
@@ -124,10 +125,15 @@ async function getTodaysCustomGameEventByCreatorId(creatorId: string) {
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       try {
         const errorJson = JSON.parse(errorBody);
-        const error = (errorJson as { error?: string }).error || `API returned status ${res.status}`;
+        const error = (errorJson as { error?: string }).error ||
+          `API returned status ${res.status}`;
         return { success: false, event: null, error };
       } catch {
-        return { success: false, event: null, error: `API returned status ${res.status}` };
+        return {
+          success: false,
+          event: null,
+          error: `API returned status ${res.status}`,
+        };
       }
     }
 
@@ -135,8 +141,12 @@ async function getTodaysCustomGameEventByCreatorId(creatorId: string) {
     if ("success" in data && data.success) {
       return { success: true, event: data.event, error: null };
     }
-    return { success: false, event: null, error: (data as {error?: string}).error ?? "API returned a non-success response" };
-
+    return {
+      success: false,
+      event: null,
+      error: (data as { error?: string }).error ??
+        "API returned a non-success response",
+    };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return {
@@ -153,5 +163,5 @@ export const apiClient = {
   createCustomGameEvent,
   getCustomGameEventsByCreatorId,
   deleteCustomGameEvent,
-  getTodaysCustomGameEventByCreatorId,
+  getEventStartingTodayByCreatorId,
 };

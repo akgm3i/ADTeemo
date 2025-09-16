@@ -46,6 +46,8 @@ export const customGameEvents = sqliteTable("custom_game_events", {
   discordScheduledEventId: text("discord_scheduled_event_id").notNull()
     .unique(),
   recruitmentMessageId: text("recruitment_message_id").notNull(),
+  scheduledStartAt: integer("scheduled_start_at", { mode: "timestamp" })
+    .notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(
     () => new Date(),
   ),
