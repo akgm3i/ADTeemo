@@ -11,7 +11,7 @@ import { apiClient } from "../api_client.ts";
 import { formatMessage, messageKeys } from "../messages.ts";
 
 function parseDate(dateStr: string, timeStr: string): Date | null {
-  const now = new Date();
+  const now = new Date(Date.now());
   const year = now.getFullYear();
 
   let targetDate: Date;
@@ -135,5 +135,6 @@ export async function execute(interaction: CommandInteraction) {
     creatorId: interaction.user.id,
     discordScheduledEventId: event.id,
     recruitmentMessageId: message.id,
+    scheduledStartAt: scheduledStartTime,
   });
 }

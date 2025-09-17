@@ -9,6 +9,7 @@ const createEventSchema = z.object({
   creatorId: z.string(),
   discordScheduledEventId: z.string(),
   recruitmentMessageId: z.string(),
+  scheduledStartAt: z.coerce.date(),
 });
 
 export const eventsRoutes = new Hono()
@@ -30,6 +31,24 @@ export const eventsRoutes = new Hono()
     } catch (e) {
       console.error(e);
       return c.json({ success: false, error: "Failed to get events" }, 500);
+    }
+  })
+  .get("/today/by-creator/:creatorId", async (c) => {
+    const { creatorId } = c.req.param();
+    try {
+      const event = await dbActions.getEventStartingTodayByCreatorId(
+        creatorId,
+      );
+      if (!event) {
+        return c.json({ success: false, error: "Event not found" }, 404);
+      }
+      return c.json({ success: true, event });
+    } catch (e) {
+      console.error(e);
+      return c.json(
+        { success: false, error: "Failed to get today's event" },
+        500,
+      );
     }
   })
   .delete("/:discordEventId", async (c) => {

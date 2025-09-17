@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, gte, lte } from "drizzle-orm";
 import { createInsertSchema, createUpdateSchema } from "drizzle-zod";
 import { db } from "./index.ts";
 import { customGameEvents, type Lane, users } from "./schema.ts";
@@ -28,6 +28,7 @@ async function createCustomGameEvent(event: {
   creatorId: string;
   discordScheduledEventId: string;
   recruitmentMessageId: string;
+  scheduledStartAt: Date;
 }) {
   // Ensure the creator exists as a user.
   await upsertUser(event.creatorId);
@@ -47,10 +48,27 @@ async function deleteCustomGameEventByDiscordEventId(discordEventId: string) {
   ).execute();
 }
 
+async function getEventStartingTodayByCreatorId(creatorId: string) {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  return await db.query.customGameEvents.findFirst({
+    where: and(
+      eq(customGameEvents.creatorId, creatorId),
+      gte(customGameEvents.scheduledStartAt, todayStart),
+      lte(customGameEvents.scheduledStartAt, todayEnd),
+    ),
+  });
+}
+
 export const dbActions = {
   upsertUser,
   setMainRole,
   createCustomGameEvent,
   getCustomGameEventsByCreatorId,
   deleteCustomGameEventByDiscordEventId,
+  getEventStartingTodayByCreatorId,
 };

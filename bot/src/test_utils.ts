@@ -8,9 +8,9 @@ import {
   type CommandInteraction,
   type CommandInteractionOptionResolver,
   type Guild,
+  type GuildMember,
   GuildScheduledEvent,
   GuildScheduledEventCreateOptions,
-  GuildScheduledEventManager,
   GuildScheduledEventStatus,
   type InteractionDeferReplyOptions,
   type InteractionEditReplyOptions,
@@ -78,6 +78,11 @@ export function newMockChatInputCommandInteractionBuilder(
 
     withGuild(guild: Partial<Guild> | null) {
       props.guild = guild;
+      return this;
+    },
+
+    withUser(user: { id: string }) {
+      props.user = user;
       return this;
     },
 
@@ -216,6 +221,8 @@ export function newMockGuildBuilder(id = "mock-guild-id") {
   const props = {
     id,
     scheduledEvents: new Collection<string, GuildScheduledEvent>(),
+    channels: new Collection<string, Channel>(),
+    members: new Collection<string, GuildMember>(),
     createEventSpy: spy(
       (
         _options: GuildScheduledEventCreateOptions,
@@ -234,18 +241,34 @@ export function newMockGuildBuilder(id = "mock-guild-id") {
       );
       return this;
     },
+    withChannel(channel: Channel) {
+      props.channels.set(channel.id, channel);
+      return this;
+    },
+    withMember(member: GuildMember) {
+      props.members.set(member.id, member);
+      return this;
+    },
     getCreateEventSpy() {
       return props.createEventSpy;
     },
     build() {
-      const mockScheduledEvents = {
-        fetch: () => Promise.resolve(props.scheduledEvents),
-        create: props.createEventSpy,
-      } as unknown as GuildScheduledEventManager;
-
       return {
         id: props.id,
-        scheduledEvents: mockScheduledEvents,
+        scheduledEvents: {
+          fetch: () => Promise.resolve(props.scheduledEvents),
+          create: props.createEventSpy,
+        },
+        channels: {
+          fetch: (id: string) => Promise.resolve(props.channels.get(id)),
+          cache: props.channels,
+        },
+        members: {
+          fetch: (options: { user: string } | string) => {
+            const id = typeof options === "string" ? options : options.user;
+            return Promise.resolve(props.members.get(id));
+          },
+        },
       } as unknown as Guild;
     },
   };

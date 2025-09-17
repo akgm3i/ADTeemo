@@ -22,6 +22,7 @@ describe("Routes: Guild Scheduled Event", () => {
         creatorId: "test-creator",
         discordScheduledEventId: "test-discord-event-id",
         recruitmentMessageId: "test-recruitment-message-id",
+        scheduledStartAt: new Date(),
       };
 
       const res = await client.events.$post(
@@ -64,6 +65,7 @@ describe("Routes: Guild Scheduled Event", () => {
         creatorId: "test-creator",
         discordScheduledEventId: "event-1",
         recruitmentMessageId: "msg-1",
+        scheduledStartAt: new Date(),
         createdAt: new Date(),
       }];
       using getEventsStub = stub(
@@ -105,6 +107,55 @@ describe("Routes: Guild Scheduled Event", () => {
 
       assertEquals(body.success, true);
       assertSpyCall(deleteEventStub, 0, { args: ["test-event-id"] });
+    });
+  });
+
+  describe("GET /events/today/by-creator/:creatorId", () => {
+    it("クリエイターIDを指定してGETリクエストを送信すると、今日開始のイベントが返される", async () => {
+      const today = new Date();
+      const mockEvent = {
+        id: 1,
+        name: "Test Event Today",
+        creatorId: "test-creator",
+        guildId: "guild-id",
+        discordScheduledEventId: "discord-id",
+        recruitmentMessageId: "rec-id",
+        scheduledStartAt: today,
+        createdAt: new Date(),
+      };
+
+      using getEventStub = stub(
+        dbActions,
+        "getEventStartingTodayByCreatorId",
+        () => Promise.resolve(mockEvent),
+      );
+
+      const res = await client.events.today["by-creator"][":creatorId"].$get({
+        param: { creatorId: "test-creator" },
+      });
+
+      assert(res.ok);
+      const body = await res.json();
+      assertEquals(body.success, true);
+      assertEquals(body.event.name, "Test Event Today");
+      assertSpyCall(getEventStub, 0, { args: ["test-creator"] });
+    });
+
+    it("今日開始のイベントがない場合、404エラーが返される", async () => {
+      using getEventStub = stub(
+        dbActions,
+        "getEventStartingTodayByCreatorId",
+        () => Promise.resolve(undefined),
+      );
+
+      const res = await client.events.today["by-creator"][":creatorId"].$get({
+        param: { creatorId: "non-existent" },
+      });
+
+      assertEquals(res.status, 404);
+      const body = await res.json();
+      assertEquals(body.success, false);
+      assertSpyCall(getEventStub, 0, { args: ["non-existent"] });
     });
   });
 });

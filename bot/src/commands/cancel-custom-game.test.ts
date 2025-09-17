@@ -32,6 +32,7 @@ describe("Command: cancel-custom-game", () => {
           guildId: "g",
           creatorId: "c",
           recruitmentMessageId: "m",
+          scheduledStartAt: new Date().toISOString(),
         },
         {
           id: 2,
@@ -41,6 +42,7 @@ describe("Command: cancel-custom-game", () => {
           guildId: "g",
           creatorId: "c",
           recruitmentMessageId: "m",
+          scheduledStartAt: new Date().toISOString(),
         },
       ];
       using getCustomGameEventsStub = stub(
@@ -98,6 +100,7 @@ describe("Command: cancel-custom-game", () => {
           guildId: "g",
           creatorId: "c",
           recruitmentMessageId: "m",
+          scheduledStartAt: new Date().toISOString(),
         },
       ];
       stub(

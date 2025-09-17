@@ -1,5 +1,5 @@
-import { afterEach, describe, it } from "@std/testing/bdd";
-import { assertEquals } from "@std/assert";
+import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
+import { assertEquals, assertExists } from "@std/assert";
 import { db } from "./index.ts";
 import { customGameEvents, users } from "./schema.ts";
 import { dbActions } from "./actions.ts";
@@ -24,6 +24,7 @@ describe("DB actions", () => {
         creatorId: "test-creator-1",
         discordScheduledEventId: "event-1",
         recruitmentMessageId: "msg-1",
+        scheduledStartAt: new Date(),
       };
       const event2 = {
         name: "Event 2",
@@ -31,6 +32,7 @@ describe("DB actions", () => {
         creatorId: "test-creator-2",
         discordScheduledEventId: "event-2",
         recruitmentMessageId: "msg-2",
+        scheduledStartAt: new Date(),
       };
       const event3 = {
         name: "Event 3",
@@ -38,6 +40,7 @@ describe("DB actions", () => {
         creatorId: "test-creator-1",
         discordScheduledEventId: "event-3",
         recruitmentMessageId: "msg-3",
+        scheduledStartAt: new Date(),
       };
       await dbActions.createCustomGameEvent(event1);
       await dbActions.createCustomGameEvent(event2);
@@ -63,6 +66,7 @@ describe("DB actions", () => {
         creatorId: "test-creator",
         discordScheduledEventId: "event-to-delete",
         recruitmentMessageId: "msg-1",
+        scheduledStartAt: new Date(),
       };
       const event2 = {
         name: "Event 2",
@@ -70,6 +74,7 @@ describe("DB actions", () => {
         creatorId: "test-creator",
         discordScheduledEventId: "event-to-keep",
         recruitmentMessageId: "msg-2",
+        scheduledStartAt: new Date(),
       };
       await dbActions.createCustomGameEvent(event1);
       await dbActions.createCustomGameEvent(event2);
@@ -90,6 +95,7 @@ describe("DB actions", () => {
         creatorId: "test-creator-123",
         discordScheduledEventId: "test-discord-event-id-123",
         recruitmentMessageId: "test-recruitment-message-id-123",
+        scheduledStartAt: new Date(),
       };
 
       await dbActions.createCustomGameEvent(eventData);
@@ -113,6 +119,69 @@ describe("DB actions", () => {
         eventData.recruitmentMessageId,
       );
       assertEquals(userResult?.discordId, eventData.creatorId);
+    });
+  });
+
+  describe("getEventStartingTodayByCreatorId", () => {
+    const creatorId = "today-creator";
+    const otherCreatorId = "other-creator";
+
+    beforeEach(async () => {
+      await dbActions.upsertUser(creatorId);
+      await dbActions.upsertUser(otherCreatorId);
+
+      const today = new Date();
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      // Event starting today by the target creator
+      await db.insert(customGameEvents).values({
+        name: "Event Today",
+        guildId: "test-guild",
+        creatorId: creatorId,
+        discordScheduledEventId: "event-today",
+        recruitmentMessageId: "msg-today",
+        scheduledStartAt: today,
+      });
+
+      // Event starting tomorrow by the target creator
+      await db.insert(customGameEvents).values({
+        name: "Event Tomorrow",
+        guildId: "test-guild",
+        creatorId: creatorId,
+        discordScheduledEventId: "event-tomorrow",
+        recruitmentMessageId: "msg-tomorrow",
+        scheduledStartAt: tomorrow,
+      });
+
+      // Event starting today by another creator
+      await db.insert(customGameEvents).values({
+        name: "Event Today Other Creator",
+        guildId: "test-guild",
+        creatorId: otherCreatorId,
+        discordScheduledEventId: "event-today-other",
+        recruitmentMessageId: "msg-today-other",
+        scheduledStartAt: today,
+      });
+    });
+
+    it("指定したクリエイターが今日開始するイベントを返す", async () => {
+      const result = await dbActions.getEventStartingTodayByCreatorId(
+        creatorId,
+      );
+      assertExists(result);
+      assertEquals(result.name, "Event Today");
+    });
+
+    it("指定したクリエイターが今日開始するイベントがない場合はundefinedを返す", async () => {
+      // Delete the event for 'today-creator'
+      await db
+        .delete(customGameEvents)
+        .where(eq(customGameEvents.discordScheduledEventId, "event-today"));
+      const result = await dbActions.getEventStartingTodayByCreatorId(
+        creatorId,
+      );
+      assertEquals(result, undefined);
     });
   });
 });
