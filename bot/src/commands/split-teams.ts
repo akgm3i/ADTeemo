@@ -17,7 +17,7 @@ import {
   TEAM_A_VC_NAME,
   TEAM_B_VC_NAME,
 } from "../constants.ts";
-import type { Event, Lane } from "@adteemo/api/schema";
+import { type Event, type Lane, lanes } from "@adteemo/api/schema";
 
 export const command: Command = {
   data: new SlashCommandBuilder()
@@ -101,14 +101,16 @@ async function fetchEvent(creatorId: string): Promise<Event> {
  * @returns Discordメッセージオブジェクト
  * @throws チャンネルまたはメッセージが見つからない場合にエラーをスローします。
  */
-async function fetchRecruitmentMessage(
+export async function fetchRecruitmentMessage(
   guild: Guild,
   channelId: string,
   messageId: string,
 ): Promise<Message> {
   const channel = await guild.channels.fetch(channelId);
   if (!channel || channel.type !== ChannelType.GuildText) {
-    throw new Error("Error: Could not find the recruitment channel.");
+    throw new Error(
+      formatMessage(messageKeys.customGame.split.error.noRecruitmentChannel),
+    );
   }
 
   const message = await (channel as TextChannel).messages.fetch(messageId);
@@ -128,7 +130,6 @@ async function fetchRecruitmentMessage(
 async function fetchParticipants(recruitmentMessage: Message) {
   const participantsByRole = new Map<Lane, User[]>();
   const allParticipants = new Set<User>();
-  const lanes = Object.keys(ROLE_EMOJIS) as Lane[];
 
   // 各ロールのリアクションを並行して取得
   const reactionPromises = lanes.map(async (lane) => {
@@ -156,7 +157,7 @@ async function fetchParticipants(recruitmentMessage: Message) {
  * @throws 人数が不適切な場合にエラーをスローします。
  */
 function validateParticipants(
-  participantsByRole: Map<Lane, User[]>,
+  participantsByRole: Map<Lane, User[]>, 
   allParticipants: Set<User>,
 ) {
   // 全体の参加者数が10人であるか
@@ -169,7 +170,7 @@ function validateParticipants(
   }
 
   // 各ロールの参加者数が2人であるか
-  for (const lane of Object.keys(ROLE_EMOJIS) as Lane[]) {
+  for (const lane of lanes) {
     const participants = participantsByRole.get(lane);
     if (!participants || participants.length !== 2) {
       throw new Error(
@@ -190,7 +191,7 @@ function splitTeams(participantsByRole: Map<Lane, User[]>) {
   const teamA = new Map<Lane, User>();
   const teamB = new Map<Lane, User>();
 
-  for (const lane of Object.keys(ROLE_EMOJIS) as Lane[]) {
+  for (const lane of lanes) {
     const players = participantsByRole.get(lane)!;
     // プレイヤーをシャッフルしてチームに割り当て
     const shuffled = players.sort(() => 0.5 - Math.random());
@@ -208,17 +209,18 @@ function splitTeams(participantsByRole: Map<Lane, User[]>) {
  * @param teamB - チームBのマップ
  * @throws ボイスチャンネルが見つからない場合にエラーをスローします。
  */
-async function moveMembersToVoiceChannels(
+export async function moveMembersToVoiceChannels(
   guild: Guild,
   teamA: Map<Lane, User>,
   teamB: Map<Lane, User>,
 ) {
   // チームのボイスチャンネルを名前で検索
-  const teamAVc = guild.channels.cache.find((c) =>
-    c.name === TEAM_A_VC_NAME && c.type === ChannelType.GuildVoice
+  const channels = await guild.channels.fetch();
+  const teamAVc = channels.find((c) =>
+    c && c.name === TEAM_A_VC_NAME && c.type === ChannelType.GuildVoice
   );
-  const teamBVc = guild.channels.cache.find((c) =>
-    c.name === TEAM_B_VC_NAME && c.type === ChannelType.GuildVoice
+  const teamBVc = channels.find((c) =>
+    c && c.name === TEAM_B_VC_NAME && c.type === ChannelType.GuildVoice
   );
 
   if (!teamAVc || !teamBVc) {
@@ -251,7 +253,7 @@ async function moveMembersToVoiceChannels(
  * @returns 整形されたチーム情報
  */
 function formatTeam(team: Map<Lane, User>): string {
-  return (Object.keys(ROLE_EMOJIS) as Lane[])
+  return lanes
     .map((lane) => {
       const user = team.get(lane);
       return `${ROLE_DISPLAY_NAMES[lane]}: <@${user!.id}>`;

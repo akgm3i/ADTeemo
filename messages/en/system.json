@@ -35,6 +35,7 @@
       "error": {
         "noEventFound": "Could not find an active event created by you for today.",
         "noRecruitmentMessage": "Could not find the recruitment message.",
+        "noRecruitmentChannel": "Error: Could not find the recruitment channel.",
         "invalidPlayerCount": "There must be exactly 10 players to start (currently {count}).",
         "invalidRoleCount": "There must be exactly 2 players for the {role} role.",
         "noVoiceChannels": "Could not find the 'Red Team' or 'Blue Team' voice channels."
