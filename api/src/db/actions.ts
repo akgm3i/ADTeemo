@@ -1,16 +1,34 @@
 import { and, eq, gte, lte } from "drizzle-orm";
 import { createInsertSchema, createUpdateSchema } from "drizzle-zod";
+import { z } from "zod";
 import { db } from "./index.ts";
-import { customGameEvents, type Lane, users } from "./schema.ts";
+import {
+  customGameEvents,
+  type Lane,
+  matchParticipants,
+  users,
+} from "./schema.ts";
 
 const userInsertSchema = createInsertSchema(users);
 const userUpdateSchema = createUpdateSchema(users);
 const customGameEventInsertSchema = createInsertSchema(customGameEvents);
+const matchParticipantInsertSchema = createInsertSchema(matchParticipants);
 
 async function upsertUser(userId: string) {
   const user = { discordId: userId };
   const parsed = userInsertSchema.parse(user);
   await db.insert(users).values(parsed).onConflictDoNothing().execute();
+  const result = await db.query.users.findFirst({
+    where: eq(users.discordId, userId),
+  });
+  if (!result) {
+    throw new Error("Failed to upsert user");
+  }
+  return result;
+}
+
+async function deleteUser(userId: string) {
+  await db.delete(users).where(eq(users.discordId, userId)).execute();
 }
 
 async function setMainRole(userId: string, role: Lane) {
@@ -64,11 +82,23 @@ async function getEventStartingTodayByCreatorId(creatorId: string) {
   });
 }
 
+async function createMatchParticipant(
+  participantData: z.infer<typeof matchParticipantInsertSchema>,
+) {
+  const parsed = matchParticipantInsertSchema.parse(participantData);
+  const result = await db.insert(matchParticipants).values(parsed).returning({
+    id: matchParticipants.id,
+  });
+  return result[0];
+}
+
 export const dbActions = {
   upsertUser,
+  deleteUser,
   setMainRole,
   createCustomGameEvent,
   getCustomGameEventsByCreatorId,
   deleteCustomGameEventByDiscordEventId,
   getEventStartingTodayByCreatorId,
+  createMatchParticipant,
 };

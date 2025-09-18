@@ -2,6 +2,7 @@ import { Hono } from "@hono/hono";
 import { logger } from "@hono/hono/logger";
 import { usersRoutes } from "./routes/users.ts";
 import { eventsRoutes } from "./routes/events.ts";
+import matches from "./routes/matches.ts";
 
 const app = new Hono()
   .use("*", logger())
@@ -9,7 +10,8 @@ const app = new Hono()
     return c.json({ ok: true, message: "This API is healthy!" });
   })
   .route("/users", usersRoutes)
-  .route("/events", eventsRoutes);
+  .route("/events", eventsRoutes)
+  .route("/matches", matches);
 
 export default app satisfies Deno.ServeDefaultExport;
 export type AppType = typeof app;

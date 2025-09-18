@@ -1,5 +1,9 @@
-import { initializeMessages, messageKeys } from "@adteemo/messages";
+import {
+  initializeMessages,
+  type MessageKey,
+  messageKeys,
+} from "@adteemo/messages";
 
 const { formatMessage } = initializeMessages();
 
-export { formatMessage, messageKeys };
+export { formatMessage, type MessageKey, messageKeys };
