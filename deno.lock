@@ -26,7 +26,8 @@
     "npm:uuid@^9.0.1": "9.0.1",
     "npm:zod@^3.23.8": "3.25.76",
     "npm:zod@^4.0.5": "4.1.5",
-    "npm:zod@^4.1.5": "4.1.5"
+    "npm:zod@^4.1.5": "4.1.5",
+    "npm:zod@^4.1.9": "4.1.9"
   },
   "jsr": {
     "@hono/hono@4.9.6": {
@@ -753,6 +754,9 @@
     },
     "zod@4.1.5": {
       "integrity": "sha512-rcUUZqlLJgBC33IT3PNMgsCq6TzLQEG/Ei/KTCU0PedSWRMAXoOUN+4t/0H+Q8bdnLPdqUYnvboJT0bn/229qg=="
+    },
+    "zod@4.1.9": {
+      "integrity": "sha512-HI32jTq0AUAC125z30E8bQNz0RQ+9Uc+4J7V97gLYjZVKRjeydPgGt6dvQzFrav7MYOUGFqqOGiHpA/fdbd0cQ=="
     }
   },
   "remote": {
@@ -796,7 +800,8 @@
           "jsr:@std/datetime@~0.225.5",
           "jsr:@std/path@^1.1.2",
           "jsr:@std/testing@^1.0.15",
-          "npm:discord.js@^14.22.1"
+          "npm:discord.js@^14.22.1",
+          "npm:zod@^4.1.9"
         ]
       },
       "messages": {

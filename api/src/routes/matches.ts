@@ -1,20 +1,7 @@
 import { Hono } from "@hono/hono";
-import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { dbActions } from "../db/actions.ts";
-import { lanes } from "../db/schema.ts";
-
-const createParticipantSchema = z.object({
-  userId: z.string(),
-  team: z.enum(["BLUE", "RED"]),
-  win: z.boolean(),
-  lane: z.enum(lanes),
-  kills: z.number().int().min(0),
-  deaths: z.number().int().min(0),
-  assists: z.number().int().min(0),
-  cs: z.number().int().min(0),
-  gold: z.number().int().min(0),
-});
+import { createParticipantSchema } from "../validators.ts";
 
 export const matchesRoutes = new Hono()
   .post(
