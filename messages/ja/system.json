@@ -77,5 +77,26 @@
     "error": {
       "failure": "ボットのヘルスチェックに失敗しました。 {error}"
     }
+  },
+  "matchManagement": {
+    "recordMatch": {
+      "start": "戦績の入力を開始します...",
+      "promptKDA": "**{username}** のKDAを `K/D/A` の形式で入力してください。",
+      "promptCS": "**{username}** のCS（ミニオン討伐数）を数値で入力してください。",
+      "promptGold": "**{username}** の獲得ゴールドを数値で入力してください。",
+      "invalidFormatKDA": "フォーマットが不正です。`10/2/8` のように、キル/デス/アシストをスラッシュ区切りで入力してください。",
+      "invalidFormatNumber": "数値を入力してください。",
+      "nextPlayer": "次のプレイヤー: **{username}**",
+      "summaryTitle": "戦績サマリー",
+      "summaryDescription": "以下の内容で戦績を登録します。よろしいですか？",
+      "summaryFieldPlayer": "プレイヤー",
+      "summaryFieldStats": "KDA / CS / Gold",
+      "confirmButton": "登録する",
+      "cancelButton": "キャンセル",
+      "success": "戦績を登録しました！",
+      "failure": "戦績の登録に失敗しました。 {error}",
+      "cancelled": "戦績の登録をキャンセルしました。",
+      "timeout": "時間切れのため、戦績の登録をキャンセルしました。"
+    }
   }
 }

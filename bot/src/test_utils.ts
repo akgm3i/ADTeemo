@@ -15,6 +15,7 @@ import {
   type InteractionDeferReplyOptions,
   type InteractionEditReplyOptions,
   InteractionType,
+  type Message,
   type MessagePayload,
   type Role,
   type RoleManager,
@@ -30,10 +31,12 @@ type MockOptions = {
   replied: boolean;
   deferred: boolean;
   user: { id: string };
+  channel: Partial<Channel>;
   options: {
     getString?: (name: string, required?: boolean) => string | null;
     getChannel?: (name: string, required?: boolean) => Channel | null;
   };
+  deferReplyFn?: (options?: InteractionDeferReplyOptions) => Promise<Message | void>;
 };
 
 export function newMockChatInputCommandInteractionBuilder(
@@ -55,6 +58,7 @@ export function newMockChatInputCommandInteractionBuilder(
     replied: false,
     deferred: false,
     user: { id: "test-user-id" },
+    channel: {},
     options: {},
   };
 
@@ -104,6 +108,18 @@ export function newMockChatInputCommandInteractionBuilder(
       return this;
     },
 
+    withChannel(channel: Partial<Channel>) {
+      props.channel = channel;
+      return this;
+    },
+
+    withDeferReply(
+      fn: (options?: InteractionDeferReplyOptions) => Promise<Message | void>,
+    ) {
+      props.deferReplyFn = fn;
+      return this;
+    },
+
     setReplied(replied: boolean) {
       props.replied = replied;
       return this;
@@ -119,7 +135,8 @@ export function newMockChatInputCommandInteractionBuilder(
         isButton: () => false,
         commandName: props.commandName,
         deferReply: spy(
-          (_o?: InteractionDeferReplyOptions) => Promise.resolve(),
+          props.deferReplyFn ??
+            ((_o?: InteractionDeferReplyOptions) => Promise.resolve()),
         ),
         editReply: spy(
           (_o: string | MessagePayload | InteractionEditReplyOptions) =>
@@ -135,6 +152,7 @@ export function newMockChatInputCommandInteractionBuilder(
         ),
         guild: props.guild,
         client: props.client,
+        channel: props.channel,
         replied: props.replied,
         deferred: props.deferred,
         user: props.user,
@@ -166,6 +184,15 @@ export function newMockChatInputCommandInteractionBuilder(
   };
 
   return builder;
+}
+
+export function createMockMessage(content: string) {
+  return {
+    content,
+    author: {
+      bot: false,
+    },
+  } as Message;
 }
 
 export function newMockStringSelectMenuInteractionBuilder(

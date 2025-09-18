@@ -34,6 +34,11 @@ export const matchParticipants = sqliteTable("match_participants", {
   team: text("team").notNull(), // 'BLUE' or 'RED'
   win: integer("win", { mode: "boolean" }).notNull(),
   lane: text("lane", { enum: lanes }).notNull(),
+  kills: integer("kills").notNull(),
+  deaths: integer("deaths").notNull(),
+  assists: integer("assists").notNull(),
+  cs: integer("cs").notNull(),
+  gold: integer("gold").notNull(),
 });
 
 export const customGameEvents = sqliteTable("custom_game_events", {

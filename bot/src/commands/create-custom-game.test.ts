@@ -1,4 +1,4 @@
-import { afterEach, describe, it } from "@std/testing/bdd";
+import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
 import {
   assertSpyCall,
   assertSpyCalls,
@@ -6,6 +6,7 @@ import {
   spy,
   stub,
 } from "@std/testing/mock";
+import { FakeTime } from "@std/testing/time";
 import { execute } from "./create-custom-game.ts";
 import { apiClient } from "../api_client.ts";
 import {
@@ -34,11 +35,18 @@ describe("Create Custom Game Command", () => {
 
   describe("execute", () => {
     const mockNow = new Date("2025-09-03T10:00:00Z"); // Wednesday
+    let time: FakeTime;
+
+    beforeEach(() => {
+      time = new FakeTime(mockNow);
+    });
+
+    afterEach(() => {
+      time.restore();
+    });
 
     describe("正常系", () => {
       it("有効なイベント名、未来の日付と時刻が指定された場合、Discordイベントを作成し、参加者募集メッセージを投稿する", async () => {
-        using _dateMock = stub(Date, "now", () => mockNow.getTime());
-
         const createEventStub = stub(
           apiClient,
           "createCustomGameEvent",
@@ -140,8 +148,6 @@ describe("Create Custom Game Command", () => {
       });
 
       it("過去の日付が指定された場合、翌年の日付として扱いイベントを作成する", async () => {
-        using _dateMock = stub(Date, "now", () => mockNow.getTime());
-
         // Setup
         const reactSpy = spy(
           (_emoji: EmojiIdentifierResolvable): Promise<MessageReaction> =>
@@ -203,8 +209,6 @@ describe("Create Custom Game Command", () => {
       });
 
       it("開始日時が1ヶ月以上先の場合、警告メッセージ付きで成功応答を返す", async () => {
-        using _dateMock = stub(Date, "now", () => mockNow.getTime());
-
         const reactSpy = spy(
           (_emoji: EmojiIdentifierResolvable): Promise<MessageReaction> =>
             Promise.resolve({} as MessageReaction),
