@@ -1,12 +1,6 @@
 import { afterEach, describe, it } from "@std/testing/bdd";
 import { assertEquals, assertRejects } from "@std/assert";
-import {
-  assertSpyCall,
-  type Spy,
-  restore,
-  spy,
-  stub,
-} from "@std/testing/mock";
+import { assertSpyCall, restore, type Spy, spy, stub } from "@std/testing/mock";
 import {
   fetchRecruitmentMessage,
   moveMembersToVoiceChannels,
