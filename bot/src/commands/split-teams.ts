@@ -157,7 +157,7 @@ async function fetchParticipants(recruitmentMessage: Message) {
  * @throws 人数が不適切な場合にエラーをスローします。
  */
 function validateParticipants(
-  participantsByRole: Map<Lane, User[]>, 
+  participantsByRole: Map<Lane, User[]>,
   allParticipants: Set<User>,
 ) {
   // 全体の参加者数が10人であるか

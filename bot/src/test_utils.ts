@@ -36,7 +36,9 @@ type MockOptions = {
     getString?: (name: string, required?: boolean) => string | null;
     getChannel?: (name: string, required?: boolean) => Channel | null;
   };
-  deferReplyFn?: (options?: InteractionDeferReplyOptions) => Promise<Message | void>;
+  deferReplyFn?: (
+    options?: InteractionDeferReplyOptions,
+  ) => Promise<Message | void>;
 };
 
 export function newMockChatInputCommandInteractionBuilder(

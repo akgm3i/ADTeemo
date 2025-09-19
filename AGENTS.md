@@ -98,7 +98,7 @@ Commit messages should preferably describe the context behind the changes, rathe
 5.  **Verify:** Run all tests (`deno task test:all`) to ensure the new test passes and that no existing tests have been broken.
 6.  **Format and Lint:** Run `deno fmt` and `deno lint` to ensure code quality and consistency.
 
-- **Test Style:** Tests are written in Japanese and follow a Behavior-Driven Development (BDD) style, using `describe` and `it` blocks from `jsr:@std/testing/bdd`.
-- **File Location:** Test files are named with a `.test.ts` suffix (e.g., `app.test.ts`) and are located alongside their corresponding source code files.
+- **Test Style:** Tests are written in Japanese and follow a Behavior-Driven Development (BDD) style, using `describe` and `it` blocks from `jsr:@std/testing/bdd`. For detailed guidelines on test structure, file organization (unit vs. integration), and mocking strategies, please refer to the [Testing Style Guide](./docs/TESTING_STYLE.md).
+- **File Location:** The location of test files depends on their type. Refer to the [Testing Style Guide](./docs/TESTING_STYLE.md) for details.
 - **Project Structure:** The project is divided into `api` and `bot` workspaces.
 - **Specification Document:** The `SPEC.md` file contains the detailed project specification and should be consulted for in-depth understanding.

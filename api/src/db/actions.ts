@@ -5,9 +5,11 @@ import { db } from "./index.ts";
 import {
   customGameEvents,
   type Lane,
+  matches,
   matchParticipants,
   users,
 } from "./schema.ts";
+import { RecordNotFoundError } from "../errors.ts";
 
 const userInsertSchema = createInsertSchema(users);
 const userUpdateSchema = createUpdateSchema(users);
@@ -85,6 +87,25 @@ async function getEventStartingTodayByCreatorId(creatorId: string) {
 async function createMatchParticipant(
   participantData: z.infer<typeof matchParticipantInsertSchema>,
 ) {
+  // 存在チェック
+  const userExists = await db.query.users.findFirst({
+    where: eq(users.discordId, participantData.userId),
+  });
+  if (!userExists) {
+    throw new RecordNotFoundError(
+      `User with id ${participantData.userId} not found`,
+    );
+  }
+
+  const matchExists = await db.query.matches.findFirst({
+    where: eq(matches.id, participantData.matchId),
+  });
+  if (!matchExists) {
+    throw new RecordNotFoundError(
+      `Match with id ${participantData.matchId} not found`,
+    );
+  }
+
   const parsed = matchParticipantInsertSchema.parse(participantData);
   const result = await db.insert(matchParticipants).values(parsed).returning({
     id: matchParticipants.id,

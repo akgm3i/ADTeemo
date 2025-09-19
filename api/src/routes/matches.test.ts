@@ -1,29 +1,20 @@
-import { afterAll, beforeAll, describe, it } from "@std/testing/bdd";
-import { stub } from "@std/testing/mock";
-import { assertEquals } from "@std/assert";
+import { describe, it } from "@std/testing/bdd";
+import { assert, assertEquals } from "@std/assert";
+import { assertSpyCall, stub } from "@std/testing/mock";
+import { testClient } from "@hono/hono/testing";
 import app from "../app.ts";
 import { dbActions } from "../db/actions.ts";
-import { type Lane, users } from "../db/schema.ts";
-import type { InferSelectModel } from "drizzle-orm";
+import type { Lane } from "../db/schema.ts";
+import { RecordNotFoundError } from "../errors.ts";
 
-describe("POST /matches/:matchId/participants", () => {
-  let user: InferSelectModel<typeof users>;
+describe("routes/matches.ts", () => {
+  const client = testClient(app);
 
-  beforeAll(async () => {
-    user = await dbActions.upsertUser("test-user-id-for-match-test");
-  });
-
-  afterAll(async () => {
-    if (user) {
-      await dbActions.deleteUser(user.discordId);
-    }
-  });
-
-  it("正常な戦績データがPOSTされた場合、ステータスコード201を返し、データベースに正しく戦績が記録される", async () => {
+  describe("POST /matches/:matchId/participants", () => {
     const matchId = "test-match-id";
     const participantData: {
       userId: string;
-      team: string;
+      team: "BLUE" | "RED";
       win: boolean;
       lane: Lane;
       kills: number;
@@ -32,7 +23,7 @@ describe("POST /matches/:matchId/participants", () => {
       cs: number;
       gold: number;
     } = {
-      userId: user.discordId,
+      userId: "test-user-id",
       team: "BLUE",
       win: true,
       lane: "Middle",
@@ -43,46 +34,89 @@ describe("POST /matches/:matchId/participants", () => {
       gold: 15000,
     };
 
-    const createMatchParticipantStub = stub(
-      dbActions,
-      "createMatchParticipant",
-      () => Promise.resolve({ id: 1 }),
-    );
+    describe("正常系", () => {
+      it("有効な参加者データが指定されたとき、参加者の戦績が記録され、201 Createdを返す", async () => {
+        using createParticipantStub = stub(
+          dbActions,
+          "createMatchParticipant",
+          () => Promise.resolve({ id: 1 }),
+        );
 
-    const res = await app.request(
-      `/matches/${matchId}/participants`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(participantData),
-      },
-    );
+        const res = await client.matches[":matchId"].participants.$post({
+          param: { matchId },
+          json: participantData,
+        });
 
-    assertEquals(res.status, 201);
-    assertEquals(createMatchParticipantStub.calls[0].args[0], {
-      ...participantData,
-      matchId,
+        assertEquals(res.status, 201);
+        assert(res.ok);
+        assertSpyCall(createParticipantStub, 0, {
+          args: [{ ...participantData, matchId }],
+        });
+      });
     });
 
-    createMatchParticipantStub.restore();
-  });
+    describe("異常系", () => {
+      it("無効なデータ（必須項目不足）が指定されたとき、400エラーを返す", async () => {
+        const invalidData = {
+          userId: "test-user-id",
+          kills: 10,
+        };
+        const req = new Request(
+          `http://localhost/matches/${matchId}/participants`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(invalidData),
+          },
+        );
 
-  it("リクエストのbodyに必要な値が不足している場合、ステータスコード400を返す", async () => {
-    const matchId = "test-match-id";
-    const participantData = {
-      userId: user.discordId,
-      kills: 10,
-    };
+        const res = await app.request(req);
+        assertEquals(res.status, 400);
+      });
 
-    const res = await app.request(
-      `/matches/${matchId}/participants`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(participantData),
-      },
-    );
+      it("存在しないIDが指定されたとき、400エラーを返す", async () => {
+        using _createParticipantStub = stub(
+          dbActions,
+          "createMatchParticipant",
+          () => Promise.reject(new RecordNotFoundError("Not found")),
+        );
 
-    assertEquals(res.status, 400);
+        const res = await client.matches[":matchId"].participants.$post({
+          param: { matchId },
+          json: participantData,
+        });
+
+        assertEquals(res.status, 400);
+        const body = await res.json();
+        assertEquals(body.success, false);
+        assert(
+          "error" in body,
+          "Response body should contain an error property",
+        );
+        assertEquals(body.error, "Not found");
+      });
+
+      it("予期せぬDBエラーが発生したとき、500エラーを返す", async () => {
+        using _createParticipantStub = stub(
+          dbActions,
+          "createMatchParticipant",
+          () => Promise.reject(new Error("Generic DB error")),
+        );
+
+        const res = await client.matches[":matchId"].participants.$post({
+          param: { matchId },
+          json: participantData,
+        });
+
+        assertEquals(res.status, 500);
+        const body = await res.json();
+        assertEquals(body.success, false);
+        assert(
+          "error" in body,
+          "Response body should contain an error property",
+        );
+        assertEquals(body.error, "Internal Server Error");
+      });
+    });
   });
 });
