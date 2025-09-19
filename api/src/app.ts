@@ -6,6 +6,10 @@ import { matchesRoutes } from "./routes/matches.ts";
 
 const app = new Hono()
   .use("*", logger())
+  .onError((err, c) => {
+    console.error(`[Error] ${c.req.method} ${c.req.url}:`, err);
+    return c.json({ success: false, error: "Internal Server Error" }, 500);
+  })
   .get("/health", (c) => {
     return c.json({ ok: true, message: "This API is healthy!" });
   })

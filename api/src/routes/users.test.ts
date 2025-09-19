@@ -13,6 +13,7 @@ describe("routes/users.ts", () => {
 
     describe("正常系", () => {
       it("有効なロールが指定されたとき、ユーザーのメインロールが設定され、成功レスポンスを返す", async () => {
+        // Setup
         const role = "Jungle";
         using setMainRoleStub = stub(
           dbActions,
@@ -28,13 +29,16 @@ describe("routes/users.ts", () => {
             }),
         );
 
+        // Act
         const res = await client.users[":userId"]["main-role"].$put({
           param: { userId },
           json: { role },
         });
+
+        // Assert
+        assert(res.ok);
         const body = await res.json();
 
-        assert(res.ok);
         assertEquals(body, { success: true });
         assertSpyCall(setMainRoleStub, 0, { args: [userId, role] });
       });

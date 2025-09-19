@@ -53,6 +53,28 @@ describe("routes/events.ts", () => {
         const res = await app.request(req);
         assertEquals(res.status, 400);
       });
+
+      it("DB操作に失敗したとき、500エラーを返す", async () => {
+        using _createEventStub = stub(
+          dbActions,
+          "createCustomGameEvent",
+          () => Promise.reject(new Error("DB error")),
+        );
+
+        const eventData = {
+          name: "Test Event",
+          guildId: "test-guild",
+          creatorId: "test-creator",
+          discordScheduledEventId: "test-discord-event-id",
+          recruitmentMessageId: "test-recruitment-message-id",
+          scheduledStartAt: new Date().toISOString(),
+        };
+
+        const res = await client.events.$post({ json: eventData });
+        assertEquals(res.status, 500);
+        const body = await res.json();
+        assertEquals(body.success, false);
+      });
     });
   });
 
@@ -88,6 +110,24 @@ describe("routes/events.ts", () => {
         assertSpyCall(getEventsStub, 0, { args: ["test-creator"] });
       });
     });
+
+    describe("異常系", () => {
+      it("DB操作に失敗したとき、500エラーを返す", async () => {
+        using _getEventsStub = stub(
+          dbActions,
+          "getCustomGameEventsByCreatorId",
+          () => Promise.reject(new Error("DB error")),
+        );
+
+        const res = await client.events["by-creator"][":creatorId"].$get({
+          param: { creatorId: "test-creator" },
+        });
+
+        assertEquals(res.status, 500);
+        const body = await res.json();
+        assertEquals(body.success, false);
+      });
+    });
   });
 
   describe("DELETE /events/:discordEventId", () => {
@@ -108,6 +148,24 @@ describe("routes/events.ts", () => {
 
         assertEquals(body.success, true);
         assertSpyCall(deleteEventStub, 0, { args: ["test-event-id"] });
+      });
+    });
+
+    describe("異常系", () => {
+      it("DB操作に失敗したとき、500エラーを返す", async () => {
+        using _deleteEventStub = stub(
+          dbActions,
+          "deleteCustomGameEventByDiscordEventId",
+          () => Promise.reject(new Error("DB error")),
+        );
+
+        const res = await client.events[":discordEventId"].$delete({
+          param: { discordEventId: "test-event-id" },
+        });
+
+        assertEquals(res.status, 500);
+        const body = await res.json();
+        assertEquals(body.success, false);
       });
     });
   });
@@ -161,6 +219,22 @@ describe("routes/events.ts", () => {
 
         assertEquals(body.success, false);
         assertSpyCall(getEventStub, 0, { args: ["non-existent"] });
+      });
+
+      it("DB操作に失敗したとき、500エラーを返す", async () => {
+        using _getEventStub = stub(
+          dbActions,
+          "getEventStartingTodayByCreatorId",
+          () => Promise.reject(new Error("DB error")),
+        );
+
+        const res = await client.events.today["by-creator"][":creatorId"].$get({
+          param: { creatorId: "test-creator" },
+        });
+
+        assertEquals(res.status, 500);
+        const body = await res.json();
+        assertEquals(body.success, false);
       });
     });
   });

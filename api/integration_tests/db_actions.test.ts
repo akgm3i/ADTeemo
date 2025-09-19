@@ -1,14 +1,22 @@
 import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
-import { assertEquals, assertExists } from "@std/assert";
+import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import { db } from "../src/db/index.ts";
-import { customGameEvents, users } from "../src/db/schema.ts";
+import {
+  customGameEvents,
+  matches,
+  matchParticipants,
+  users,
+} from "../src/db/schema.ts";
 import { dbActions } from "../src/db/actions.ts";
 import { eq } from "drizzle-orm";
+import { RecordNotFoundError } from "../src/errors.ts";
 
 describe("db/actions.ts", () => {
   // 全てのテストの後にDBをクリーンアップする
   afterEach(async () => {
+    await db.delete(matchParticipants);
     await db.delete(customGameEvents);
+    await db.delete(matches);
     await db.delete(users);
   });
 
@@ -51,8 +59,8 @@ describe("db/actions.ts", () => {
 
         // Assert
         assertEquals(results.length, 2);
-        assertEquals(results[0].name, "Event 1");
-        assertEquals(results[1].name, "Event 3");
+        assertExists(results.find((event) => event.name === "Event 1"));
+        assertExists(results.find((event) => event.name === "Event 3"));
       });
     });
   });
@@ -190,6 +198,112 @@ describe("db/actions.ts", () => {
         );
         // Assert
         assertEquals(result, undefined);
+      });
+    });
+  });
+
+  describe("dbActions.setMainRole()", () => {
+    describe("正常系", () => {
+      it("ユーザーが存在しないとき、新しいユーザーを作成してロールを設定する", async () => {
+        // Act
+        await dbActions.setMainRole("new-user-id", "Jungle");
+
+        // Assert
+        const user = await db.query.users.findFirst({
+          where: eq(users.discordId, "new-user-id"),
+        });
+        assertExists(user);
+        assertEquals(user.mainRole, "Jungle");
+      });
+
+      it("ユーザーが既に存在するとき、そのユーザーのロールを更新する", async () => {
+        // Setup
+        await db.insert(users).values({
+          discordId: "existing-user",
+          mainRole: "Top",
+        });
+
+        // Act
+        await dbActions.setMainRole("existing-user", "Support");
+
+        // Assert
+        const user = await db.query.users.findFirst({
+          where: eq(users.discordId, "existing-user"),
+        });
+        assertExists(user);
+        assertEquals(user.mainRole, "Support");
+      });
+    });
+  });
+
+  describe("dbActions.createMatchParticipant()", () => {
+    const baseParticipantData = {
+      team: "RED" as const,
+      win: false,
+      lane: "Support" as const,
+      kills: 5,
+      deaths: 10,
+      assists: 15,
+      cs: 150,
+      gold: 12000,
+    };
+
+    describe("正常系", () => {
+      it("存在するユーザーと試合IDに対して、参加者情報を正しく記録する", async () => {
+        // Setup
+        await db.insert(users).values({ discordId: "participant-user" });
+        await db.insert(matches).values({ id: "test-match" });
+
+        const participantData = {
+          ...baseParticipantData,
+          matchId: "test-match",
+          userId: "participant-user",
+        };
+
+        // Act
+        const result = await dbActions.createMatchParticipant(participantData);
+
+        // Assert
+        assertExists(result.id);
+        const participant = await db.query.matchParticipants.findFirst({
+          where: eq(matchParticipants.id, result.id),
+        });
+        assertExists(participant);
+        assertEquals(participant.userId, "participant-user");
+        assertEquals(participant.team, "RED");
+        assertEquals(participant.kills, 5);
+      });
+    });
+
+    describe("異常系", () => {
+      it("存在しないuserIdを指定したとき、RecordNotFoundErrorをスローする", async () => {
+        // Setup
+        await db.insert(matches).values({ id: "test-match" });
+        const participantData = {
+          ...baseParticipantData,
+          matchId: "test-match",
+          userId: "non-existent-user",
+        };
+
+        // Act & Assert
+        await assertRejects(async () => {
+          await dbActions.createMatchParticipant(participantData);
+        }, RecordNotFoundError);
+      });
+
+      it("存在しないmatchIdを指定したとき、RecordNotFoundErrorをスローする", async () => {
+        // Setup
+        await db.insert(users).values({ discordId: "participant-user" });
+        const participantData = {
+          ...baseParticipantData,
+          matchId: "non-existent-match",
+          userId: "participant-user",
+        };
+
+        // Act & Assert
+        await assertRejects(async () => {
+          await dbActions.createMatchParticipant(participantData);
+        }, RecordNotFoundError);
       });
     });
   });
