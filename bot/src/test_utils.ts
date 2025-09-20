@@ -1,306 +1,238 @@
-import { type Spy, spy } from "@std/testing/mock";
 import {
-  type CacheType,
-  type Channel,
-  type ChatInputCommandInteraction,
-  type Client,
+  Channel,
+  ChatInputCommandInteraction,
+  Client,
   Collection,
-  type CommandInteraction,
-  type CommandInteractionOptionResolver,
-  type Guild,
-  type GuildMember,
+  CommandInteractionOptionResolver,
+  Guild,
+  GuildMember,
   GuildScheduledEvent,
   GuildScheduledEventCreateOptions,
-  GuildScheduledEventStatus,
-  type InteractionDeferReplyOptions,
-  type InteractionEditReplyOptions,
   InteractionType,
-  type Message,
-  type MessagePayload,
-  type Role,
-  type RoleManager,
-  type Snowflake,
+  Message,
+  Role,
+  RoleCreateOptions,
+  Snowflake,
+  User,
 } from "discord.js";
-import type { Command } from "./types.ts";
+import { Command } from "./types.ts";
 
-type MockOptions = {
-  isChatInputCommand: boolean;
+// Helper for deep partial types
+type DeepPartial<T> = T extends object ? {
+    [P in keyof T]?: DeepPartial<T[P]>;
+  }
+  : T;
+
+// --- Internal State for Builders ---
+
+interface MockInteractionState {
+  type: InteractionType;
   commandName: string;
-  guild: Partial<Guild> | null;
-  client: Partial<Client> & { commands: Collection<string, Command> };
-  replied: boolean;
-  deferred: boolean;
-  user: { id: string };
-  channel: Partial<Channel>;
-  options: {
-    getString?: (name: string, required?: boolean) => string | null;
-    getChannel?: (name: string, required?: boolean) => Channel | null;
-  };
-  deferReplyFn?: (
-    options?: InteractionDeferReplyOptions,
-  ) => Promise<Message | void>;
-};
+  user: DeepPartial<User>;
+  guild: DeepPartial<Guild> | null;
+  channel: DeepPartial<Channel>;
+  client: DeepPartial<Client>;
+  channelId: Snowflake;
+  guildId: Snowflake | null;
+  stringOptions: Map<string, string | null>;
+  channelOptions: Map<string, DeepPartial<Channel> | null>;
+  isChatInputCommand: () => boolean;
+}
 
-export function newMockChatInputCommandInteractionBuilder(
-  commandName = "test-command",
-) {
-  const props: MockOptions = {
-    commandName,
-    isChatInputCommand: true,
-    guild: {
-      id: "mock-guild-id",
+// --- Mock Builders ---
+
+/**
+ * A fluent builder for creating mock `ChatInputCommandInteraction` objects for testing.
+ */
+export class MockInteractionBuilder {
+  private state: MockInteractionState;
+
+  constructor(commandName = "test-command") {
+    this.state = {
+      type: InteractionType.ApplicationCommand,
+      commandName,
+      user: { id: "mock-user-id", username: "MockUser" },
+      guild: { id: "mock-guild-id", name: "Mock Guild" },
+      channel: { id: "mock-channel-id" },
+      client: { commands: new Collection<string, Command>() },
+      channelId: "mock-channel-id",
+      guildId: "mock-guild-id",
+      stringOptions: new Map(),
+      channelOptions: new Map(),
+      isChatInputCommand: () => true,
+    };
+  }
+
+  withUser(user: DeepPartial<User>) {
+    this.state.user = user;
+    return this;
+  }
+
+  withGuild(guild: DeepPartial<Guild> | null) {
+    this.state.guild = guild;
+    this.state.guildId = guild?.id ?? null;
+    return this;
+  }
+
+  withChannel(channel: DeepPartial<Channel>) {
+    this.state.channel = channel;
+    this.state.channelId = channel.id!;
+    return this;
+  }
+
+  withClient(client: DeepPartial<Client>) {
+    this.state.client = client;
+    return this;
+  }
+
+  withStringOption(name: string, value: string | null) {
+    this.state.stringOptions.set(name, value);
+    return this;
+  }
+
+  withChannelOption(name: string, value: DeepPartial<Channel> | null) {
+    this.state.channelOptions.set(name, value);
+    return this;
+  }
+
+  setIsChatInputCommand(is: boolean) {
+    this.state.isChatInputCommand = () => is;
+    return this;
+  }
+
+  build(): ChatInputCommandInteraction {
+    const interaction = {
+      ...this.state,
+      isButton: () => false,
+      isStringSelectMenu: () => false,
+      deferReply: () => Promise.resolve({} as Message),
+      editReply: () => Promise.resolve({} as Message),
+      reply: () => Promise.resolve({} as Message),
+      followUp: () => Promise.resolve({} as Message),
+      options: {
+        getString: (name: string) => this.state.stringOptions.get(name) ?? null,
+        getChannel: (name: string) =>
+          this.state.channelOptions.get(name) ?? null,
+      } as unknown as CommandInteractionOptionResolver,
+    };
+
+    return interaction as unknown as ChatInputCommandInteraction;
+  }
+}
+
+/**
+ * A fluent builder for creating mock `Guild` objects.
+ */
+export class MockGuildBuilder {
+  private props: DeepPartial<Guild>;
+
+  constructor(id = "mock-guild-id") {
+    this.props = {
+      id,
+      name: "Mock Guild",
       roles: {
         cache: new Collection<Snowflake, Role>(),
-        create: spy(() => Promise.resolve({} as Role)),
-      } as unknown as RoleManager, // This cast is necessary for a partial mock
-    } as Partial<Guild>,
-    client: {
-      commands: new Collection<string, Command>(),
-    },
-    replied: false,
-    deferred: false,
-    user: { id: "test-user-id" },
-    channel: {},
-    options: {},
-  };
-
-  const builder = {
-    withCommandName(name: string) {
-      props.commandName = name;
-      return this;
-    },
-
-    withIsChatInputCommand(is: boolean) {
-      props.isChatInputCommand = is;
-      return this;
-    },
-
-    withClient(
-      client: Partial<Client> & { commands: Collection<string, Command> },
-    ) {
-      props.client = client;
-      return this;
-    },
-
-    withGuild(guild: Partial<Guild> | null) {
-      props.guild = guild;
-      return this;
-    },
-
-    withUser(user: { id: string }) {
-      props.user = user;
-      return this;
-    },
-
-    withStringOption(
-      fn: (name: string, required?: boolean) => string | null,
-    ) {
-      props.options.getString = fn;
-      return this;
-    },
-
-    withChannelOption(
-      name: string,
-      channel: Channel,
-    ) {
-      props.options.getChannel = (optionName: string) => {
-        if (optionName === name) return channel;
-        return null;
-      };
-      return this;
-    },
-
-    withChannel(channel: Partial<Channel>) {
-      props.channel = channel;
-      return this;
-    },
-
-    withDeferReply(
-      fn: (options?: InteractionDeferReplyOptions) => Promise<Message | void>,
-    ) {
-      props.deferReplyFn = fn;
-      return this;
-    },
-
-    setReplied(replied: boolean) {
-      props.replied = replied;
-      return this;
-    },
-
-    build() {
-      const interaction = {
-        type: InteractionType.ApplicationCommand,
-        isChatInputCommand: (): this is ChatInputCommandInteraction<
-          CacheType
-        > => props.isChatInputCommand,
-        isStringSelectMenu: () => false,
-        isButton: () => false,
-        commandName: props.commandName,
-        deferReply: spy(
-          props.deferReplyFn ??
-            ((_o?: InteractionDeferReplyOptions) => Promise.resolve()),
-        ),
-        editReply: spy(
-          (_o: string | MessagePayload | InteractionEditReplyOptions) =>
-            Promise.resolve(),
-        ),
-        followUp: spy(
-          (_o: string | MessagePayload | InteractionEditReplyOptions) =>
-            Promise.resolve(),
-        ),
-        reply: spy(
-          (_o: string | MessagePayload | InteractionEditReplyOptions) =>
-            Promise.resolve(),
-        ),
-        guild: props.guild,
-        client: props.client,
-        channel: props.channel,
-        replied: props.replied,
-        deferred: props.deferred,
-        user: props.user,
-        options: {
-          getString: spy(
-            (name: string, required?: boolean) =>
-              props.options.getString?.(name, required),
-          ),
-          getChannel: spy(
-            (name: string, required?: boolean) =>
-              props.options.getChannel?.(name, required),
-          ),
-        },
-      };
-
-      return interaction as unknown as CommandInteraction & {
-        deferReply: Spy;
-        editReply: Spy;
-        followUp: Spy;
-        reply: Spy;
-        guild: typeof props.guild;
-        client: typeof props.client;
-        options: {
-          getString: Spy<CommandInteractionOptionResolver["getString"]>;
-          getChannel: Spy<CommandInteractionOptionResolver["getChannel"]>;
-        };
-      };
-    },
-  };
-
-  return builder;
-}
-
-export function createMockMessage(content: string) {
-  return {
-    content,
-    author: {
-      bot: false,
-    },
-  } as Message;
-}
-
-export function newMockStringSelectMenuInteractionBuilder(
-  customId: string,
-  values: string[],
-) {
-  const interaction = {
-    type: InteractionType.MessageComponent,
-    isChatInputCommand: () => false,
-    isStringSelectMenu: () => true,
-    isButton: () => false,
-    customId,
-    values,
-    deferUpdate: spy(() => Promise.resolve()),
-    editReply: spy(
-      (_o: string | MessagePayload | InteractionEditReplyOptions) =>
-        Promise.resolve(),
-    ),
-    guild: {
+        create: (options: RoleCreateOptions) =>
+          Promise.resolve({ name: options.name, id: options.name } as Role),
+      },
       scheduledEvents: {
-        delete: spy(() => Promise.resolve()),
+        cache: new Collection<Snowflake, GuildScheduledEvent>(),
+        create: (options: GuildScheduledEventCreateOptions) =>
+          Promise.resolve(
+            {
+              id: "mock-event-id",
+              ...options,
+            } as unknown as GuildScheduledEvent,
+          ),
+        delete: () => Promise.resolve(),
+        fetch: () =>
+          Promise.resolve(
+            this.props.scheduledEvents!.cache as Collection<
+              Snowflake,
+              GuildScheduledEvent
+            >,
+          ),
       },
-    },
-    channel: {
-      messages: {
-        delete: spy(() => Promise.resolve()),
+      members: {
+        cache: new Collection<Snowflake, GuildMember>(),
+        fetch: (
+          options: Snowflake | { user: Snowflake | Snowflake[] },
+        ) => {
+          const cache = this.props.members!.cache as Collection<
+            Snowflake,
+            GuildMember
+          >;
+          if (typeof options === "string") {
+            return Promise.resolve(cache.get(options));
+          }
+          if (options?.user) {
+            const ids = Array.isArray(options.user)
+              ? options.user
+              : [options.user];
+            const results = new Collection<Snowflake, GuildMember>();
+            for (const id of ids) {
+              const member = cache.get(id);
+              if (member) {
+                results.set(id, member);
+              }
+            }
+            return Promise.resolve(results);
+          }
+          return Promise.resolve(new Collection<Snowflake, GuildMember>());
+        },
       },
-    },
-    user: { id: "test-user-id" },
-  };
-
-  return {
-    build: () =>
-      interaction as unknown as ({
-        isStringSelectMenu: () => true;
-        deferUpdate: Spy;
-        editReply: Spy;
-        guild: {
-          scheduledEvents: {
-            delete: Spy;
-          };
-        };
-        channel: {
-          messages: {
-            delete: Spy;
-          };
-        };
-      }),
-  };
-}
-
-export function newMockGuildBuilder(id = "mock-guild-id") {
-  const props = {
-    id,
-    scheduledEvents: new Collection<string, GuildScheduledEvent>(),
-    channels: new Collection<string, Channel>(),
-    members: new Collection<string, GuildMember>(),
-    createEventSpy: spy(
-      (
-        _options: GuildScheduledEventCreateOptions,
-      ): Promise<GuildScheduledEvent> =>
-        Promise.resolve({ id: "mock-event-id" } as GuildScheduledEvent),
-    ),
-  };
-
-  const builder = {
-    withScheduledEvent(
-      event: { id: string; status: GuildScheduledEventStatus },
-    ) {
-      props.scheduledEvents.set(
-        event.id,
-        { id: event.id, status: event.status } as GuildScheduledEvent,
-      );
-      return this;
-    },
-    withChannel(channel: Channel) {
-      props.channels.set(channel.id, channel);
-      return this;
-    },
-    withMember(member: GuildMember) {
-      props.members.set(member.id, member);
-      return this;
-    },
-    getCreateEventSpy() {
-      return props.createEventSpy;
-    },
-    build() {
-      return {
-        id: props.id,
-        scheduledEvents: {
-          fetch: () => Promise.resolve(props.scheduledEvents),
-          create: props.createEventSpy,
+      channels: {
+        cache: new Collection<Snowflake, Channel>(),
+        fetch: (id?: Snowflake) => {
+          if (id) {
+            return Promise.resolve(
+              (this.props.channels!.cache as Collection<Snowflake, Channel>)
+                .get(id),
+            );
+          }
+          return Promise.resolve(
+            this.props.channels!.cache as Collection<Snowflake, Channel>,
+          );
         },
-        channels: {
-          fetch: (id: string) => Promise.resolve(props.channels.get(id)),
-          cache: props.channels,
-        },
-        members: {
-          fetch: (options: { user: string } | string) => {
-            const id = typeof options === "string" ? options : options.user;
-            return Promise.resolve(props.members.get(id));
-          },
-        },
-      } as unknown as Guild;
-    },
-  };
+      },
+    };
+  }
 
-  return builder;
+  withRole(role: DeepPartial<Role>) {
+    (this.props.roles!.cache as Collection<Snowflake, Role>).set(
+      role.id as Snowflake,
+      role as Role,
+    );
+    return this;
+  }
+
+  withMember(member: DeepPartial<GuildMember>) {
+    (this.props.members!.cache as Collection<Snowflake, GuildMember>).set(
+      member.id as Snowflake,
+      member as GuildMember,
+    );
+    return this;
+  }
+
+  withChannel(channel: DeepPartial<Channel>) {
+    (this.props.channels!.cache as Collection<Snowflake, Channel>).set(
+      channel.id as Snowflake,
+      channel as Channel,
+    );
+    return this;
+  }
+
+  withScheduledEvent(event: DeepPartial<GuildScheduledEvent>) {
+    (
+      this.props.scheduledEvents!.cache as Collection<
+        Snowflake,
+        GuildScheduledEvent
+      >
+    ).set(event.id as Snowflake, event as GuildScheduledEvent);
+    return this;
+  }
+
+  build(): Guild {
+    return this.props as Guild;
+  }
 }

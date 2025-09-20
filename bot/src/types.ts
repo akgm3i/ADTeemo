@@ -13,4 +13,5 @@ export interface CustomGameEvent {
   discordScheduledEventId: string;
   recruitmentMessageId: string;
   createdAt: string;
+  scheduledStartAt: string;
 }

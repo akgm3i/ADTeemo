@@ -1,70 +1,79 @@
-import { assertEquals } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
-import { stub } from "@std/testing/mock";
-import { execute } from "./set-main-role.ts";
-import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
-import { formatMessage, messageKeys } from "../messages.ts";
+import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
+import { execute, testable } from "./set-main-role.ts";
+import { messageKeys } from "../messages.ts";
+import { MockInteractionBuilder } from "../test_utils.ts";
+import { Lane } from "@adteemo/api/schema";
 
 describe("Set Main Role Command", () => {
   describe("execute", () => {
     it("API呼び出しが成功した時にメインロールを設定すると、成功メッセージで応答する", async () => {
-      using _fetchStub = stub(
-        globalThis,
-        "fetch",
-        () =>
-          Promise.resolve(
-            new Response(JSON.stringify({ success: true }), { status: 200 }),
-          ),
+      using setMainRoleStub = stub(
+        testable.apiClient,
+        "setMainRole",
+        () => Promise.resolve({ success: true, error: null }),
       );
-      const interaction = newMockChatInputCommandInteractionBuilder()
-        .withStringOption(() => "Top")
+      using formatMessageSpy = spy(testable, "formatMessage");
+
+      const interaction = new MockInteractionBuilder()
+        .withUser({ id: "user-123" })
+        .withStringOption("role", "Top")
         .build();
+      using deferSpy = spy(interaction, "deferReply");
+      using editSpy = spy(interaction, "editReply");
 
       await execute(interaction);
 
-      assertEquals(interaction.deferReply.calls.length, 1);
-      assertEquals(interaction.options.getString.calls[0].args[0], "role");
-      assertEquals(interaction.editReply.calls.length, 1);
-      assertEquals(
-        interaction.editReply.calls[0].args[0],
-        formatMessage(messageKeys.userManagement.setMainRole.success, {
-          role: "Top",
-        }),
-      );
+      assertSpyCall(deferSpy, 0);
+      assertSpyCall(setMainRoleStub, 0, { args: ["user-123", "Top" as Lane] });
+      assertSpyCall(editSpy, 0);
+      assertSpyCall(formatMessageSpy, 0, {
+        args: [
+          messageKeys.userManagement.setMainRole.success,
+          { role: "Top" },
+        ],
+      });
     });
 
     it("API呼び出しが失敗した時にメインロールを設定すると、エラーメッセージで応答する", async () => {
-      const fetchResponse = new Response(
-        JSON.stringify({ success: false, error: "DB error" }),
-        { status: 500 },
+      using setMainRoleStub = stub(
+        testable.apiClient,
+        "setMainRole",
+        () => Promise.resolve({ success: false, error: "API Error" }),
       );
-      using _fetchStub = stub(
-        globalThis,
-        "fetch",
-        () => Promise.resolve(fetchResponse),
-      );
-      const interaction = newMockChatInputCommandInteractionBuilder()
-        .withStringOption(() => "Jungle")
+      using formatMessageSpy = spy(testable, "formatMessage");
+
+      const interaction = new MockInteractionBuilder()
+        .withUser({ id: "user-123" })
+        .withStringOption("role", "Jungle")
         .build();
+      using deferSpy = spy(interaction, "deferReply");
+      using editSpy = spy(interaction, "editReply");
 
       await execute(interaction);
 
-      assertEquals(interaction.deferReply.calls.length, 1);
-      assertEquals(interaction.editReply.calls.length, 1);
-      assertEquals(
-        interaction.editReply.calls[0].args[0],
-        formatMessage(messageKeys.userManagement.setMainRole.failure, {
-          error: "API returned status 500",
-        }),
-      );
+      assertSpyCall(deferSpy, 0);
+      assertSpyCall(setMainRoleStub, 0, {
+        args: ["user-123", "Jungle" as Lane],
+      });
+      assertSpyCall(editSpy, 0);
+      assertSpyCall(formatMessageSpy, 0, {
+        args: [
+          messageKeys.userManagement.setMainRole.failure,
+          { error: "API Error" },
+        ],
+      });
     });
 
     it("ChatInputCommandでないInteractionで実行すると、何もせずに処理を中断する", async () => {
-      const interaction = newMockChatInputCommandInteractionBuilder()
-        .withIsChatInputCommand(false)
+      const interaction = new MockInteractionBuilder()
+        .setIsChatInputCommand(false)
         .build();
+      using deferSpy = spy(interaction, "deferReply");
+
       await execute(interaction);
-      assertEquals(interaction.deferReply.calls.length, 0);
+
+      assertSpyCalls(deferSpy, 0);
     });
   });
 });

@@ -8,6 +8,12 @@ import { ROLE_DISPLAY_NAMES } from "../constants.ts";
 import { apiClient } from "../api_client.ts";
 import { formatMessage, messageKeys } from "../messages.ts";
 
+// Exported for testing purposes
+export const testable = {
+  apiClient,
+  formatMessage,
+};
+
 export const data = new SlashCommandBuilder()
   .setName("set-main-role")
   .setDescription("Sets your main role for custom games.")
@@ -33,17 +39,23 @@ export async function execute(interaction: CommandInteraction) {
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const result = await apiClient.setMainRole(userId, role);
+  const result = await testable.apiClient.setMainRole(userId, role);
 
   if (result.success) {
     await interaction.editReply(
-      formatMessage(messageKeys.userManagement.setMainRole.success, { role }),
+      testable.formatMessage(
+        messageKeys.userManagement.setMainRole.success,
+        { role },
+      ),
     );
   } else {
     await interaction.editReply(
-      formatMessage(messageKeys.userManagement.setMainRole.failure, {
-        error: result.error || "",
-      }),
+      testable.formatMessage(
+        messageKeys.userManagement.setMainRole.failure,
+        {
+          error: result.error || "",
+        },
+      ),
     );
   }
 }

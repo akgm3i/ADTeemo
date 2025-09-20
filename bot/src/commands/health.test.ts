@@ -1,9 +1,8 @@
-import { assertEquals } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
-import { stub } from "@std/testing/mock";
-import { execute } from "./health.ts";
-import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
-import { formatMessage, messageKeys } from "../messages.ts";
+import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
+import { execute, testable } from "./health.ts";
+import { messageKeys } from "../messages.ts";
+import { MockInteractionBuilder } from "../test_utils.ts";
 
 describe("Health Command", () => {
   describe("execute", () => {
@@ -23,16 +22,16 @@ describe("Health Command", () => {
         "fetch",
         () => Promise.resolve(response),
       );
-      const interaction = newMockChatInputCommandInteractionBuilder().build();
+      const interaction = new MockInteractionBuilder().build();
+      using deferSpy = spy(interaction, "deferReply");
+      using editSpy = spy(interaction, "editReply");
 
       await execute(interaction);
 
-      assertEquals(interaction.deferReply.calls.length, 1);
-      assertEquals(interaction.editReply.calls.length, 1);
-      assertEquals(
-        interaction.editReply.calls[0].args[0],
-        "All systems operational.",
-      );
+      assertSpyCall(deferSpy, 0);
+      assertSpyCall(editSpy, 0, {
+        args: ["All systems operational."],
+      });
     });
 
     it("APIがエラーを返す時にコマンドを実行すると、APIのエラーを含んだメッセージで応答する", async () => {
@@ -42,18 +41,20 @@ describe("Health Command", () => {
         "fetch",
         () => Promise.resolve(response),
       );
-      const interaction = newMockChatInputCommandInteractionBuilder().build();
+      using formatMessageSpy = spy(testable, "formatMessage");
+      const interaction = new MockInteractionBuilder().build();
+      using deferSpy = spy(interaction, "deferReply");
+      using editSpy = spy(interaction, "editReply");
 
       await execute(interaction);
 
-      assertEquals(interaction.deferReply.calls.length, 1);
-      assertEquals(interaction.editReply.calls.length, 1);
-      assertEquals(
-        interaction.editReply.calls[0].args[0],
-        formatMessage(messageKeys.health.error.failure, {
+      assertSpyCall(deferSpy, 0);
+      assertSpyCall(editSpy, 0);
+      assertSpyCall(formatMessageSpy, 0, {
+        args: [messageKeys.health.error.failure, {
           error: "API returned status 500",
-        }),
-      );
+        }],
+      });
     });
 
     it("APIとの通信に失敗した時にコマンドを実行すると、通信失敗を示すメッセージで応答する", async () => {
@@ -62,27 +63,31 @@ describe("Health Command", () => {
         "fetch",
         () => Promise.reject(new Error("Network disconnect")),
       );
-      const interaction = newMockChatInputCommandInteractionBuilder().build();
+      using formatMessageSpy = spy(testable, "formatMessage");
+      const interaction = new MockInteractionBuilder().build();
+      using deferSpy = spy(interaction, "deferReply");
+      using editSpy = spy(interaction, "editReply");
 
       await execute(interaction);
 
-      assertEquals(interaction.deferReply.calls.length, 1);
-      assertEquals(interaction.editReply.calls.length, 1);
-      assertEquals(
-        interaction.editReply.calls[0].args[0],
-        formatMessage(messageKeys.health.error.failure, {
+      assertSpyCall(deferSpy, 0);
+      assertSpyCall(editSpy, 0);
+      assertSpyCall(formatMessageSpy, 0, {
+        args: [messageKeys.health.error.failure, {
           error: "Failed to communicate with API",
-        }),
-      );
+        }],
+      });
     });
 
     it("ChatInputCommandでないInteractionで実行すると、何もせずに処理を中断する", async () => {
-      const interaction = newMockChatInputCommandInteractionBuilder()
-        .withIsChatInputCommand(false)
+      const interaction = new MockInteractionBuilder()
+        .setIsChatInputCommand(false)
         .build();
+      using deferSpy = spy(interaction, "deferReply");
 
       await execute(interaction);
-      assertEquals(interaction.deferReply.calls.length, 0);
+
+      assertSpyCalls(deferSpy, 0);
     });
   });
 });

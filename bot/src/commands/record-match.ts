@@ -14,6 +14,15 @@ import { statCollector } from "../features/stat_collector.ts";
 import { v4 as uuidv4 } from "uuid";
 import { MessageFlags } from "discord.js";
 
+// Exported for testing purposes
+export const testable = {
+  formatMessage,
+  matchTracker,
+  apiClient,
+  statCollector,
+  uuidv4,
+};
+
 export const data = new SlashCommandBuilder()
   .setName("record-match")
   .setDescription("Records the results of a custom game through conversation.")
@@ -55,13 +64,13 @@ export async function execute(interaction: CommandInteraction) {
       flags: MessageFlags.Ephemeral,
     });
 
-    const participants = await matchTracker.getActiveParticipants();
+    const participants = await testable.matchTracker.getActiveParticipants();
     const allStats: Map<string, Stats> = new Map();
 
     for (const participant of participants) {
       const stats: Partial<Stats> = {};
 
-      const kdaString = await statCollector.askForStat<string>(
+      const kdaString = await testable.statCollector.askForStat<string>(
         interaction,
         participant.user.username,
         /^\d+\/\d+\/\d+$/,
@@ -74,7 +83,7 @@ export async function execute(interaction: CommandInteraction) {
       stats.deaths = d;
       stats.assists = a;
 
-      const cs = await statCollector.askForStat<number>(
+      const cs = await testable.statCollector.askForStat<number>(
         interaction,
         participant.user.username,
         /^\d+$/,
@@ -84,7 +93,7 @@ export async function execute(interaction: CommandInteraction) {
       if (cs === null) return;
       stats.cs = cs;
 
-      const gold = await statCollector.askForStat<number>(
+      const gold = await testable.statCollector.askForStat<number>(
         interaction,
         participant.user.username,
         /^\d+$/,
@@ -99,10 +108,12 @@ export async function execute(interaction: CommandInteraction) {
 
     const summaryEmbed = new EmbedBuilder()
       .setTitle(
-        formatMessage(messageKeys.matchManagement.recordMatch.summaryTitle),
+        testable.formatMessage(
+          messageKeys.matchManagement.recordMatch.summaryTitle,
+        ),
       )
       .setDescription(
-        formatMessage(
+        testable.formatMessage(
           messageKeys.matchManagement.recordMatch.summaryDescription,
         ),
       );
@@ -123,13 +134,17 @@ export async function execute(interaction: CommandInteraction) {
       new ButtonBuilder()
         .setCustomId("confirm_record_match")
         .setLabel(
-          formatMessage(messageKeys.matchManagement.recordMatch.confirmButton),
+          testable.formatMessage(
+            messageKeys.matchManagement.recordMatch.confirmButton,
+          ),
         )
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId("cancel_record_match")
         .setLabel(
-          formatMessage(messageKeys.matchManagement.recordMatch.cancelButton),
+          testable.formatMessage(
+            messageKeys.matchManagement.recordMatch.cancelButton,
+          ),
         )
         .setStyle(ButtonStyle.Danger),
     );
@@ -143,7 +158,9 @@ export async function execute(interaction: CommandInteraction) {
 
     if (!confirmation) {
       await interaction.editReply({
-        content: formatMessage(messageKeys.matchManagement.recordMatch.timeout),
+        content: testable.formatMessage(
+          messageKeys.matchManagement.recordMatch.timeout,
+        ),
         embeds: [],
         components: [],
       }).catch(() => {});
@@ -157,7 +174,7 @@ export async function execute(interaction: CommandInteraction) {
         components: [],
       });
 
-      const matchId = uuidv4();
+      const matchId = testable.uuidv4();
       for (const participant of participants) {
         const stats = allStats.get(participant.user.id);
         if (stats) {
@@ -168,16 +185,21 @@ export async function execute(interaction: CommandInteraction) {
             lane: participant.lane,
             ...stats,
           };
-          await apiClient.createMatchParticipant(matchId, participantData);
+          await testable.apiClient.createMatchParticipant(
+            matchId,
+            participantData,
+          );
         }
       }
       await interaction.followUp({
-        content: formatMessage(messageKeys.matchManagement.recordMatch.success),
+        content: testable.formatMessage(
+          messageKeys.matchManagement.recordMatch.success,
+        ),
         ephemeral: true,
       });
     } else {
       await confirmation.update({
-        content: formatMessage(
+        content: testable.formatMessage(
           messageKeys.matchManagement.recordMatch.cancelled,
         ),
         embeds: [],
@@ -188,7 +210,7 @@ export async function execute(interaction: CommandInteraction) {
     console.error("Error in record-match command:", e);
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply({
-        content: formatMessage(messageKeys.common.error.command),
+        content: testable.formatMessage(messageKeys.common.error.command),
         embeds: [],
         components: [],
       }).catch(() => {}); // Ignore error if interaction is no longer valid

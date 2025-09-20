@@ -6,6 +6,11 @@ import {
 import { apiClient } from "../api_client.ts";
 import { formatMessage, messageKeys } from "../messages.ts";
 
+// Exported for testing purposes
+export const testable = {
+  formatMessage,
+};
+
 export const data = new SlashCommandBuilder()
   .setName("health")
   .setDescription("Checks the health of the bot.");
@@ -21,7 +26,7 @@ export async function execute(interaction: CommandInteraction) {
     await interaction.editReply(result.message);
   } else {
     await interaction.editReply(
-      formatMessage(messageKeys.health.error.failure, {
+      testable.formatMessage(messageKeys.health.error.failure, {
         error: result.error || "",
       }),
     );

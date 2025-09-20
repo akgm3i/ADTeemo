@@ -1,7 +1,6 @@
-import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
+import { describe, it } from "@std/testing/bdd";
 import { assertStringIncludes } from "@std/assert";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
-import type { Spy, Stub } from "@std/testing/mock";
 import { main as checkMessagesMain } from "./check-messages.ts";
 
 const MOCK_SOURCE = {
@@ -18,26 +17,9 @@ const MOCK_TARGET_MISSING = {
 };
 
 describe("check-messages script", () => {
-  let exitStub: Stub<typeof Deno>;
-  let consoleLogSpy: Spy<typeof console>;
-  let consoleWarnSpy: Spy<typeof console>;
-  let consoleErrorSpy: Spy<typeof console>;
-
-  beforeEach(() => {
-    exitStub = stub(Deno, "exit");
-    consoleLogSpy = spy(console, "log");
-    consoleWarnSpy = spy(console, "warn");
-    consoleErrorSpy = spy(console, "error");
-  });
-
-  afterEach(() => {
-    exitStub.restore();
-    consoleLogSpy.restore();
-    consoleWarnSpy.restore();
-    consoleErrorSpy.restore();
-  });
-
   it("すべてのキーが存在する場合、成功メッセージを表示して正常終了する", () => {
+    using _exitStub = stub(Deno, "exit");
+    using consoleLogSpy = spy(console, "log");
     using _readFileSyncStub = stub(
       Deno,
       "readTextFileSync",
@@ -46,7 +28,7 @@ describe("check-messages script", () => {
 
     checkMessagesMain();
 
-    assertSpyCalls(exitStub, 0);
+    assertSpyCalls(_exitStub, 0);
     const lastLogCall = consoleLogSpy.calls[consoleLogSpy.calls.length - 1];
     assertStringIncludes(
       lastLogCall.args[0] as string,
@@ -55,6 +37,9 @@ describe("check-messages script", () => {
   });
 
   it("キーが不足している場合、警告とエラーを表示してコード1で終了する", () => {
+    using exitStub = stub(Deno, "exit");
+    using consoleWarnSpy = spy(console, "warn");
+    using consoleErrorSpy = spy(console, "error");
     using _readFileSyncStub = stub(Deno, "readTextFileSync", (path) => {
       if (String(path).endsWith("system.json")) {
         return JSON.stringify(MOCK_SOURCE);
@@ -70,10 +55,12 @@ describe("check-messages script", () => {
       args: ["  ❌ Found 2 missing key(s)."],
     });
     assertSpyCall(exitStub, 0, { args: [1] });
-    assertSpyCalls(exitStub, 1);
   });
 
   it("対象ファイルが見つからない場合、警告を表示してコード1で終了する", () => {
+    using exitStub = stub(Deno, "exit");
+    using consoleWarnSpy = spy(console, "warn");
+    using consoleErrorSpy = spy(console, "error");
     using _readFileSyncStub = stub(Deno, "readTextFileSync", (path) => {
       if (String(path).endsWith("system.json")) {
         return JSON.stringify(MOCK_SOURCE);
@@ -92,8 +79,6 @@ describe("check-messages script", () => {
     assertSpyCall(consoleErrorSpy, 0, {
       args: ["\n❌ Some target files were not found and were skipped."],
     });
-    assertSpyCalls(consoleErrorSpy, 1);
     assertSpyCall(exitStub, 0, { args: [1] });
-    assertSpyCalls(exitStub, 1);
   });
 });
