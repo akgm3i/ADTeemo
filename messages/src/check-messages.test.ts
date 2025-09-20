@@ -73,12 +73,17 @@ describe("check-messages script", () => {
 
     checkMessagesMain();
 
+    assertSpyCalls(consoleWarnSpy, 2); // ja/teemo, en/teemo
     assertSpyCall(consoleWarnSpy, 0, {
       args: ["  - File not found, skipping."],
     });
+
+    assertSpyCalls(consoleErrorSpy, 1);
     assertSpyCall(consoleErrorSpy, 0, {
       args: ["\n❌ Some target files were not found and were skipped."],
     });
+
+    assertSpyCalls(exitStub, 1);
     assertSpyCall(exitStub, 0, { args: [1] });
   });
 });

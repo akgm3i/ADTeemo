@@ -38,8 +38,7 @@ export function main() {
   let filesSkipped = false;
 
   for (const targetFile of TARGET_FILES) {
-    console.log(`
-Checking: ${path.relative(CWD, targetFile)}`);
+    console.log(`Checking: ${path.relative(CWD, targetFile)}`);
     const targetMessages = loadJson(targetFile);
 
     if (targetMessages === null) {
