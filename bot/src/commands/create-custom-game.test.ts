@@ -18,6 +18,7 @@ import {
 import { messageKeys } from "../messages.ts";
 import { MockGuildBuilder, MockInteractionBuilder } from "../test_utils.ts";
 import { assertEquals } from "@std/assert";
+import { parse } from "@std/datetime";
 
 describe("Create Custom Game Command", () => {
   let time: FakeTime;
@@ -74,7 +75,7 @@ describe("Create Custom Game Command", () => {
 
         await execute(interaction);
 
-        const expectedDate = new Date("2025-09-13T21:00:00Z");
+        const expectedDate = parse("2025/09/13 21:00", "yyyy/MM/dd HH:mm");
         assertSpyCall(createScheduledEventSpy, 0);
         const createEventArgs = createScheduledEventSpy.calls[0]
           .args[0] as GuildScheduledEventCreateOptions;
@@ -124,7 +125,10 @@ describe("Create Custom Game Command", () => {
         await execute(interaction);
 
         const nextYear = mockNow.getFullYear() + 1;
-        const expectedDate = new Date(`${nextYear}-01-15T12:00:00Z`);
+        const expectedDate = parse(
+          `${nextYear}/01/15 12:00`,
+          "yyyy/MM/dd HH:mm",
+        );
 
         assertSpyCall(createScheduledEventSpy, 0);
         const callArgs = createScheduledEventSpy.calls[0]

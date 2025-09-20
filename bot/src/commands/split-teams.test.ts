@@ -9,15 +9,15 @@ import {
 } from "@std/testing/mock";
 import { execute, testable } from "./split-teams.ts";
 import {
-  Channel,
   ChannelType,
   Collection,
   GuildMember,
   Message,
+  NonThreadGuildBasedChannel,
   User,
 } from "discord.js";
 import { TEAM_A_VC_NAME, TEAM_B_VC_NAME } from "../constants.ts";
-import { type Lane, lanes, type Event } from "@adteemo/api/schema";
+import { type Event, type Lane, lanes } from "@adteemo/api/schema";
 import { messageKeys } from "../messages.ts";
 import { MockGuildBuilder, MockInteractionBuilder } from "../test_utils.ts";
 
@@ -70,8 +70,11 @@ describe("split-teams command", () => {
         "moveMembersToVoiceChannels",
         () => Promise.resolve(),
       );
-      using announceStub = stub(testable, "announceTeams", () =>
-        Promise.resolve());
+      using announceStub = stub(
+        testable,
+        "announceTeams",
+        () => Promise.resolve(),
+      );
       using deferSpy = spy(interaction, "deferReply");
       using editSpy = spy(interaction, "editReply");
 
@@ -107,7 +110,10 @@ describe("split-teams command", () => {
       using _fetchStub = stub(
         guild.channels,
         "fetch",
-        () => Promise.resolve(new Collection<string, Channel>() as any),
+        () =>
+          Promise.resolve(
+            new Collection<string, NonThreadGuildBasedChannel | null>(),
+          ),
       );
       using formatSpy = spy(testable, "formatMessage");
 
