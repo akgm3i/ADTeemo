@@ -19,6 +19,62 @@ import {
 } from "../constants.ts";
 import { type Event, type Lane, lanes } from "@adteemo/api/schema";
 
+// Exported for testing purposes
+export const testable = {
+  apiClient,
+  formatMessage,
+  fetchEvent,
+  fetchRecruitmentMessage,
+  fetchParticipants,
+  validateParticipants,
+  splitTeams,
+  moveMembersToVoiceChannels,
+  announceTeams,
+};
+
+export const data = new SlashCommandBuilder()
+  .setName("split-teams")
+  .setDescription("現在の参加者でチーム分けを行います。");
+
+export async function execute(interaction: CommandInteraction) {
+  if (!interaction.isChatInputCommand()) return;
+  if (!interaction.inGuild() || !interaction.guild) {
+    await interaction.reply({
+      content: testable.formatMessage(
+        messageKeys.common.info.guildOnlyCommand,
+      ),
+      ephemeral: true,
+    });
+    return;
+  }
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    const event = await testable.fetchEvent(interaction.user.id);
+    const recruitmentMessage = await testable.fetchRecruitmentMessage(
+      interaction.guild,
+      interaction.channelId,
+      event.recruitmentMessageId,
+    );
+    const { participantsByRole, allParticipants } = await testable
+      .fetchParticipants(
+        recruitmentMessage,
+      );
+    testable.validateParticipants(participantsByRole, allParticipants);
+    const { teamA, teamB } = testable.splitTeams(participantsByRole);
+    await testable.moveMembersToVoiceChannels(
+      interaction.guild,
+      teamA,
+      teamB,
+    );
+    await testable.announceTeams(interaction, teamA, teamB);
+  } catch (error) {
+    await interaction.editReply(
+      error instanceof Error ? error.message : "An unknown error occurred.",
+    );
+  }
+}
+
 async function fetchEvent(creatorId: string): Promise<Event> {
   const eventResult = await testable.apiClient.getEventStartingTodayByCreatorId(
     creatorId,
@@ -188,60 +244,4 @@ async function announceTeams(
   );
 
   await interaction.editReply(replyContent);
-}
-
-// Exported for testing purposes
-export const testable = {
-  apiClient,
-  formatMessage,
-  fetchEvent,
-  fetchRecruitmentMessage,
-  fetchParticipants,
-  validateParticipants,
-  splitTeams,
-  moveMembersToVoiceChannels,
-  announceTeams,
-};
-
-export const data = new SlashCommandBuilder()
-  .setName("split-teams")
-  .setDescription("現在の参加者でチーム分けを行います。");
-
-export async function execute(interaction: CommandInteraction) {
-  if (!interaction.isChatInputCommand()) return;
-  if (!interaction.inGuild() || !interaction.guild) {
-    await interaction.reply({
-      content: testable.formatMessage(
-        messageKeys.common.info.guildOnlyCommand,
-      ),
-      ephemeral: true,
-    });
-    return;
-  }
-  await interaction.deferReply({ ephemeral: true });
-
-  try {
-    const event = await testable.fetchEvent(interaction.user.id);
-    const recruitmentMessage = await testable.fetchRecruitmentMessage(
-      interaction.guild,
-      interaction.channelId,
-      event.recruitmentMessageId,
-    );
-    const { participantsByRole, allParticipants } = await testable
-      .fetchParticipants(
-        recruitmentMessage,
-      );
-    testable.validateParticipants(participantsByRole, allParticipants);
-    const { teamA, teamB } = testable.splitTeams(participantsByRole);
-    await testable.moveMembersToVoiceChannels(
-      interaction.guild,
-      teamA,
-      teamB,
-    );
-    await testable.announceTeams(interaction, teamA, teamB);
-  } catch (error) {
-    await interaction.editReply(
-      error instanceof Error ? error.message : "An unknown error occurred.",
-    );
-  }
 }
