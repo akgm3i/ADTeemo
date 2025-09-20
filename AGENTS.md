@@ -53,7 +53,7 @@ docker compose exec dev deno task dev:all
 
 ### Custom Conventional Commits Specification
 
-Commit messages should preferably describe the context behind the changes, rather than what was changed.
+Commit messages should describe the context behind the changes, rather than what was changed. Since the code itself shows what was changed, the message should focus on explaining the background and reasons for the change.
 
 #### Format
 
@@ -82,6 +82,7 @@ Commit messages should preferably describe the context behind the changes, rathe
 
 - api
 - bot
+- messages
 - db
 - docker
 
