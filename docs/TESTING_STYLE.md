@@ -124,3 +124,123 @@ using setMainRoleStub = stub(
 );
 ```
 このアプローチにより、型安全性を損なうことなく、型チェッカーを満足させることができます。
+
+## 6. BOT側テスト実装パターン (BOT Test Implementation Patterns)
+
+BOT側のテストは、discord.jsの複雑なオブジェクトを扱うため、API側とは異なるアプローチが必要です。
+
+### 6.1. 依存関係の注入 (`testable` オブジェクト)
+
+BOT側のコード（特にコマンド）は、`apiClient`や`formatMessage`など、複数のモジュールに依存します。これらの依存関係をテストから分離するため、**`testable`オブジェクト**パターンを使用します。
+
+- **目的:** ユニットテストの分離性を高め、テスト対象のコードがどの外部関数を呼び出すかを明確にする。
+- **ルール:**
+  1. テスト対象のファイル（例: `health.ts`）で、外部依存モジュールをインポートします。
+  2. これらの依存関係をまとめた `testable` オブジェクトを `export` します。
+  3. ファイル内部では、直接インポートした関数ではなく、`testable` オブジェクト経由で関数を呼び出します。
+- **これにより、テストファイル側では `testable` オブジェクトをインポートし、そのプロパティを `stub` や `spy` で差し替えるだけで、簡単に関数の振る舞いを制御できます。**
+
+```typescript
+// /bot/src/commands/health.ts
+import { apiClient } from "../api_client.ts";
+import { formatMessage } from "../messages.ts";
+
+// Exported for testing purposes
+export const testable = {
+  apiClient,
+  formatMessage,
+};
+
+export async function execute(interaction: CommandInteraction) {
+  // ...
+  const result = await testable.apiClient.checkHealth(); // apiClient.checkHealth() ではなく
+  // ...
+}
+```
+
+```typescript
+// /bot/src/commands/health.test.ts
+import { execute, testable } from "./health.ts";
+
+it("...", async () => {
+  // `testable` オブジェクトのメソッドをスタブ化
+  using setMainRoleStub = stub(
+    testable.apiClient,
+    "setMainRole",
+    () => Promise.resolve({ success: true, error: null }),
+  );
+  // ...
+});
+```
+
+### 6.2. discord.js オブジェクトのモック (`Mock Builders`)
+
+`Interaction` や `Guild` のような `discord.js` のオブジェクトは非常に複雑です。これらをテストごとに手動で作成するのは冗長で、型エラーの原因にもなります。
+
+- **目的:** `discord.js` オブジェクトのモック生成を簡潔かつ型安全に行う。
+- **ルール:** `bot/src/test_utils.ts` にある `MockInteractionBuilder` や `MockGuildBuilder` を使用します。
+- **特徴:**
+  - `with...` メソッドをチェインすることで、宣言的にモックオブジェクトを構築できます。
+  - `build()` メソッドが、テストに必要なプロパティを備えたモックオブジェクトを返します。
+  - `as unknown as ...` のような危険な型キャストをテストコードから排除します。
+
+```typescript
+// 良い例
+import { MockInteractionBuilder, MockGuildBuilder } from "../test_utils.ts";
+
+const mockGuild = new MockGuildBuilder()
+  .withScheduledEvent({ id: "event-1", status: GuildScheduledEventStatus.Scheduled })
+  .build();
+
+const interaction = new MockInteractionBuilder("my-command")
+  .withUser({ id: "user-123" })
+  .withGuild(mockGuild)
+  .withStringOption("option-name", "value")
+  .build();
+```
+
+### 6.3. アサーションの原則
+
+- **何をテストするか:** コマンドの `execute` 関数のテストは、**個々のヘルパー関数の実装を再テストするのではなく、それらが正しく連携しているか（オーケストレーション）** を検証することに主眼を置きます。
+- **メッセージ内容のテスト:**
+  - `formatMessage` が生成した最終的な文字列を `assertEquals` で比較するのは、些細な文言修正でテストが壊れるため**避けるべき**です。
+  - 代わりに、`testable.formatMessage` を**スタブ化**して固定の文字列を返させ、`interaction.reply` や `editReply` がその固定文字列で呼び出されたことを検証します。
+  - 同時に、`formatMessage` のスタブが、**期待された `messageKey` とパラメータで呼び出されたか**を `assertSpyCall` で検証します。これにより、テストがより堅牢になります。
+
+```typescript
+// 良い例
+it("...", async () => {
+  // formatMessage をスタブ化し、常に同じ文字列を返すようにする
+  using formatSpy = stub(testable, "formatMessage", () => "mocked message");
+  using replySpy = spy(interaction, "reply");
+
+  await execute(interaction);
+
+  // 1. reply が、スタブが返した固定文字列で呼び出されたことを検証
+  assertSpyCall(replySpy, 0, {
+    args: [{ content: "mocked message", flags: MessageFlags.Ephemeral }],
+  });
+
+  // 2. formatMessage が、正しいキーと引数で呼び出されたことを検証
+  assertSpyCall(formatSpy, 0, {
+    args: [messageKeys.some.message.key, { some: "param" }],
+  });
+});
+```
+
+### 6.4. コンポーネント（ボタン、メニュー）のテスト
+
+`ActionRowBuilder` のようなコンポーネントビルダーは、内部状態を直接プロパティとして持っていません。
+
+- **ルール:** コンポーネントの内容を検証する際は、`.toJSON()` メソッドを使用し、シリアライズされたJSONオブジェクトに対してアサーションを行います。
+
+```typescript
+// 良い例
+const replyOptions = editSpy.calls[0].args[0] as InteractionEditReplyOptions;
+const row = replyOptions.components![0] as ActionRowBuilder<StringSelectMenuBuilder>;
+const selectMenu = row.components[0];
+
+const menuJSON = selectMenu.toJSON(); // .toJSON() を呼び出す
+assertEquals(menuJSON.options?.length, 1);
+assertEquals(menuJSON.options?.[0].label, "Active Event");
+```

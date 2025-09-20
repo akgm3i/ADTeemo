@@ -28,6 +28,13 @@ function parseDate(dateStr: string, timeStr: string): Date | null {
   return targetDate;
 }
 
+// Exported for testing purposes
+export const testable = {
+  apiClient,
+  formatMessage,
+  parseDate,
+};
+
 export const data = new SlashCommandBuilder()
   .setName("create-custom-game")
   .setDescription(
@@ -66,7 +73,9 @@ export async function execute(interaction: CommandInteraction) {
 
   if (!interaction.inGuild() || !interaction.guild || !interaction.channel) {
     await interaction.reply({
-      content: formatMessage(messageKeys.common.info.guildOnlyCommand),
+      content: testable.formatMessage(
+        messageKeys.common.info.guildOnlyCommand,
+      ),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -79,10 +88,10 @@ export async function execute(interaction: CommandInteraction) {
   const timeStr = interaction.options.getString("start-time", true);
   const voiceChannel = interaction.options.getChannel("voice-channel", true);
 
-  const scheduledStartTime = parseDate(dateStr, timeStr);
+  const scheduledStartTime = testable.parseDate(dateStr, timeStr);
   if (!scheduledStartTime) {
     await interaction.reply({
-      content: formatMessage(
+      content: testable.formatMessage(
         messageKeys.customGame.create.error.invalidDateTimeFormat,
       ),
       flags: MessageFlags.Ephemeral,
@@ -98,12 +107,14 @@ export async function execute(interaction: CommandInteraction) {
     channel: voiceChannel.id,
   });
 
-  let replyContent = formatMessage(messageKeys.customGame.create.success);
+  let replyContent = testable.formatMessage(
+    messageKeys.customGame.create.success,
+  );
   const oneMonthFromNow = new Date();
   oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
 
   if (scheduledStartTime > oneMonthFromNow) {
-    replyContent += formatMessage(
+    replyContent += testable.formatMessage(
       messageKeys.customGame.create.info.dateTooFarWarning,
     );
   }
@@ -112,7 +123,7 @@ export async function execute(interaction: CommandInteraction) {
 
   const displayDate = format(scheduledStartTime, "yyyy/MM/dd HH:mm");
 
-  const recruitmentMessageContent = formatMessage(
+  const recruitmentMessageContent = testable.formatMessage(
     messageKeys.customGame.create.recruitmentMessage,
     {
       startTime: displayDate,
@@ -129,7 +140,7 @@ export async function execute(interaction: CommandInteraction) {
   await message.react("🇧");
   await message.react("🇸");
 
-  await apiClient.createCustomGameEvent({
+  await testable.apiClient.createCustomGameEvent({
     name: eventName,
     guildId: interaction.guild.id,
     creatorId: interaction.user.id,

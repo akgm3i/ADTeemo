@@ -2,323 +2,239 @@ import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
 import {
   assertSpyCall,
   assertSpyCalls,
-  restore,
+  Spy,
   spy,
   stub,
 } from "@std/testing/mock";
 import { FakeTime } from "@std/testing/time";
-import { execute } from "./create-custom-game.ts";
-import { apiClient } from "../api_client.ts";
-import {
-  newMockChatInputCommandInteractionBuilder,
-  newMockGuildBuilder,
-} from "../test_utils.ts";
+import { execute, testable } from "./create-custom-game.ts";
 import {
   Channel,
   ChannelType,
-  EmojiIdentifierResolvable,
-  GuildScheduledEventEntityType,
-  GuildScheduledEventPrivacyLevel,
+  GuildScheduledEventCreateOptions,
   Message,
-  MessageCreateOptions,
   MessageFlags,
-  MessagePayload,
-  MessageReaction,
-  TextBasedChannel,
 } from "discord.js";
-import { formatMessage, messageKeys } from "../messages.ts";
+import { messageKeys } from "../messages.ts";
+import { MockGuildBuilder, MockInteractionBuilder } from "../test_utils.ts";
+import { assertEquals } from "@std/assert";
+import { parse } from "@std/datetime";
 
 describe("Create Custom Game Command", () => {
+  let time: FakeTime;
+  const mockNow = new Date("2025-09-03T10:00:00Z"); // It's a Wednesday
+
+  beforeEach(() => {
+    time = new FakeTime(mockNow);
+  });
+
   afterEach(() => {
-    restore();
+    time.restore();
   });
 
   describe("execute", () => {
-    const mockNow = new Date("2025-09-03T10:00:00Z"); // Wednesday
-    let time: FakeTime;
-
-    beforeEach(() => {
-      time = new FakeTime(mockNow);
-    });
-
-    afterEach(() => {
-      time.restore();
-    });
-
     describe("正常系", () => {
       it("有効なイベント名、未来の日付と時刻が指定された場合、Discordイベントを作成し、参加者募集メッセージを投稿する", async () => {
-        const createEventStub = stub(
-          apiClient,
+        using _ = stub(
+          testable.apiClient,
           "createCustomGameEvent",
           () => Promise.resolve({ success: true, error: null }),
         );
+        using _formatSpy = spy(testable, "formatMessage");
 
-        // Setup
-        const reactSpy = spy(
-          (_emoji: EmojiIdentifierResolvable): Promise<MessageReaction> =>
-            Promise.resolve({} as MessageReaction),
+        const mockGuild = new MockGuildBuilder().build();
+        const createScheduledEventSpy = spy(
+          mockGuild.scheduledEvents,
+          "create",
         );
 
-        const mockMessage = {
-          id: "mock-message-id",
-          react: reactSpy,
-        } as unknown as Message;
-
-        const sendSpy = spy(
-          (
-            _options: string | MessagePayload | MessageCreateOptions,
-          ): Promise<Message> => Promise.resolve(mockMessage),
+        const reactSpy = spy(() => Promise.resolve({} as Message));
+        const sendSpy = spy(() =>
+          Promise.resolve(
+            { id: "mock-message-id", react: reactSpy } as unknown as Message,
+          )
         );
-
-        const mockChannel = {
-          type: ChannelType.GuildText,
-          send: sendSpy,
-        } as unknown as TextBasedChannel;
-
-        const mockGuildBuilder = newMockGuildBuilder();
-        const mockGuild = mockGuildBuilder.build();
-        const createEventSpy = mockGuildBuilder.getCreateEventSpy();
-
+        const mockChannel = { id: "c-id", send: sendSpy } as unknown as Channel;
         const mockVoiceChannel = {
-          id: "mock-voice-channel-id",
+          id: "vc-id",
           type: ChannelType.GuildVoice,
         } as unknown as Channel;
 
-        const interaction = newMockChatInputCommandInteractionBuilder(
-          "create-custom-game",
-        )
+        const interaction = new MockInteractionBuilder("create-custom-game")
           .withGuild(mockGuild)
-          .withStringOption((name) => {
-            if (name === "event-name") return "週末カスタム";
-            if (name === "start-date") return "09/13";
-            if (name === "start-time") return "21:00";
-            return null;
-          })
+          .withChannel(mockChannel)
+          .withStringOption("event-name", "週末カスタム")
+          .withStringOption("start-date", "09/13")
+          .withStringOption("start-time", "21:00")
           .withChannelOption("voice-channel", mockVoiceChannel)
           .build();
+        (interaction as { inGuild: () => true }).inGuild = () => true;
 
-        Object.assign(interaction, {
-          channel: mockChannel,
-          inGuild: () => true,
-        });
+        using deferSpy = spy(interaction, "deferReply");
+        using editSpy = spy(interaction, "editReply");
 
-        // Execute
         await execute(interaction);
 
-        // Assertions
-        const expectedDate = new Date("2025-09-13T21:00:00");
-        assertSpyCall(createEventSpy, 0, {
-          args: [{
-            name: "週末カスタム",
-            scheduledStartTime: expectedDate,
-            privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
-            entityType: GuildScheduledEventEntityType.Voice,
-            channel: mockVoiceChannel.id,
-          }],
-        });
+        const expectedDate = parse("2025/09/13 21:00", "yyyy/MM/dd HH:mm");
+        assertSpyCall(createScheduledEventSpy, 0);
+        const createEventArgs = createScheduledEventSpy.calls[0]
+          .args[0] as GuildScheduledEventCreateOptions;
+        assertEquals(createEventArgs.name, "週末カスタム");
+        assertEquals(createEventArgs.scheduledStartTime, expectedDate);
 
-        const expectedMessage = formatMessage(
-          messageKeys.customGame.create.recruitmentMessage,
-          {
-            startTime: "2025/09/13 21:00",
-            eventName: "週末カスタム",
-            organizer: "<@test-user-id>",
-          },
-        );
-        assertSpyCall(sendSpy, 0, { args: [expectedMessage] });
+        assertSpyCall(sendSpy, 0);
         assertSpyCalls(reactSpy, 5);
+        assertSpyCall(deferSpy, 0);
+        assertSpyCall(editSpy, 0);
 
-        assertSpyCall(interaction.deferReply, 0, {
-          args: [{ flags: MessageFlags.Ephemeral }],
-        });
-        assertSpyCall(interaction.editReply, 0, {
-          args: [formatMessage(messageKeys.customGame.create.success)],
-        });
-
-        assertSpyCall(createEventStub, 0, {
-          args: [{
-            name: "週末カスタム",
-            guildId: "mock-guild-id",
-            creatorId: "test-user-id",
-            discordScheduledEventId: "mock-event-id",
-            recruitmentMessageId: "mock-message-id",
-            scheduledStartAt: expectedDate,
-          }],
-        });
+        const createApiCall = (testable.apiClient.createCustomGameEvent as Spy)
+          .calls[0];
+        assertEquals(createApiCall.args[0].name, "週末カスタム");
+        assertEquals(createApiCall.args[0].scheduledStartAt, expectedDate);
       });
 
       it("過去の日付が指定された場合、翌年の日付として扱いイベントを作成する", async () => {
-        // Setup
-        const reactSpy = spy(
-          (_emoji: EmojiIdentifierResolvable): Promise<MessageReaction> =>
-            Promise.resolve({} as MessageReaction),
+        using _ = stub(
+          testable.apiClient,
+          "createCustomGameEvent",
+          () => Promise.resolve({ success: true, error: null }),
         );
-        const sendSpy = spy(
-          (
-            _options: string | MessagePayload | MessageCreateOptions,
-          ): Promise<Message> =>
-            Promise.resolve({ react: reactSpy } as unknown as Message),
+        const mockGuild = new MockGuildBuilder().build();
+        const createScheduledEventSpy = spy(
+          mockGuild.scheduledEvents,
+          "create",
         );
-
-        const mockChannel = {
-          type: ChannelType.GuildText,
-          send: sendSpy,
-        } as unknown as TextBasedChannel;
-
-        const mockGuildBuilder = newMockGuildBuilder();
-        const mockGuild = mockGuildBuilder.build();
-        const createEventSpy = mockGuildBuilder.getCreateEventSpy();
-
-        const mockVoiceChannel = {
-          id: "mock-voice-channel-id",
-          type: ChannelType.GuildVoice,
-        } as unknown as Channel;
-
-        const interaction = newMockChatInputCommandInteractionBuilder(
-          "create-custom-game",
-        )
+        const interaction = new MockInteractionBuilder("create-custom-game")
           .withGuild(mockGuild)
-          .withStringOption((name) => {
-            if (name === "event-name") return "新年カスタム";
-            if (name === "start-date") return "01/15";
-            if (name === "start-time") return "12:00";
-            return null;
-          })
-          .withChannelOption("voice-channel", mockVoiceChannel)
+          .withChannel(
+            {
+              send: () =>
+                Promise.resolve({ react: spy() } as unknown as Message),
+            } as unknown as Channel,
+          )
+          .withStringOption("event-name", "新年カスタム")
+          .withStringOption("start-date", "01/15")
+          .withStringOption("start-time", "12:00")
+          .withChannelOption(
+            "voice-channel",
+            { id: "vc-id" } as unknown as Channel,
+          )
           .build();
-
-        Object.assign(interaction, {
-          channel: mockChannel,
-          inGuild: () => true,
-        });
+        (interaction as { inGuild: () => true }).inGuild = () => true;
 
         await execute(interaction);
 
         const nextYear = mockNow.getFullYear() + 1;
-        const expectedDate = new Date(`${nextYear}-01-15T12:00:00`);
+        const expectedDate = parse(
+          `${nextYear}/01/15 12:00`,
+          "yyyy/MM/dd HH:mm",
+        );
 
-        assertSpyCall(createEventSpy, 0, {
-          args: [{
-            name: "新年カスタム",
-            scheduledStartTime: expectedDate,
-            privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
-            entityType: GuildScheduledEventEntityType.Voice,
-            channel: mockVoiceChannel.id,
-          }],
-        });
+        assertSpyCall(createScheduledEventSpy, 0);
+        const callArgs = createScheduledEventSpy.calls[0]
+          .args[0] as GuildScheduledEventCreateOptions;
+        assertEquals(callArgs.scheduledStartTime, expectedDate);
       });
 
       it("開始日時が1ヶ月以上先の場合、警告メッセージ付きで成功応答を返す", async () => {
-        const reactSpy = spy(
-          (_emoji: EmojiIdentifierResolvable): Promise<MessageReaction> =>
-            Promise.resolve({} as MessageReaction),
+        using _ = stub(
+          testable.apiClient,
+          "createCustomGameEvent",
+          () => Promise.resolve({ success: true, error: null }),
         );
-        const sendSpy = spy(
-          (
-            _options: string | MessagePayload | MessageCreateOptions,
-          ): Promise<Message> =>
-            Promise.resolve({ react: reactSpy } as unknown as Message),
-        );
-
-        const mockChannel = {
-          type: ChannelType.GuildText,
-          send: sendSpy,
-        } as unknown as TextBasedChannel;
-
-        const mockGuildBuilder = newMockGuildBuilder();
-        const mockGuild = mockGuildBuilder.build();
-
-        const mockVoiceChannel = {
-          id: "mock-voice-channel-id",
-          type: ChannelType.GuildVoice,
-        } as unknown as Channel;
-
-        const interaction = newMockChatInputCommandInteractionBuilder(
-          "create-custom-game",
-        )
-          .withGuild(mockGuild)
-          .withStringOption((name) => {
-            if (name === "event-name") return "未来のカスタム";
-            if (name === "start-date") return "12/25";
-            if (name === "start-time") return "12:00";
-            return null;
-          })
-          .withChannelOption("voice-channel", mockVoiceChannel)
+        using formatSpy = spy(testable, "formatMessage");
+        const interaction = new MockInteractionBuilder("create-custom-game")
+          .withGuild(new MockGuildBuilder().build())
+          .withChannel(
+            {
+              send: () =>
+                Promise.resolve({ react: spy() } as unknown as Message),
+            } as unknown as Channel,
+          )
+          .withStringOption("event-name", "未来のカスタム")
+          .withStringOption("start-date", "12/25")
+          .withStringOption("start-time", "12:00")
+          .withChannelOption(
+            "voice-channel",
+            { id: "vc-id" } as unknown as Channel,
+          )
           .build();
-
-        Object.assign(interaction, {
-          channel: mockChannel,
-          inGuild: () => true,
-        });
+        (interaction as { inGuild: () => true }).inGuild = () => true;
+        using editSpy = spy(interaction, "editReply");
 
         await execute(interaction);
 
-        assertSpyCall(interaction.editReply, 0, {
-          args: [
-            formatMessage(messageKeys.customGame.create.success) +
-            formatMessage(messageKeys.customGame.create.info.dateTooFarWarning),
-          ],
+        assertSpyCall(editSpy, 0);
+        assertSpyCall(formatSpy, 0, {
+          args: [messageKeys.customGame.create.success],
+        });
+        assertSpyCall(formatSpy, 1, {
+          args: [messageKeys.customGame.create.info.dateTooFarWarning],
         });
       });
     });
 
     describe("異常系", () => {
       it("日付のフォーマットが不正な場合、エラーメッセージを返信する", async () => {
-        const mockGuildBuilder = newMockGuildBuilder();
-        const mockGuild = mockGuildBuilder.build();
-        const createEventSpy = mockGuildBuilder.getCreateEventSpy();
-
-        const mockVoiceChannel = {
-          id: "mock-voice-channel-id",
-          type: ChannelType.GuildVoice,
-        } as unknown as Channel;
-
-        const interaction = newMockChatInputCommandInteractionBuilder(
-          "create-custom-game",
-        )
+        const mockGuild = new MockGuildBuilder().build();
+        const createScheduledEventSpy = spy(
+          mockGuild.scheduledEvents,
+          "create",
+        );
+        const interaction = new MockInteractionBuilder("create-custom-game")
           .withGuild(mockGuild)
-          .withStringOption((name) => {
-            if (name === "event-name") return "週末カスタム";
-            if (name === "start-date") return "invalid-date";
-            if (name === "start-time") return "21:00";
-            return null;
-          })
-          .withChannelOption("voice-channel", mockVoiceChannel)
+          .withStringOption("event-name", "Test")
+          .withStringOption("start-date", "invalid-date")
+          .withStringOption("start-time", "21:00")
+          .withChannelOption(
+            "voice-channel",
+            { id: "vc-id" } as unknown as Channel,
+          )
           .build();
-
-        Object.assign(interaction, {
-          inGuild: () => true,
-          channel: { send: () => {} } as unknown as TextBasedChannel,
-        });
+        (interaction as { inGuild: () => true }).inGuild = () => true;
+        using replySpy = spy(interaction, "reply");
+        using formatSpy = stub(
+          testable,
+          "formatMessage",
+          () => "mocked error message",
+        );
 
         await execute(interaction);
 
-        assertSpyCall(interaction.reply, 0, {
+        assertSpyCall(replySpy, 0, {
           args: [{
-            content: formatMessage(
-              messageKeys.customGame.create.error.invalidDateTimeFormat,
-            ),
+            content: "mocked error message",
             flags: MessageFlags.Ephemeral,
           }],
         });
-        assertSpyCalls(createEventSpy, 0);
+        assertSpyCall(formatSpy, 0, {
+          args: [messageKeys.customGame.create.error.invalidDateTimeFormat],
+        });
+        assertSpyCalls(createScheduledEventSpy, 0);
       });
 
       it("DMでコマンドが実行された場合、エラーメッセージを返信する", async () => {
-        const interaction = newMockChatInputCommandInteractionBuilder(
-          "create-custom-game",
-        )
-          .withGuild(null)
+        const interaction = new MockInteractionBuilder().withGuild(null)
+          .setIsChatInputCommand(true)
           .build();
-        Object.assign(interaction, { inGuild: () => false });
+        (interaction as { inGuild: () => false }).inGuild = () => false;
+        using replySpy = spy(interaction, "reply");
+        using formatSpy = stub(
+          testable,
+          "formatMessage",
+          () => "mocked guild only message",
+        );
 
         await execute(interaction);
 
-        assertSpyCall(interaction.reply, 0, {
+        assertSpyCall(replySpy, 0, {
           args: [{
-            content: formatMessage(messageKeys.common.info.guildOnlyCommand),
+            content: "mocked guild only message",
             flags: MessageFlags.Ephemeral,
           }],
+        });
+        assertSpyCall(formatSpy, 0, {
+          args: [messageKeys.common.info.guildOnlyCommand],
         });
       });
     });

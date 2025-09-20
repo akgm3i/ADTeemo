@@ -1,36 +1,23 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
-import { spy } from "@std/testing/mock";
-import {
-  Collection,
-  DiscordAPIError,
-  type Guild,
-  RESTJSONErrorCodes,
-  type Role,
-  type RoleCreateOptions,
-} from "discord.js";
+import { assertSpyCalls, spy, stub } from "@std/testing/mock";
+import { DiscordAPIError, RESTJSONErrorCodes } from "discord.js";
 import { ensureRoles } from "./role-management.ts";
 import { DISCORD_ROLES_TO_MANAGE } from "../constants.ts";
+import { MockGuildBuilder } from "../test_utils.ts";
 
 describe("ensureRoles", () => {
   it("管理対象のロールが一つも存在しないギルドで実行すると、すべてのロールを作成する", async () => {
-    const createSpy = spy(
-      (options: RoleCreateOptions): Promise<Role> =>
-        Promise.resolve({ name: options.name } as Role),
-    );
-    const mockGuild = {
-      roles: {
-        cache: new Collection<string, Role>(),
-        create: createSpy,
-      },
-    } as unknown as Guild;
+    const mockGuild = new MockGuildBuilder().build();
+    // Spy on the method for this test case
+    using createSpy = spy(mockGuild.roles, "create");
 
     const result = await ensureRoles(mockGuild);
 
-    assertEquals(createSpy.calls.length, DISCORD_ROLES_TO_MANAGE.length);
+    assertSpyCalls(createSpy, DISCORD_ROLES_TO_MANAGE.length);
     for (const roleName of DISCORD_ROLES_TO_MANAGE) {
       assertExists(
-        createSpy.calls.find(({ args }) => args[0].name === roleName),
+        createSpy.calls.find((call) => call.args[0]?.name === roleName),
       );
     }
 
@@ -49,28 +36,20 @@ describe("ensureRoles", () => {
     const rolesToCreate = DISCORD_ROLES_TO_MANAGE.filter(
       (r) => !existingRoleNames.includes(r),
     );
-    const createSpy = spy(
-      (options: RoleCreateOptions): Promise<Role> =>
-        Promise.resolve({ name: options.name } as Role),
-    );
-    const mockGuild = {
-      roles: {
-        cache: new Collection<string, Role>(
-          existingRoleNames.map((name, i) => [
-            i.toString(),
-            { name, id: i.toString() } as Role,
-          ]),
-        ),
-        create: createSpy,
-      },
-    } as unknown as Guild;
+
+    const guildBuilder = new MockGuildBuilder();
+    for (const roleName of existingRoleNames) {
+      guildBuilder.withRole({ id: roleName, name: roleName });
+    }
+    const mockGuild = guildBuilder.build();
+    using createSpy = spy(mockGuild.roles, "create");
 
     const result = await ensureRoles(mockGuild);
 
-    assertEquals(createSpy.calls.length, rolesToCreate.length);
+    assertSpyCalls(createSpy, rolesToCreate.length);
     for (const roleName of rolesToCreate) {
       assertExists(
-        createSpy.calls.find(({ args }) => args[0].name === roleName),
+        createSpy.calls.find((call) => call.args[0]?.name === roleName),
       );
     }
 
@@ -85,26 +64,16 @@ describe("ensureRoles", () => {
   });
 
   it("管理対象のロールがすべて存在するギルドで実行すると、ロールを一つも作成しない", async () => {
-    const existingRoleNames = [...DISCORD_ROLES_TO_MANAGE];
-    const createSpy = spy(
-      (options: RoleCreateOptions): Promise<Role> =>
-        Promise.resolve({ name: options.name } as Role),
-    );
-    const mockGuild = {
-      roles: {
-        cache: new Collection<string, Role>(
-          existingRoleNames.map((name, i) => [
-            i.toString(),
-            { name, id: i.toString() } as Role,
-          ]),
-        ),
-        create: createSpy,
-      },
-    } as unknown as Guild;
+    const guildBuilder = new MockGuildBuilder();
+    for (const roleName of DISCORD_ROLES_TO_MANAGE) {
+      guildBuilder.withRole({ id: roleName, name: roleName });
+    }
+    const mockGuild = guildBuilder.build();
+    using createSpy = spy(mockGuild.roles, "create");
 
     const result = await ensureRoles(mockGuild);
 
-    assertEquals(createSpy.calls.length, 0);
+    assertSpyCalls(createSpy, 0);
     assertEquals(result.status, "SUCCESS");
     if (result.status === "SUCCESS") {
       assertEquals(result.summary.created, []);
@@ -124,15 +93,14 @@ describe("ensureRoles", () => {
       "/guilds/123/roles",
       {},
     );
-    const createSpy = spy(
-      (_options: RoleCreateOptions): Promise<Role> => Promise.reject(error),
+
+    const mockGuild = new MockGuildBuilder().build();
+    // Now we can stub the method without conflict.
+    using _createStub = stub(
+      mockGuild.roles,
+      "create",
+      () => Promise.reject(error),
     );
-    const mockGuild = {
-      roles: {
-        cache: new Collection<string, Role>(),
-        create: createSpy,
-      },
-    } as unknown as Guild;
 
     const result = await ensureRoles(mockGuild);
 

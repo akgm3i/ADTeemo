@@ -11,6 +11,11 @@ import { loadCommands } from "./common/command_loader.ts";
 import { apiClient } from "./api_client.ts";
 import { formatMessage, messageKeys } from "./messages.ts";
 
+export const testable = {
+  formatMessage,
+  apiClient,
+};
+
 // Create a new client instance
 const client = new Client({
   intents: [
@@ -25,19 +30,12 @@ const client = new Client({
 
 client.commands = new Collection();
 
-// Load commands and add them to the client
-const commands = await loadCommands();
-for (const command of commands) {
-  client.commands.set(command.data.name, command);
-}
-
 // When the client is ready, run this code (only once)
 client.once(Events.ClientReady, (c) => {
   console.log(`Ready! Logged in as ${c.user.tag}`);
 });
 
-// Listen for interactions
-client.on(Events.InteractionCreate, async (interaction: Interaction) => {
+export async function handleInteractionCreate(interaction: Interaction) {
   if (interaction.isChatInputCommand()) {
     const command = interaction.client.commands.get(
       interaction.commandName,
@@ -56,12 +54,12 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
       console.error(error);
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp({
-          content: formatMessage(messageKeys.common.error.command),
+          content: testable.formatMessage(messageKeys.common.error.command),
           flags: MessageFlags.Ephemeral,
         });
       } else {
         await interaction.reply({
-          content: formatMessage(messageKeys.common.error.command),
+          content: testable.formatMessage(messageKeys.common.error.command),
           flags: MessageFlags.Ephemeral,
         });
       }
@@ -77,7 +75,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         const [discordEventId, recruitmentMessageId] = interaction.values[0]
           .split(":");
 
-        const deleteResult = await apiClient.deleteCustomGameEvent(
+        const deleteResult = await testable.apiClient.deleteCustomGameEvent(
           discordEventId,
         );
 
@@ -87,7 +85,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
             deleteResult.error,
           );
           await interaction.editReply({
-            content: formatMessage(
+            content: testable.formatMessage(
               messageKeys.customGame.cancel.error.interaction,
             ),
             components: [],
@@ -95,8 +93,6 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           return;
         }
 
-        // It's possible for the event or message to be deleted by a user before the bot tries to.
-        // So we should handle the errors gracefully.
         try {
           await interaction.guild?.scheduledEvents.delete(discordEventId);
         } catch (e) {
@@ -118,19 +114,26 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         }
 
         await interaction.editReply({
-          content: formatMessage(messageKeys.customGame.cancel.success),
+          content: testable.formatMessage(
+            messageKeys.customGame.cancel.success,
+          ),
           components: [],
         });
       } catch (e) {
         console.error("Error handling cancel-event-select:", e);
         await interaction.editReply({
-          content: formatMessage(messageKeys.customGame.cancel.error.generic),
+          content: testable.formatMessage(
+            messageKeys.customGame.cancel.error.generic,
+          ),
           components: [],
         });
       }
     }
   }
-});
+}
+
+// Listen for interactions
+client.on(Events.InteractionCreate, handleInteractionCreate);
 
 // When the bot joins a new guild, run this code
 client.on(Events.GuildCreate, async (guild) => {
@@ -186,11 +189,15 @@ client.on(Events.GuildCreate, async (guild) => {
 });
 
 // Main function to start the bot
-function startBot() {
+async function startBot() {
   const token = Deno.env.get("DISCORD_TOKEN");
   if (!token) {
     console.error("Error: DISCORD_TOKEN environment variable not set.");
     Deno.exit(1);
+  }
+  const commands = await loadCommands();
+  for (const command of commands) {
+    client.commands.set(command.data.name, command);
   }
   client.login(token);
 }

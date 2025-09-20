@@ -1,16 +1,14 @@
-import { afterEach, describe, it } from "@std/testing/bdd";
-import { assertSpyCalls, restore, spy, stub } from "@std/testing/mock";
+import { describe, it } from "@std/testing/bdd";
+import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import {
   type ChatInputCommandInteraction,
+  InteractionResponse,
   Message,
-  TextBasedChannel,
 } from "discord.js";
-import { apiClient, type MatchParticipant } from "../api_client.ts";
-import { execute } from "./record-match.ts";
-import { newMockChatInputCommandInteractionBuilder } from "../test_utils.ts";
+import { type MatchParticipant } from "../api_client.ts";
+import { execute, testable } from "./record-match.ts";
+import { MockInteractionBuilder } from "../test_utils.ts";
 import { assertEquals } from "@std/assert";
-import { matchTracker } from "../features/match_tracking.ts";
-import { statCollector } from "../features/stat_collector.ts";
 import type { Lane } from "@adteemo/api/schema";
 
 describe("/record-match command", () => {
@@ -27,21 +25,18 @@ describe("/record-match command", () => {
     },
   ];
 
-  afterEach(() => {
-    restore();
-  });
-
   it("対話フローが正常に完了し、全プレイヤーのデータがAPIに送信される", async () => {
     using _ = stub(
-      matchTracker,
+      testable.matchTracker,
       "getActiveParticipants",
       () => Promise.resolve(mockParticipants),
     );
-    const apiClientStub = stub(
-      apiClient,
+    const createParticipantStub = stub(
+      testable.apiClient,
       "createMatchParticipant",
       () => Promise.resolve({ success: true, id: 1, error: null }),
     );
+    using _uuidStub = stub(testable, "uuidv4", () => "mock-match-id");
 
     let askCount = 0;
     const askValues: (string | number)[] = [
@@ -52,46 +47,56 @@ describe("/record-match command", () => {
       150,
       11000,
     ];
-    stub(statCollector, "askForStat", () => {
+    stub(testable.statCollector, "askForStat", () => {
       return Promise.resolve(askValues[askCount++]);
     });
 
-    const mockChannel = {
-      isTextBased: () => true,
-    } as Partial<TextBasedChannel>;
-
-    const interaction = newMockChatInputCommandInteractionBuilder(
-      "record-match",
-    )
-      .withStringOption((name) => (name === "winning_team" ? "BLUE" : null))
-      .withChannel(mockChannel)
-      .withDeferReply(() =>
-        Promise.resolve({
-          awaitMessageComponent: () =>
-            Promise.resolve({
-              customId: "confirm_record_match",
-              update: spy(),
-              isButton: () => true,
-            }),
-        } as unknown as Message)
-      )
+    const interaction = new MockInteractionBuilder("record-match")
+      .withStringOption("winning_team", "BLUE")
       .build();
 
-    await execute(interaction as unknown as ChatInputCommandInteraction);
+    const mockReply = {
+      awaitMessageComponent: () =>
+        Promise.resolve({
+          customId: "confirm_record_match",
+          update: spy(),
+        }),
+    } as unknown as Message;
 
-    assertSpyCalls(apiClientStub, 2);
-    const firstCallArgs = apiClientStub.calls[0].args as [
+    using _deferReplyStub = stub(
+      interaction,
+      "deferReply",
+      () => Promise.resolve(mockReply as unknown as InteractionResponse),
+    );
+    using followUpSpy = spy(interaction, "followUp");
+
+    (interaction.channel as { isTextBased: () => true }).isTextBased = () =>
+      true;
+
+    await execute(interaction as ChatInputCommandInteraction);
+
+    assertSpyCalls(createParticipantStub, 2);
+
+    const firstCallArgs = createParticipantStub.calls[0].args as [
       string,
       MatchParticipant,
     ];
+    assertEquals(firstCallArgs[0], "mock-match-id");
+    assertEquals(firstCallArgs[1].userId, "user1");
     assertEquals(firstCallArgs[1].kills, 10);
     assertEquals(firstCallArgs[1].win, true);
 
-    const secondCallArgs = apiClientStub.calls[1].args as [
+    const secondCallArgs = createParticipantStub.calls[1].args as [
       string,
       MatchParticipant,
     ];
+    assertEquals(secondCallArgs[0], "mock-match-id");
+    assertEquals(secondCallArgs[1].userId, "user2");
     assertEquals(secondCallArgs[1].kills, 5);
     assertEquals(secondCallArgs[1].win, true);
+
+    assertSpyCall(followUpSpy, 0);
   });
+
+  // TODO: Add tests for cancellation and timeout scenarios
 });

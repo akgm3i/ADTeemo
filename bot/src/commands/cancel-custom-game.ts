@@ -10,6 +10,12 @@ import { apiClient } from "../api_client.ts";
 import { CustomGameEvent } from "../types.ts";
 import { formatMessage, messageKeys } from "../messages.ts";
 
+// Exported for testing purposes
+export const testable = {
+  apiClient,
+  formatMessage,
+};
+
 export const data = new SlashCommandBuilder()
   .setName("cancel-custom-game")
   .setDescription("Cancels a custom game event you created.");
@@ -22,20 +28,21 @@ export async function execute(interaction: CommandInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const creatorId = interaction.user.id;
-  const dbEventsResult = await apiClient.getCustomGameEventsByCreatorId(
-    creatorId,
-  );
+  const dbEventsResult = await testable.apiClient
+    .getCustomGameEventsByCreatorId(
+      creatorId,
+    );
 
   if (!dbEventsResult.success) {
     await interaction.editReply(
-      formatMessage(messageKeys.customGame.cancel.error.fetchEvents),
+      testable.formatMessage(messageKeys.customGame.cancel.error.fetchEvents),
     );
     return;
   }
 
   if (!interaction.guild) {
     await interaction.editReply(
-      formatMessage(messageKeys.common.info.guildOnlyCommand),
+      testable.formatMessage(messageKeys.common.info.guildOnlyCommand),
     );
     return;
   }
@@ -52,7 +59,9 @@ export async function execute(interaction: CommandInteraction) {
 
   if (activeEvents.length === 0) {
     await interaction.editReply(
-      formatMessage(messageKeys.customGame.cancel.info.noActiveEvents),
+      testable.formatMessage(
+        messageKeys.customGame.cancel.info.noActiveEvents,
+      ),
     );
     return;
   }
@@ -65,7 +74,9 @@ export async function execute(interaction: CommandInteraction) {
   const selectMenu = new StringSelectMenuBuilder()
     .setCustomId("cancel-event-select")
     .setPlaceholder(
-      formatMessage(messageKeys.customGame.cancel.info.selectPlaceholder),
+      testable.formatMessage(
+        messageKeys.customGame.cancel.info.selectPlaceholder,
+      ),
     )
     .addOptions(options);
 
@@ -73,7 +84,9 @@ export async function execute(interaction: CommandInteraction) {
     .addComponents(selectMenu);
 
   await interaction.editReply({
-    content: formatMessage(messageKeys.customGame.cancel.info.selectMessage),
+    content: testable.formatMessage(
+      messageKeys.customGame.cancel.info.selectMessage,
+    ),
     components: [row],
   });
 }

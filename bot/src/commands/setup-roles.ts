@@ -4,8 +4,14 @@ import {
   PermissionFlagsBits,
   SlashCommandBuilder,
 } from "discord.js";
-import { ensureRoles } from "../features/role-management.ts";
+import * as roleManager from "../features/role-management.ts";
 import { formatMessage, messageKeys } from "../messages.ts";
+
+// Exported for testing purposes
+export const testable = {
+  formatMessage,
+  ensureRoles: roleManager.ensureRoles,
+};
 
 export const data = new SlashCommandBuilder()
   .setName("setup-roles")
@@ -17,7 +23,9 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: CommandInteraction) {
   if (!interaction.guild) {
     await interaction.reply({
-      content: formatMessage(messageKeys.common.info.guildOnlyCommand),
+      content: testable.formatMessage(
+        messageKeys.common.info.guildOnlyCommand,
+      ),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -25,35 +33,46 @@ export async function execute(interaction: CommandInteraction) {
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const result = await ensureRoles(interaction.guild);
+  const result = await testable.ensureRoles(interaction.guild);
   let message = "";
 
   switch (result.status) {
     case "SUCCESS": {
       const { created, existing } = result.summary;
       if (created.length > 0) {
-        message = formatMessage(messageKeys.guild.setup.success.created, {
-          count: created.length,
-          roles: created.join(", "),
-        });
+        message = testable.formatMessage(
+          messageKeys.guild.setup.success.created,
+          {
+            count: created.length,
+            roles: created.join(", "),
+          },
+        );
         if (existing.length > 0) {
-          message += formatMessage(messageKeys.guild.setup.success.existing, {
-            count: existing.length,
-            roles: existing.join(", "),
-          });
+          message += testable.formatMessage(
+            messageKeys.guild.setup.success.existing,
+            {
+              count: existing.length,
+              roles: existing.join(", "),
+            },
+          );
         }
       } else {
-        message = formatMessage(messageKeys.guild.setup.success.noAction);
+        message = testable.formatMessage(
+          messageKeys.guild.setup.success.noAction,
+        );
       }
       break;
     }
     case "PERMISSION_ERROR":
-      message = formatMessage(messageKeys.guild.setup.error.permission, {
-        message: result.message,
-      });
+      message = testable.formatMessage(
+        messageKeys.guild.setup.error.permission,
+        {
+          message: result.message,
+        },
+      );
       break;
     case "UNKNOWN_ERROR":
-      message = formatMessage(messageKeys.guild.setup.error.unknown);
+      message = testable.formatMessage(messageKeys.guild.setup.error.unknown);
       console.error(
         `Error setting up roles via command in guild ${interaction.guild.id}:`,
         result.error,
