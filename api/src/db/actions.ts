@@ -3,6 +3,7 @@ import { createInsertSchema, createUpdateSchema } from "drizzle-zod";
 import { z } from "zod";
 import { db } from "./index.ts";
 import {
+  authStates,
   customGameEvents,
   type Lane,
   matches,
@@ -113,6 +114,25 @@ async function createMatchParticipant(
   return result[0];
 }
 
+async function getAuthState(state: string) {
+  return await db.query.authStates.findFirst({
+    where: eq(authStates.state, state),
+  });
+}
+
+async function deleteAuthState(state: string) {
+  await db.delete(authStates).where(eq(authStates.state, state)).execute();
+}
+
+async function updateUserRiotId(discordId: string, riotId: string) {
+  await db.update(users).set({ riotId }).where(eq(users.discordId, discordId))
+    .execute();
+}
+
+async function createAuthState(state: string, discordId: string) {
+  await db.insert(authStates).values({ state, discordId }).execute();
+}
+
 export const dbActions = {
   upsertUser,
   deleteUser,
@@ -122,4 +142,8 @@ export const dbActions = {
   deleteCustomGameEventByDiscordEventId,
   getEventStartingTodayByCreatorId,
   createMatchParticipant,
+  getAuthState,
+  deleteAuthState,
+  updateUserRiotId,
+  createAuthState,
 };

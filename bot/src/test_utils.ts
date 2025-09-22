@@ -8,6 +8,7 @@ import {
   GuildMember,
   GuildScheduledEvent,
   GuildScheduledEventCreateOptions,
+  InteractionReplyOptions,
   InteractionType,
   Message,
   Role,
@@ -107,7 +108,8 @@ export class MockInteractionBuilder {
       isStringSelectMenu: () => false,
       deferReply: () => Promise.resolve({} as Message),
       editReply: () => Promise.resolve({} as Message),
-      reply: () => Promise.resolve({} as Message),
+      reply: (_options: InteractionReplyOptions) =>
+        Promise.resolve({} as Message),
       followUp: () => Promise.resolve({} as Message),
       options: {
         getString: (name: string) => this.state.stringOptions.get(name) ?? null,

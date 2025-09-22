@@ -85,6 +85,14 @@ export const matchParticipantsRelations = relations(
   }),
 );
 
+export const authStates = sqliteTable("auth_states", {
+  state: text("state").primaryKey(),
+  discordId: text("discord_id").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(
+    () => new Date(),
+  ),
+});
+
 export const customGameEventsRelations = relations(
   customGameEvents,
   ({ one }) => ({

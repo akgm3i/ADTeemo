@@ -36,7 +36,7 @@ describe("/record-match command", () => {
       "createMatchParticipant",
       () => Promise.resolve({ success: true, id: 1, error: null }),
     );
-    using _uuidStub = stub(testable, "uuidv4", () => "mock-match-id");
+    using _uuidStub = stub(testable.uuid, "generate", () => "mock-match-id");
 
     let askCount = 0;
     const askValues: (string | number)[] = [

@@ -2,6 +2,7 @@ import type { Lane } from "@adteemo/api/schema";
 import { type Client, hcWithType } from "@adteemo/api/hc";
 import { z } from "zod";
 import { createParticipantSchema } from "@adteemo/api/validators";
+import { Result } from "./types.ts";
 
 const API_URL = Deno.env.get("API_URL");
 if (!API_URL) {
@@ -198,6 +199,24 @@ async function createMatchParticipant(
   }
 }
 
+async function createAuthState(
+  state: string,
+  discordId: string,
+): Promise<Result> {
+  try {
+    const res = await client.auth.states.$post({ json: { state, discordId } });
+
+    if (!res.ok) {
+      console.error("API Error:", res.status, await res.text());
+      return { success: false, error: `API Error: ${res.status}  ${res.statusText}` };
+    }
+    return { success: true, error: null };
+  } catch (e) {
+    console.error("Failed to communicate with API", e);
+    return { success: false, error: "Failed to communicate with API" };
+  }
+}
+
 export const apiClient = {
   checkHealth,
   setMainRole,
@@ -206,4 +225,5 @@ export const apiClient = {
   deleteCustomGameEvent,
   getEventStartingTodayByCreatorId,
   createMatchParticipant,
+  createAuthState,
 };
