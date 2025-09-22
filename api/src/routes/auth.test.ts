@@ -5,6 +5,51 @@ import app from "../app.ts";
 import { testable } from "./auth.ts";
 
 describe("routes/auth.ts", () => {
+  describe("GET /auth/rso/login-url", () => {
+    it("有効なdiscordIdが提供されたとき、stateを作成し、認証URLを返す", async () => {
+      // Setup
+      const mockDiscordId = "discord-123";
+      const mockState: `${string}-${string}-${string}-${string}-${string}` =
+        "a1b2c3d4-e5f6-7890-1234-567890abcdef";
+      const mockAuthUrl = `https://mock.auth.url/authorize?state=${mockState}`;
+
+      using _uuidStub = stub(crypto, "randomUUID", () => mockState);
+      using createAuthStateStub = stub(
+        testable.dbActions,
+        "createAuthState",
+        () => Promise.resolve(),
+      );
+      using getAuthUrlStub = stub(
+        testable.rso,
+        "getAuthorizationUrl",
+        () => mockAuthUrl,
+      );
+
+      const req = new Request(
+        `http://localhost/auth/rso/login-url?discordId=${mockDiscordId}`,
+      );
+      const res = await app.request(req);
+      const body = await res.json();
+
+      // Assertions
+      assertEquals(res.status, 200);
+      assertEquals(body.url, mockAuthUrl);
+
+      assertSpyCall(createAuthStateStub, 0, {
+        args: [mockState, mockDiscordId],
+      });
+      assertSpyCall(getAuthUrlStub, 0, {
+        args: [mockState],
+      });
+    });
+
+    it("discordIdが提供されない場合、400 Bad Requestを返す", async () => {
+      const req = new Request("http://localhost/auth/rso/login-url");
+      const res = await app.request(req);
+      assertEquals(res.status, 400);
+    });
+  });
+
   describe("GET /auth/rso/callback", () => {
     describe("正常系", () => {
       it("有効なcodeとstateが提供されたとき、Riot APIからトークンを取得し、ユーザーのriotIdを更新して、成功ページを返す", async () => {

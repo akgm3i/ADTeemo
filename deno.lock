@@ -16,7 +16,7 @@
     "jsr:@std/path@^1.1.1": "1.1.2",
     "jsr:@std/path@^1.1.2": "1.1.2",
     "jsr:@std/testing@^1.0.15": "1.0.15",
-    "jsr:@std/uuid@1": "1.0.9",
+    "jsr:@std/uuid@^1.0.9": "1.0.9",
     "npm:@libsql/client@~0.15.15": "0.15.15",
     "npm:@types/node@*": "24.2.0",
     "npm:discord.js@^14.22.1": "14.22.1",
@@ -784,7 +784,6 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@std/uuid@1",
       "npm:drizzle-kit@~0.31.4"
     ],
     "members": {
@@ -806,6 +805,7 @@
           "jsr:@std/datetime@~0.225.5",
           "jsr:@std/path@^1.1.2",
           "jsr:@std/testing@^1.0.15",
+          "jsr:@std/uuid@^1.0.9",
           "npm:discord.js@^14.22.1",
           "npm:zod@^4.1.9"
         ]

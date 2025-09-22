@@ -199,18 +199,23 @@ async function createMatchParticipant(
   }
 }
 
-async function createAuthState(
-  state: string,
+async function getLoginUrl(
   discordId: string,
-): Promise<Result> {
+): Promise<Result & { url?: string }> {
   try {
-    const res = await client.auth.states.$post({ json: { state, discordId } });
+    const res = await client.auth.rso["login-url"].$get({
+      query: { discordId },
+    });
 
     if (!res.ok) {
       console.error("API Error:", res.status, await res.text());
-      return { success: false, error: `API Error: ${res.status}  ${res.statusText}` };
+      return {
+        success: false,
+        error: `API Error: ${res.status}  ${res.statusText}`,
+      };
     }
-    return { success: true, error: null };
+    const data = await res.json();
+    return { success: true, url: data.url, error: null };
   } catch (e) {
     console.error("Failed to communicate with API", e);
     return { success: false, error: "Failed to communicate with API" };
@@ -225,5 +230,5 @@ export const apiClient = {
   deleteCustomGameEvent,
   getEventStartingTodayByCreatorId,
   createMatchParticipant,
-  createAuthState,
+  getLoginUrl,
 };

@@ -9,8 +9,7 @@ const callbackQuerySchema = z.object({
   state: z.string().min(1),
 });
 
-const createStateSchema = z.object({
-  state: z.string().min(1),
+const loginUrlQuerySchema = z.object({
   discordId: z.string().min(1),
 });
 
@@ -21,13 +20,18 @@ export const testable = {
 };
 
 export const authRoutes = new Hono()
-  .post(
-    "/states",
-    zValidator("json", createStateSchema),
+  .get(
+    "/rso/login-url",
+    zValidator("query", loginUrlQuerySchema),
     async (c) => {
-      const { state, discordId } = c.req.valid("json");
+      const { discordId } = c.req.valid("query");
+      const state = crypto.randomUUID();
+
       await testable.dbActions.createAuthState(state, discordId);
-      return c.json({ success: true }, 201);
+
+      const authorizationUrl = testable.rso.getAuthorizationUrl(state);
+
+      return c.json({ url: authorizationUrl });
     },
   )
   .get(
@@ -86,3 +90,5 @@ export const authRoutes = new Hono()
       }
     },
   );
+
+export type AuthRoutes = typeof authRoutes;

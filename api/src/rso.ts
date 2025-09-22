@@ -83,7 +83,29 @@ export async function getUserInfo(accessToken: string) {
   return userInfoSchema.parse(data);
 }
 
+export function getAuthorizationUrl(state: string) {
+  const clientId = Deno.env.get("RSO_CLIENT_ID");
+  const redirectUriBase = Deno.env.get("RSO_REDIRECT_URI");
+
+  if (!clientId || !redirectUriBase) {
+    throw new Error("Riot Sign On environment variables are not set.");
+  }
+
+  const authUrl = new URL(`${RSO_PROVIDER_URL}/authorize`);
+  authUrl.searchParams.append("response_type", "code");
+  authUrl.searchParams.append("client_id", clientId);
+  authUrl.searchParams.append(
+    "redirect_uri",
+    `${redirectUriBase}${RSO_CALLBACK_PATH}`,
+  );
+  authUrl.searchParams.append("scope", "openid");
+  authUrl.searchParams.append("state", state);
+
+  return authUrl.toString();
+}
+
 export const rso = {
   exchangeCodeForTokens,
   getUserInfo,
+  getAuthorizationUrl,
 };
