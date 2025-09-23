@@ -18,6 +18,7 @@ const loginUrlQuerySchema = z.object({
 export const testable = {
   dbActions,
   rso,
+  formatMessage,
 };
 
 export const authRoutes = new Hono()
@@ -46,7 +47,9 @@ export const authRoutes = new Hono()
       if (!authState) {
         return c.json({
           success: false,
-          error: formatMessage(messageKeys.riotAccount.link.error.invalidState),
+          error: testable.formatMessage(
+            messageKeys.riotAccount.link.error.invalidState,
+          ),
         }, 400);
       }
       const { discordId } = authState;
@@ -68,7 +71,9 @@ export const authRoutes = new Hono()
         return c.html(`
           <html>
             <head>
-              <title>${formatMessage(messageKeys.riotAccount.link.success.title)}</title>
+              <title>${
+          testable.formatMessage(messageKeys.riotAccount.link.success.title)
+        }</title>
               <style>
                 body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
                 .container { text-align: center; }
@@ -76,8 +81,12 @@ export const authRoutes = new Hono()
             </head>
             <body>
               <div class="container">
-                <h1>${formatMessage(messageKeys.riotAccount.link.success.title)}</h1>
-                <p>${formatMessage(messageKeys.riotAccount.link.success.body)}</p>
+                <h1>${
+          testable.formatMessage(messageKeys.riotAccount.link.success.title)
+        }</h1>
+                <p>${
+          testable.formatMessage(messageKeys.riotAccount.link.success.body)
+        }</p>
               </div>
             </body>
           </html>
@@ -85,7 +94,12 @@ export const authRoutes = new Hono()
       } catch (error) {
         console.error("Error during RSO callback:", error);
         return c.json(
-          { success: false, error: formatMessage(messageKeys.common.error.internalServerError) },
+          {
+            success: false,
+            error: testable.formatMessage(
+              messageKeys.common.error.internalServerError,
+            ),
+          },
           500,
         );
       }

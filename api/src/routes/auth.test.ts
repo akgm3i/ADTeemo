@@ -1,8 +1,9 @@
 import { describe, it } from "@std/testing/bdd";
 import { assert, assertEquals } from "@std/assert";
-import { assertSpyCall, stub } from "@std/testing/mock";
+import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import app from "../app.ts";
 import { testable } from "./auth.ts";
+import { messageKeys } from "../messages.ts";
 
 describe("routes/auth.ts", () => {
   describe("GET /auth/rso/login-url", () => {
@@ -126,6 +127,7 @@ describe("routes/auth.ts", () => {
           "getAuthState",
           () => Promise.resolve(undefined),
         );
+        using formatMessageSpy = spy(testable, "formatMessage");
 
         const req = new Request(
           "http://localhost/auth/rso/callback?code=any-code&state=invalid-state",
@@ -136,7 +138,10 @@ describe("routes/auth.ts", () => {
         assertEquals(res.status, 400);
         const body = await res.json();
         assertEquals(body.success, false);
-        assertEquals(body.error, "Invalid or expired state provided.");
+        assertSpyCalls(formatMessageSpy, 1);
+        assertSpyCall(formatMessageSpy, 0, {
+          args: [messageKeys.riotAccount.link.error.invalidState],
+        });
       });
 
       it("Riot APIへのトークン要求が失敗した場合、500 Internal Server Errorを返す", async () => {
@@ -157,6 +162,7 @@ describe("routes/auth.ts", () => {
           "exchangeCodeForTokens",
           () => Promise.reject(new Error("Riot API Error")),
         );
+        using formatMessageSpy = spy(testable, "formatMessage");
 
         const req = new Request(
           `http://localhost/auth/rso/callback?code=any-code&state=${mockState}`,
@@ -167,7 +173,9 @@ describe("routes/auth.ts", () => {
         assertEquals(res.status, 500);
         const body = await res.json();
         assertEquals(body.success, false);
-        assertEquals(body.error, "Internal Server Error");
+        assertSpyCall(formatMessageSpy, 0, {
+          args: [messageKeys.common.error.internalServerError],
+        });
       });
     });
   });
