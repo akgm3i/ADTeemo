@@ -1,6 +1,7 @@
 import { CommandInteraction, SlashCommandBuilder } from "discord.js";
 import { apiClient } from "../api_client.ts";
 import { Command } from "../types.ts";
+import { formatMessage, messageKeys } from "../messages.ts";
 
 // Exported for testing purposes
 export const testable = {
@@ -14,17 +15,19 @@ export async function execute(interaction: CommandInteraction) {
 
   if (!result.success || !result.url) {
     await interaction.reply({
-      content: `エラーが発生しました: ${
-        result.error || "URLが取得できませんでした。"
-      }`,
+      content: formatMessage(messageKeys.riotAccount.link.error.generic, {
+        error: result.error ||
+          formatMessage(messageKeys.riotAccount.link.error.urlNotFound),
+      }),
       ephemeral: true,
     });
     return;
   }
 
   await interaction.reply({
-    content:
-      `Riot Gamesアカウントと連携するには、以下のリンクにアクセスして認証を完了してください。\n\n${result.url}`,
+    content: formatMessage(messageKeys.riotAccount.link.instructions, {
+      url: result.url,
+    }),
     ephemeral: true,
   });
 }

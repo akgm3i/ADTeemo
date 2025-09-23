@@ -3,6 +3,7 @@ import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { dbActions } from "../db/actions.ts";
 import { rso } from "../rso.ts";
+import { formatMessage, messageKeys } from "../messages.ts";
 
 const callbackQuerySchema = z.object({
   code: z.string().min(1),
@@ -45,7 +46,7 @@ export const authRoutes = new Hono()
       if (!authState) {
         return c.json({
           success: false,
-          error: "Invalid or expired state provided.",
+          error: formatMessage(messageKeys.riotAccount.link.error.invalidState),
         }, 400);
       }
       const { discordId } = authState;
@@ -67,7 +68,7 @@ export const authRoutes = new Hono()
         return c.html(`
           <html>
             <head>
-              <title>認証完了</title>
+              <title>${formatMessage(messageKeys.riotAccount.link.success.title)}</title>
               <style>
                 body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
                 .container { text-align: center; }
@@ -75,8 +76,8 @@ export const authRoutes = new Hono()
             </head>
             <body>
               <div class="container">
-                <h1>✅ 認証が完了しました！</h1>
-                <p>このページを閉じて、Discordに戻ってください。</p>
+                <h1>${formatMessage(messageKeys.riotAccount.link.success.title)}</h1>
+                <p>${formatMessage(messageKeys.riotAccount.link.success.body)}</p>
               </div>
             </body>
           </html>
@@ -84,7 +85,7 @@ export const authRoutes = new Hono()
       } catch (error) {
         console.error("Error during RSO callback:", error);
         return c.json(
-          { success: false, error: "Internal Server Error" },
+          { success: false, error: formatMessage(messageKeys.common.error.internalServerError) },
           500,
         );
       }

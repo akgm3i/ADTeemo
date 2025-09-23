@@ -67,7 +67,8 @@
   },
   "common": {
     "error": {
-      "command": "コマンドの実行中にエラーが発生しました！"
+      "command": "コマンドの実行中にエラーが発生しました！",
+      "internalServerError": "サーバー内部でエラーが発生しました。"
     },
     "info": {
       "guildOnlyCommand": "このコマンドはサーバー内でのみ実行できます。"
@@ -97,6 +98,20 @@
       "failure": "戦績の登録に失敗しました。 {error}",
       "cancelled": "戦績の登録をキャンセルしました。",
       "timeout": "時間切れのため、戦績の登録をキャンセルしました。"
+    }
+  },
+  "riotAccount": {
+    "link": {
+      "instructions": "Riot Gamesアカウントと連携するには、以下のリンクにアクセスして認証を完了してください。\n\n{url}",
+      "success": {
+        "title": "✅ 認証が完了しました！",
+        "body": "このページを閉じて、Discordに戻ってください。"
+      },
+      "error": {
+        "generic": "エラーが発生しました: {error}",
+        "urlNotFound": "URLが取得できませんでした。",
+        "invalidState": "認証セッションが無効か期限切れです。もう一度コマンドを実行してください。"
+      }
     }
   }
 }
