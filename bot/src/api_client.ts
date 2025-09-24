@@ -11,9 +11,33 @@ if (!API_URL) {
 
 const client: Client = hcWithType(API_URL);
 
+async function linkAccountByRiotId(
+  discordId: string,
+  gameName: string,
+  tagLine: string,
+) {
+  try {
+    const res = await client.users["link-by-riot-id"].$post({
+      json: { discordId, gameName, tagLine },
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, discordId: data.discordId };
+    } else {
+      const errorBody = await res.json();
+      console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
+      return { success: false, error: errorBody.error };
+    }
+  } catch (error) {
+    console.error("Failed to communicate with API", error);
+    return { success: false, error: "Failed to communicate with API" };
+  }
+}
+
 async function checkHealth() {
   try {
-    const res = await client.health.$get();
+    const res = await client.health.$get({});
     if (res.ok) {
       const data = await res.json();
       return { success: data.ok, message: data.message, error: null };
@@ -223,6 +247,7 @@ async function getLoginUrl(
 }
 
 export const apiClient = {
+  linkAccountByRiotId,
   checkHealth,
   setMainRole,
   createCustomGameEvent,
