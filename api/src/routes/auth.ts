@@ -38,7 +38,15 @@ export const authRoutes = new Hono<Env>()
 
       // 1. Validate state and get discordId
       const authState = await dbActions.getAuthState(state);
-      if (!authState) {
+      const stateMaxAge = 5 * 60 * 1000; // 5 minutes
+      if (
+        !authState ||
+        new Date().getTime() - authState.createdAt.getTime() > stateMaxAge
+      ) {
+        if (authState) {
+          // Clean up expired state to prevent it from being used again
+          await dbActions.deleteAuthState(state);
+        }
         return c.json({
           success: false,
           error: formatMessage(

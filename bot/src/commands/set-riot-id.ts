@@ -55,6 +55,7 @@ export async function execute(interaction: CommandInteraction) {
         },
       ),
     });
+    return;
   }
 
   await interaction.editReply({
