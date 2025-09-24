@@ -34,7 +34,7 @@ describe("Command: set-riot-id", () => {
 
     assertSpyCall(editReplySpy, 0, {
       args: [{
-        content: formatMessage(messageKeys.riotAccount.link.success.title)
+        content: formatMessage(messageKeys.riotAccount.link.success.title),
       }],
     });
   });
@@ -69,7 +69,7 @@ describe("Command: set-riot-id", () => {
       args: [{
         content: formatMessage(messageKeys.riotAccount.link.error.generic, {
           error: apiError,
-        })
+        }),
       }],
     });
   });
@@ -96,7 +96,7 @@ describe("Command: set-riot-id", () => {
       args: [{
         content: formatMessage(
           messageKeys.riotAccount.link.error.invalidFormat,
-        )
+        ),
       }],
     });
   });

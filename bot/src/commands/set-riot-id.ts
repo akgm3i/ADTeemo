@@ -1,4 +1,8 @@
-import { CommandInteraction,MessageFlags, SlashCommandBuilder } from "discord.js";
+import {
+  CommandInteraction,
+  MessageFlags,
+  SlashCommandBuilder,
+} from "discord.js";
 import { apiClient } from "../api_client.ts";
 import { formatMessage, messageKeys } from "../messages.ts";
 
@@ -26,9 +30,11 @@ export async function execute(interaction: CommandInteraction) {
   const parts = riotId.split("#");
 
   if (parts.length !== 2 || !parts[0] || !parts[1]) {
-      await interaction.editReply({
-        content: testable.formatMessage(messageKeys.riotAccount.link.error.invalidFormat),
-      });
+    await interaction.editReply({
+      content: testable.formatMessage(
+        messageKeys.riotAccount.link.error.invalidFormat,
+      ),
+    });
     return;
   }
 
@@ -42,13 +48,16 @@ export async function execute(interaction: CommandInteraction) {
 
   if (!result.success) {
     await interaction.editReply({
-      content: testable.formatMessage(messageKeys.riotAccount.link.error.generic, {
-        error: result.error || "",
-      })
+      content: testable.formatMessage(
+        messageKeys.riotAccount.link.error.generic,
+        {
+          error: result.error || "",
+        },
+      ),
     });
   }
 
   await interaction.editReply({
-    content: testable.formatMessage(messageKeys.riotAccount.link.success.title)
+    content: testable.formatMessage(messageKeys.riotAccount.link.success.title),
   });
 }
