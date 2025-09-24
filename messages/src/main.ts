@@ -37,7 +37,10 @@ function loadMessages(
   lang: string,
   theme: string,
 ): z.infer<typeof messagesSchema> {
-  const filePath = path.join(Deno.cwd(), "messages", lang, `${theme}.json`);
+  // Use import.meta.url to create a path relative to this file, not the CWD.
+  const projectRoot = path.fromFileUrl(new URL("../..", import.meta.url));
+  const filePath = path.join(projectRoot, "messages", lang, `${theme}.json`);
+
   try {
     const fileContent = Deno.readTextFileSync(filePath);
     const parsedJson = JSON.parse(fileContent);

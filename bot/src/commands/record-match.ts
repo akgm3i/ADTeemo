@@ -11,7 +11,6 @@ import { formatMessage, messageKeys } from "../messages.ts";
 import { matchTracker } from "../features/match_tracking.ts";
 import { apiClient, type MatchParticipant } from "../api_client.ts";
 import { statCollector } from "../features/stat_collector.ts";
-import { v4 as uuidv4 } from "uuid";
 import { MessageFlags } from "discord.js";
 
 // Exported for testing purposes
@@ -20,7 +19,6 @@ export const testable = {
   matchTracker,
   apiClient,
   statCollector,
-  uuidv4,
 };
 
 export const data = new SlashCommandBuilder()
@@ -174,7 +172,7 @@ export async function execute(interaction: CommandInteraction) {
         components: [],
       });
 
-      const matchId = testable.uuidv4();
+      const matchId = crypto.randomUUID();
       for (const participant of participants) {
         const stats = allStats.get(participant.user.id);
         if (stats) {

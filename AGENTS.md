@@ -11,6 +11,20 @@ This project is a Discord bot named "ADTeemo" designed to facilitate the organiz
 
 The bot helps with everything from recruiting players and balancing teams to tracking game results and managing player ratings.
 
+### Deno v2+ Technology Notes
+
+This project uses **Deno v2.5** or a later version. All development must adhere to modern Deno v2+ standards and practices.
+
+- **LLM Agent Advisory:** As an LLM agent, you **must not** use information or practices from Deno v1. All proposals and code must be compatible with the latest Deno v2 standards and the conventions established in this project.
+- **Package Registry:** The primary package registry is **JSR (`jsr.io`)**. The legacy `deno.land/x` registry should not be used for adding new dependencies.
+- **Node.js Compatibility:** Deno v2 provides strong compatibility with Node.js and npm packages, which can be leveraged when necessary via `npm:` specifiers.
+- **Testing & Mocks:** Tests are written using the standard library (e.g., `jsr:@std/testing`). Mocking of dependencies must be achieved through standard software design patterns like **Dependency Injection (DI)**, typically using a **Factory Pattern**. Outdated conventions for mocking, such as using a `deps.ts` file to centralize internal dependencies for stubbing, are not the preferred approach for this project.
+
+### Hono Technology Notes
+
+- **LLM Agent Advisory:** For technical details on Hono, please refer to the full documentation with web_fetch tool at https://hono.dev/llms-full.txt.
+
+
 ## Building and Running
 
 The project uses Deno's task runner and Docker for development.

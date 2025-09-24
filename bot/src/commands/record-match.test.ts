@@ -26,17 +26,19 @@ describe("/record-match command", () => {
   ];
 
   it("対話フローが正常に完了し、全プレイヤーのデータがAPIに送信される", async () => {
-    using _ = stub(
+    using _getActiveParticipantsStub = stub(
       testable.matchTracker,
       "getActiveParticipants",
       () => Promise.resolve(mockParticipants),
     );
-    const createParticipantStub = stub(
+    using createParticipantStub = stub(
       testable.apiClient,
       "createMatchParticipant",
       () => Promise.resolve({ success: true, id: 1, error: null }),
     );
-    using _uuidStub = stub(testable, "uuidv4", () => "mock-match-id");
+    const mockMatchId: `${string}-${string}-${string}-${string}-${string}` =
+      "a1b2c3d4-e5f6-7890-1234-567890abcdef";
+    using _uuidStub = stub(crypto, "randomUUID", () => mockMatchId);
 
     let askCount = 0;
     const askValues: (string | number)[] = [
@@ -47,7 +49,7 @@ describe("/record-match command", () => {
       150,
       11000,
     ];
-    stub(testable.statCollector, "askForStat", () => {
+    using _askForStatStub = stub(testable.statCollector, "askForStat", () => {
       return Promise.resolve(askValues[askCount++]);
     });
 
@@ -81,7 +83,7 @@ describe("/record-match command", () => {
       string,
       MatchParticipant,
     ];
-    assertEquals(firstCallArgs[0], "mock-match-id");
+    assertEquals(firstCallArgs[0], mockMatchId);
     assertEquals(firstCallArgs[1].userId, "user1");
     assertEquals(firstCallArgs[1].kills, 10);
     assertEquals(firstCallArgs[1].win, true);
@@ -90,7 +92,7 @@ describe("/record-match command", () => {
       string,
       MatchParticipant,
     ];
-    assertEquals(secondCallArgs[0], "mock-match-id");
+    assertEquals(secondCallArgs[0], mockMatchId);
     assertEquals(secondCallArgs[1].userId, "user2");
     assertEquals(secondCallArgs[1].kills, 5);
     assertEquals(secondCallArgs[1].win, true);

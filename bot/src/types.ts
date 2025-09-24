@@ -15,3 +15,8 @@ export interface CustomGameEvent {
   createdAt: string;
   scheduledStartAt: string;
 }
+
+export type Result = { success: true; error: null } | {
+  success: false;
+  error: string;
+};

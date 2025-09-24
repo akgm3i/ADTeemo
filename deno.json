@@ -33,8 +33,6 @@
     }
   },
   "imports": {
-    "drizzle-kit": "npm:drizzle-kit@^0.31.4",
-    "uuid": "npm:uuid@^9.0.1",
-    "@types/uuid": "npm:@types/uuid@^9.0.8"
+    "drizzle-kit": "npm:drizzle-kit@^0.31.4"
   }
 }

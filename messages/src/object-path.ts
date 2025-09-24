@@ -4,13 +4,22 @@
  * @param keyPath The dot-separated path (e.g., 'a.b.c').
  * @returns The value found at the key path, or undefined if not found.
  */
-export function get(obj: Record<string, unknown>, keyPath: string): unknown {
-  return keyPath.split(".").reduce((acc: unknown, key): unknown => {
-    if (acc && typeof acc === "object" && key in acc) {
-      return (acc as Record<string, unknown>)[key];
+export function get(
+  obj: Record<string, unknown>,
+  keyPath: string,
+): unknown {
+  let current: unknown = obj;
+  const keys = keyPath.split(".");
+
+  for (const key of keys) {
+    if (current && typeof current === "object" && key in current) {
+      current = (current as Record<string, unknown>)[key];
+    } else {
+      return undefined;
     }
-    return undefined;
-  }, obj);
+  }
+
+  return current;
 }
 
 /**
