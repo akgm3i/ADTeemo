@@ -22,7 +22,7 @@ This project uses **Deno v2.5** or a later version. All development must adhere 
 
 ### Hono Technology Notes
 
-- **LLM Agent Advisory:** For technical details on Hono, please refer to the full documentation at https://hono.dev/llms-full.txt.
+- **LLM Agent Advisory:** For technical details on Hono, please refer to the full documentation with web_fetch tool at https://hono.dev/llms-full.txt.
 
 
 ## Building and Running
