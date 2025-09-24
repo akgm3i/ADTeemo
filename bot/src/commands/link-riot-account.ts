@@ -1,12 +1,15 @@
 import { CommandInteraction, SlashCommandBuilder } from "discord.js";
 import { apiClient } from "../api_client.ts";
-import { Command } from "../types.ts";
 import { formatMessage, messageKeys } from "../messages.ts";
 
 // Exported for testing purposes
 export const testable = {
   apiClient,
 };
+
+export const data = new SlashCommandBuilder()
+  .setName("link-riot-account")
+  .setDescription("Riot GamesアカウントをBotに連携します。");
 
 export async function execute(interaction: CommandInteraction) {
   const discordId = interaction.user.id;
@@ -31,10 +34,3 @@ export async function execute(interaction: CommandInteraction) {
     ephemeral: true,
   });
 }
-
-export const command: Command = {
-  data: new SlashCommandBuilder()
-    .setName("link-riot-account")
-    .setDescription("Riot GamesアカウントをBotに連携します。"),
-  execute,
-};
