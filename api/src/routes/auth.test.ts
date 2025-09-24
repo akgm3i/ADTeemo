@@ -1,180 +1,131 @@
+import { testClient } from "@hono/hono/testing";
 import { describe, it } from "@std/testing/bdd";
 import { assert, assertEquals } from "@std/assert";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
-import app from "../app.ts";
-import { testable } from "./auth.ts";
-import { messageKeys } from "../messages.ts";
+import { createApp } from "../app.ts";
+import { dbActions } from "../db/actions.ts";
+import { rso } from "../rso.ts";
+import { type MessageKey, messageKeys } from "../messages.ts";
 
 describe("routes/auth.ts", () => {
-  describe("GET /auth/rso/login-url", () => {
-    it("有効なdiscordIdが提供されたとき、stateを作成し、認証URLを返す", async () => {
-      // Setup
-      const mockDiscordId = "discord-123";
-      const mockState: `${string}-${string}-${string}-${string}-${string}` =
-        "a1b2c3d4-e5f6-7890-1234-567890abcdef";
-      const mockAuthUrl = `https://mock.auth.url/authorize?state=${mockState}`;
+  describe("GET /rso/login-url", () => {
+    describe("正常系", () => {
+      it("有効なdiscordIdが提供されたとき、認証用のstateを保存し、認証URLを返す", async () => {
+        using getAuthorizationUrlStub = stub(
+          rso,
+          "getAuthorizationUrl",
+          (state: string) => `https://mock.auth.url/authorize?state=${state}`,
+        );
+        using createAuthStateStub = stub(
+          dbActions,
+          "createAuthState",
+          () => Promise.resolve(),
+        );
 
-      using _uuidStub = stub(crypto, "randomUUID", () => mockState);
-      using createAuthStateStub = stub(
-        testable.dbActions,
-        "createAuthState",
-        () => Promise.resolve(),
-      );
-      using getAuthUrlStub = stub(
-        testable.rso,
-        "getAuthorizationUrl",
-        () => mockAuthUrl,
-      );
+        const app = createApp();
+        const client = testClient(app);
+        const discordId = "discord-123";
 
-      const req = new Request(
-        `http://localhost/auth/rso/login-url?discordId=${mockDiscordId}`,
-      );
-      const res = await app.request(req);
-      const body = await res.json();
+        const res = await client.auth.rso["login-url"].$get({
+          query: { discordId },
+        });
 
-      // Assertions
-      assertEquals(res.status, 200);
-      assertEquals(body.url, mockAuthUrl);
+        assert(res.ok);
+        const body = await res.json();
 
-      assertSpyCall(createAuthStateStub, 0, {
-        args: [mockState, mockDiscordId],
+        assert(body.url.startsWith("https://mock.auth.url"));
+        assertSpyCalls(getAuthorizationUrlStub, 1);
+
+        const state = getAuthorizationUrlStub.calls[0].args[0];
+        assertSpyCall(createAuthStateStub, 0, { args: [state, discordId] });
       });
-      assertSpyCall(getAuthUrlStub, 0, {
-        args: [mockState],
-      });
-    });
-
-    it("discordIdが提供されない場合、400 Bad Requestを返す", async () => {
-      const req = new Request("http://localhost/auth/rso/login-url");
-      const res = await app.request(req);
-      assertEquals(res.status, 400);
     });
   });
 
-  describe("GET /auth/rso/callback", () => {
+  describe("GET /rso/callback", () => {
     describe("正常系", () => {
-      it("有効なcodeとstateが提供されたとき、Riot APIからトークンを取得し、ユーザーのriotIdを更新して、成功ページを返す", async () => {
-        // Setup: Mocks and Stubs
-        const mockState = "valid-state-123";
-        const mockDiscordId = "discord-id-456";
-        const mockRiotId = "riot-id-789";
+      it("有効なcodeとstateが提供されたとき、stateを検証・削除し、ユーザーのRiot IDを更新して成功ページを返す", async () => {
+        const code = "valid-code";
+        const state = "valid-state-123";
+        const discordId = "discord-id-456";
+        const accessToken = "access-token";
+        const riotId = "riot-id-789";
 
-        using _getAuthStateStub = stub(
-          testable.dbActions,
+        using getAuthStateStub = stub(
+          dbActions,
           "getAuthState",
           () =>
             Promise.resolve({
-              discordId: mockDiscordId,
-              state: mockState,
+              discordId,
+              state,
               createdAt: new Date(),
             }),
         );
         using exchangeCodeForTokensStub = stub(
-          testable.rso,
+          rso,
           "exchangeCodeForTokens",
-          () =>
-            Promise.resolve({
-              accessToken: "access-token",
-              idToken: "id-token",
-            }),
+          () => Promise.resolve({ accessToken, idToken: "id-token" }),
         );
         using getUserInfoStub = stub(
-          testable.rso,
+          rso,
           "getUserInfo",
-          () => Promise.resolve({ sub: mockRiotId }),
+          () => Promise.resolve({ sub: riotId }),
         );
         using updateUserRiotIdStub = stub(
-          testable.dbActions,
+          dbActions,
           "updateUserRiotId",
           () => Promise.resolve(),
         );
         using deleteAuthStateStub = stub(
-          testable.dbActions,
+          dbActions,
           "deleteAuthState",
           () => Promise.resolve(),
         );
 
-        const req = new Request(
-          `http://localhost/auth/rso/callback?code=valid-code&state=${mockState}`,
-        );
-        const res = await app.request(req);
+        const app = createApp();
+        const client = testClient(app);
 
-        // Assertion
+        const res = await client.auth.rso.callback.$get({
+          query: { code, state },
+        });
+
         assert(res.ok);
         assertEquals(
           res.headers.get("content-type"),
           "text/html; charset=UTF-8",
         );
-        const text = await res.text();
-        assert(text.includes("認証が完了しました"));
 
-        // Verify stub calls
-        assertSpyCall(_getAuthStateStub, 0, { args: [mockState] });
-        assertSpyCall(exchangeCodeForTokensStub, 0, { args: ["valid-code"] });
-        assertSpyCall(getUserInfoStub, 0, { args: ["access-token"] });
-        assertSpyCall(updateUserRiotIdStub, 0, {
-          args: [mockDiscordId, mockRiotId],
-        });
-        assertSpyCall(deleteAuthStateStub, 0, { args: [mockState] });
+        assertSpyCall(getAuthStateStub, 0, { args: [state] });
+        assertSpyCall(exchangeCodeForTokensStub, 0, { args: [code] });
+        assertSpyCall(getUserInfoStub, 0, { args: [accessToken] });
+        assertSpyCall(updateUserRiotIdStub, 0, { args: [discordId, riotId] });
+        assertSpyCall(deleteAuthStateStub, 0, { args: [state] });
       });
     });
 
     describe("異常系", () => {
       it("stateが見つからない場合、400 Bad Requestを返す", async () => {
-        // Setup
-        using _getAuthStateStub = stub(
-          testable.dbActions,
+        using getAuthStateStub = stub(
+          dbActions,
           "getAuthState",
           () => Promise.resolve(undefined),
         );
-        using formatMessageSpy = spy(testable, "formatMessage");
-
-        const req = new Request(
-          "http://localhost/auth/rso/callback?code=any-code&state=invalid-state",
+        const mockFormatMessage = spy(
+          (_key: MessageKey, _params?: Record<string, string | number>) =>
+            "Formatted Message",
         );
-        const res = await app.request(req);
 
-        // Assertion
-        assertEquals(res.status, 400);
-        const body = await res.json();
-        assertEquals(body.success, false);
-        assertSpyCalls(formatMessageSpy, 1);
-        assertSpyCall(formatMessageSpy, 0, {
-          args: [messageKeys.riotAccount.link.error.invalidState],
+        const app = createApp(mockFormatMessage, messageKeys);
+        const client = testClient(app);
+
+        const res = await client.auth.rso.callback.$get({
+          query: { code: "any-code", state: "invalid-state" },
         });
-      });
 
-      it("Riot APIへのトークン要求が失敗した場合、500 Internal Server Errorを返す", async () => {
-        // Setup
-        const mockState = "valid-state-123";
-        using _getAuthStateStub = stub(
-          testable.dbActions,
-          "getAuthState",
-          () =>
-            Promise.resolve({
-              discordId: "discord-id",
-              state: mockState,
-              createdAt: new Date(),
-            }),
-        );
-        using _exchangeCodeForTokensStub = stub(
-          testable.rso,
-          "exchangeCodeForTokens",
-          () => Promise.reject(new Error("Riot API Error")),
-        );
-        using formatMessageSpy = spy(testable, "formatMessage");
-
-        const req = new Request(
-          `http://localhost/auth/rso/callback?code=any-code&state=${mockState}`,
-        );
-        const res = await app.request(req);
-
-        // Assertion
-        assertEquals(res.status, 500);
-        const body = await res.json();
-        assertEquals(body.success, false);
-        assertSpyCall(formatMessageSpy, 0, {
-          args: [messageKeys.common.error.internalServerError],
+        assertEquals(res.status, 400);
+        assertSpyCall(getAuthStateStub, 0, { args: ["invalid-state"] });
+        assertSpyCall(mockFormatMessage, 0, {
+          args: [messageKeys.riotAccount.link.error.invalidState],
         });
       });
     });

@@ -1,9 +1,9 @@
 import { Hono } from "@hono/hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
+import type { Env } from "../app.ts";
 import { dbActions } from "../db/actions.ts";
 import { rso } from "../rso.ts";
-import { formatMessage, messageKeys } from "../messages.ts";
 
 const callbackQuerySchema = z.object({
   code: z.string().min(1),
@@ -14,14 +14,7 @@ const loginUrlQuerySchema = z.object({
   discordId: z.string().min(1),
 });
 
-// Exported for testing purposes
-export const testable = {
-  dbActions,
-  rso,
-  formatMessage,
-};
-
-export const authRoutes = new Hono()
+export const authRoutes = new Hono<Env>()
   .get(
     "/rso/login-url",
     zValidator("query", loginUrlQuerySchema),
@@ -29,9 +22,9 @@ export const authRoutes = new Hono()
       const { discordId } = c.req.valid("query");
       const state = crypto.randomUUID();
 
-      await testable.dbActions.createAuthState(state, discordId);
+      await dbActions.createAuthState(state, discordId);
 
-      const authorizationUrl = testable.rso.getAuthorizationUrl(state);
+      const authorizationUrl = rso.getAuthorizationUrl(state);
 
       return c.json({ url: authorizationUrl });
     },
@@ -40,14 +33,15 @@ export const authRoutes = new Hono()
     "/rso/callback",
     zValidator("query", callbackQuerySchema),
     async (c) => {
+      const { formatMessage, messageKeys } = c.var;
       const { code, state } = c.req.valid("query");
 
       // 1. Validate state and get discordId
-      const authState = await testable.dbActions.getAuthState(state);
+      const authState = await dbActions.getAuthState(state);
       if (!authState) {
         return c.json({
           success: false,
-          error: testable.formatMessage(
+          error: formatMessage(
             messageKeys.riotAccount.link.error.invalidState,
           ),
         }, 400);
@@ -56,23 +50,23 @@ export const authRoutes = new Hono()
 
       try {
         // 2. Exchange code for tokens
-        const { accessToken } = await testable.rso.exchangeCodeForTokens(code);
+        const { accessToken } = await rso.exchangeCodeForTokens(code);
 
         // 3. Get user info (Riot ID)
-        const { sub: riotId } = await testable.rso.getUserInfo(accessToken);
+        const { sub: riotId } = await rso.getUserInfo(accessToken);
 
         // 4. Update user's Riot ID in DB
-        await testable.dbActions.updateUserRiotId(discordId, riotId);
+        await dbActions.updateUserRiotId(discordId, riotId);
 
         // 5. Clean up auth state
-        await testable.dbActions.deleteAuthState(state);
+        await dbActions.deleteAuthState(state);
 
         // 6. Return success page
         return c.html(`
           <html>
             <head>
               <title>${
-          testable.formatMessage(messageKeys.riotAccount.link.success.title)
+          formatMessage(messageKeys.riotAccount.link.success.title)
         }</title>
               <style>
                 body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
@@ -82,10 +76,10 @@ export const authRoutes = new Hono()
             <body>
               <div class="container">
                 <h1>${
-          testable.formatMessage(messageKeys.riotAccount.link.success.title)
+          formatMessage(messageKeys.riotAccount.link.success.title)
         }</h1>
                 <p>${
-          testable.formatMessage(messageKeys.riotAccount.link.success.body)
+          formatMessage(messageKeys.riotAccount.link.success.body)
         }</p>
               </div>
             </body>
@@ -96,7 +90,7 @@ export const authRoutes = new Hono()
         return c.json(
           {
             success: false,
-            error: testable.formatMessage(
+            error: formatMessage(
               messageKeys.common.error.internalServerError,
             ),
           },
@@ -105,5 +99,3 @@ export const authRoutes = new Hono()
       }
     },
   );
-
-export type AuthRoutes = typeof authRoutes;
