@@ -18,7 +18,7 @@ This project uses **Deno v2.5** or a later version. All development must adhere 
 - **LLM Agent Advisory:** As an LLM agent, you **must not** use information or practices from Deno v1. All proposals and code must be compatible with the latest Deno v2 standards and the conventions established in this project.
 - **Package Registry:** The primary package registry is **JSR (`jsr.io`)**. The legacy `deno.land/x` registry should not be used for adding new dependencies.
 - **Node.js Compatibility:** Deno v2 provides strong compatibility with Node.js and npm packages, which can be leveraged when necessary via `npm:` specifiers.
-- **Testing & Mocks:** Tests are written using the standard library (e.g., `jsr:@std/testing`). Mocking of dependencies must be achieved through standard software design patterns like **Dependency Injection (DI)**, typically using a **Factory Pattern**. Outdated conventions for mocking, such as using a `deps.ts` file to centralize internal dependencies for stubbing, are not the preferred approach for this project.
+- **Testing & Mocks:** Tests are written using the standard library (e.g., `jsr:@std/testing/bdd`). For mocking dependencies in unit tests, this project uses the `stub` and `spy` functionalities from `@std/testing/mock`, combined with `using` declarations for automatic cleanup. This approach allows for creating isolated and stable tests by mocking direct dependencies. For detailed guidelines and examples, please refer to the [Testing Style Guide](./TESTING_STYLE.md).
 
 ### Hono Technology Notes
 
@@ -113,7 +113,9 @@ Commit messages should describe the context behind the changes, rather than what
 5.  **Verify:** Run all tests (`deno task test:all`) to ensure the new test passes and that no existing tests have been broken.
 6.  **Format and Lint:** Run `deno fmt` and `deno lint` to ensure code quality and consistency.
 
-- **Test Style:** Tests are written in Japanese and follow a Behavior-Driven Development (BDD) style, using `describe` and `it` blocks from `jsr:@std/testing/bdd`. For detailed guidelines on test structure, file organization (unit vs. integration), and mocking strategies, please refer to the [Testing Style Guide](./docs/TESTING_STYLE.md).
-- **File Location:** The location of test files depends on their type. Refer to the [Testing Style Guide](./docs/TESTING_STYLE.md) for details.
+**Note on Testing Hierarchy:** The TDD cycle focuses on writing **Unit Tests**, which are fast and stable. Higher-level **Integration Tests** are added separately for critical user scenarios to ensure overall system integrity by testing the interactions between components like the Bot, the API, and the Database.
+
+- **Test Style:** Tests are written in Japanese and follow a Behavior-Driven Development (BDD) style, using `describe` and `it` blocks from `jsr:@std/testing/bdd`. For detailed guidelines on test structure, file organization (unit vs. integration), and mocking strategies, please refer to the [Testing Style Guide](./TESTING_STYLE.md).
+- **File Location:** The location of test files depends on their type. Refer to the [Testing Style Guide](./TESTING_STYLE.md) for details.
 - **Project Structure:** The project is divided into `api` and `bot` workspaces.
 - **Specification Document:** The `SPEC.md` file contains the detailed project specification and should be consulted for in-depth understanding.
