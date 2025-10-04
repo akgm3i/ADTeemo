@@ -33,9 +33,9 @@ export const usersRoutes = new Hono()
         }, 404);
       }
 
-      await dbActions.updateUserRiotId(discordId, account.puuid);
+      await dbActions.linkUserWithRiotId(discordId, account.puuid);
 
-      return c.body(null, 204);
+      return c.json({ success: true });
     },
   )
   .put(
