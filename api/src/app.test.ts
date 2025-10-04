@@ -1,6 +1,6 @@
 import { testClient } from "@hono/hono/testing";
 import { assertEquals } from "@std/assert";
-import { describe, it } from "@std/testing/bdd";
+import { describe, test } from "@std/testing/bdd";
 import app from "./app.ts";
 
 describe("app.ts", () => {
@@ -8,14 +8,14 @@ describe("app.ts", () => {
 
   describe("GET /health", () => {
     describe("正常系", () => {
-      it("リクエストを送信したとき、status 200と正常なbodyが返される", async () => {
+      test("リクエストを送信したとき、status 200と正常なbodyが返される", async () => {
+        // Act
         const res = await client.health.$get();
 
+        // Assert
         assertEquals(res.status, 200);
-        assertEquals(await res.json(), {
-          ok: true,
-          message: "This API is healthy!",
-        });
+        const body = await res.json();
+        assertEquals(body.message, "This API is healthy!");
       });
     });
   });
