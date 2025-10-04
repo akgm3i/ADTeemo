@@ -22,9 +22,14 @@ async function linkAccountByRiotId(
     });
 
     if (!res.ok) {
-      const errorBody = await res.json();
+      const errorBody = await res.json().catch(() => null);
+      const error = errorBody && typeof errorBody === "object" &&
+          "error" in errorBody &&
+          typeof (errorBody as { error: unknown }).error === "string"
+        ? (errorBody as { error: string }).error
+        : `API Error: ${res.status} ${res.statusText}`;
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
-      return { success: false, error: errorBody.error };
+      return { success: false, error };
     }
 
     return { success: true };

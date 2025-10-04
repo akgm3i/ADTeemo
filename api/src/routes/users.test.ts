@@ -17,6 +17,41 @@ describe("routes/users.ts", () => {
     const puuid = "test-puuid";
 
     describe("正常系", () => {
+      test(
+        "未登録のDiscord IDでRiot ID連携するとアップサートを実行し、200と{ success: true }を返す",
+        async () => {
+          // Arrange
+          using getAccountStub = stub(
+            riotApi,
+            "getAccountByRiotId",
+            () => Promise.resolve({ puuid, gameName, tagLine }),
+          );
+          using upsertUserStub = stub(
+            dbActions,
+            "upsertUser",
+            () => Promise.resolve({ discordId } as never),
+          );
+          using updateUserStub = stub(
+            dbActions,
+            "updateUserRiotId",
+            () => Promise.resolve(),
+          );
+
+          // Act
+          const res = await client.users["link-by-riot-id"].$patch({
+            json: { discordId, gameName, tagLine },
+          });
+
+          // Assert
+          assertEquals(res.status, 200);
+          const body = await res.json();
+          assertEquals(body, { success: true });
+          assertSpyCall(getAccountStub, 0, { args: [gameName, tagLine] });
+          assertSpyCall(upsertUserStub, 0, { args: [discordId] });
+          assertSpyCall(updateUserStub, 0, { args: [discordId, puuid] });
+        },
+      );
+
       test("Riotアカウントが見つかり、DB更新が成功した場合、成功レスポンスを返す", async () => {
         // Arrange
         using getAccountStub = stub(
@@ -64,7 +99,7 @@ describe("routes/users.ts", () => {
 
         // Assert
         assert(res.status === 404);
-        const body = await res.json();
+        const body = await res.json() as { error?: string };
         assertExists(body.error);
         assertSpyCalls(mockFormatMessage, 1);
         assertSpyCall(mockFormatMessage, 0, {
