@@ -11,12 +11,15 @@ if (!API_URL) {
 
 export const client: Client = hcWithType(API_URL);
 
+type ErrorPayload = { error: unknown };
+
+function hasErrorProperty(value: unknown): value is ErrorPayload {
+  return typeof value === "object" && value !== null && "error" in value;
+}
+
 function extractErrorMessage(payload: unknown): string | undefined {
-  if (payload && typeof payload === "object") {
-    const candidate = (payload as Record<string, unknown>).error;
-    if (typeof candidate === "string") {
-      return candidate;
-    }
+  if (hasErrorProperty(payload) && typeof payload.error === "string") {
+    return payload.error;
   }
   return undefined;
 }

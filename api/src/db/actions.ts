@@ -130,16 +130,12 @@ async function updateUserRiotId(discordId: string, riotId: string) {
 }
 
 async function linkUserWithRiotId(discordId: string, riotId: string) {
-  const upsertPayload = userInsertSchema.parse({ discordId });
+  const payload = userInsertSchema.parse({ discordId, riotId });
 
-  await db.transaction(async (tx) => {
-    await tx.insert(users).values(upsertPayload).onConflictDoNothing()
-      .execute();
-
-    await tx.update(users).set({ riotId }).where(
-      eq(users.discordId, discordId),
-    ).execute();
-  });
+  await db.insert(users).values(payload).onConflictDoUpdate({
+    target: users.discordId,
+    set: { riotId },
+  }).execute();
 }
 
 async function createAuthState(state: string, discordId: string) {
