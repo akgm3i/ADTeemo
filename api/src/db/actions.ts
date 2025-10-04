@@ -129,6 +129,19 @@ async function updateUserRiotId(discordId: string, riotId: string) {
     .execute();
 }
 
+async function linkUserWithRiotId(discordId: string, riotId: string) {
+  const upsertPayload = userInsertSchema.parse({ discordId });
+
+  await db.transaction(async (tx) => {
+    await tx.insert(users).values(upsertPayload).onConflictDoNothing()
+      .execute();
+
+    await tx.update(users).set({ riotId }).where(
+      eq(users.discordId, discordId),
+    ).execute();
+  });
+}
+
 async function createAuthState(state: string, discordId: string) {
   await db.insert(authStates).values({ state, discordId }).execute();
 }
@@ -145,5 +158,6 @@ export const dbActions = {
   getAuthState,
   deleteAuthState,
   updateUserRiotId,
+  linkUserWithRiotId,
   createAuthState,
 };

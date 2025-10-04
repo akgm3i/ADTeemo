@@ -77,9 +77,9 @@ describe("routes/auth.ts", () => {
           "getUserInfo",
           () => Promise.resolve({ sub: riotId }),
         );
-        using updateUserRiotIdStub = stub(
+        using linkUserWithRiotIdStub = stub(
           dbActions,
-          "updateUserRiotId",
+          "linkUserWithRiotId",
           () => Promise.resolve(),
         );
         using deleteAuthStateStub = stub(
@@ -103,7 +103,9 @@ describe("routes/auth.ts", () => {
         assertSpyCall(getAuthStateStub, 0, { args: [state] });
         assertSpyCall(exchangeCodeForTokensStub, 0, { args: [code] });
         assertSpyCall(getUserInfoStub, 0, { args: [accessToken] });
-        assertSpyCall(updateUserRiotIdStub, 0, { args: [discordId, riotId] });
+        assertSpyCall(linkUserWithRiotIdStub, 0, {
+          args: [discordId, riotId],
+        });
         assertSpyCall(deleteAuthStateStub, 0, { args: [state] });
       });
     });

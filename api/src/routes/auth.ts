@@ -63,7 +63,7 @@ export const authRoutes = new Hono()
         const { sub: riotId } = await rso.getUserInfo(accessToken);
 
         // 4. Update user's Riot ID in DB
-        await dbActions.updateUserRiotId(discordId, riotId);
+        await dbActions.linkUserWithRiotId(discordId, riotId);
 
         // 5. Clean up auth state
         await dbActions.deleteAuthState(state);

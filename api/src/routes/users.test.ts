@@ -18,7 +18,7 @@ describe("routes/users.ts", () => {
 
     describe("正常系", () => {
       test(
-        "未登録のDiscord IDでRiot ID連携するとアップサートを実行し、200と{ success: true }を返す",
+        "未登録のDiscord IDでRiot ID連携するとリンク用アクションを呼び出し、200と{ success: true }を返す",
         async () => {
           // Arrange
           using getAccountStub = stub(
@@ -26,14 +26,9 @@ describe("routes/users.ts", () => {
             "getAccountByRiotId",
             () => Promise.resolve({ puuid, gameName, tagLine }),
           );
-          using upsertUserStub = stub(
+          using linkUserWithRiotIdStub = stub(
             dbActions,
-            "upsertUser",
-            () => Promise.resolve({ discordId } as never),
-          );
-          using updateUserStub = stub(
-            dbActions,
-            "updateUserRiotId",
+            "linkUserWithRiotId",
             () => Promise.resolve(),
           );
 
@@ -47,21 +42,22 @@ describe("routes/users.ts", () => {
           const body = await res.json();
           assertEquals(body, { success: true });
           assertSpyCall(getAccountStub, 0, { args: [gameName, tagLine] });
-          assertSpyCall(upsertUserStub, 0, { args: [discordId] });
-          assertSpyCall(updateUserStub, 0, { args: [discordId, puuid] });
+          assertSpyCall(linkUserWithRiotIdStub, 0, {
+            args: [discordId, puuid],
+          });
         },
       );
 
-      test("Riotアカウントが見つかり、DB更新が成功した場合、成功レスポンスを返す", async () => {
+      test("Riotアカウントが見つかり、リンク処理が成功した場合、成功レスポンスを返す", async () => {
         // Arrange
         using getAccountStub = stub(
           riotApi,
           "getAccountByRiotId",
           () => Promise.resolve({ puuid, gameName, tagLine }),
         );
-        using updateUserStub = stub(
+        using linkUserWithRiotIdStub = stub(
           dbActions,
-          "updateUserRiotId",
+          "linkUserWithRiotId",
           () => Promise.resolve(),
         );
 
@@ -73,7 +69,9 @@ describe("routes/users.ts", () => {
         // Assert
         assert(res.ok);
         assertSpyCall(getAccountStub, 0, { args: [gameName, tagLine] });
-        assertSpyCall(updateUserStub, 0, { args: [discordId, puuid] });
+        assertSpyCall(linkUserWithRiotIdStub, 0, {
+          args: [discordId, puuid],
+        });
       });
     });
 
@@ -85,7 +83,10 @@ describe("routes/users.ts", () => {
           "getAccountByRiotId",
           () => Promise.resolve(null),
         );
-        using updateUserSpy = stub(dbActions, "updateUserRiotId");
+        using linkUserWithRiotIdSpy = stub(
+          dbActions,
+          "linkUserWithRiotId",
+        );
         using mockFormatMessage = stub(
           messageHandler,
           "formatMessage",
@@ -106,7 +107,7 @@ describe("routes/users.ts", () => {
           args: [messageKeys.riotAccount.set.error.summonerNotFound],
         });
         assertSpyCall(getAccountStub, 0, { args: [gameName, tagLine] });
-        assertEquals(updateUserSpy.calls.length, 0);
+        assertEquals(linkUserWithRiotIdSpy.calls.length, 0);
       });
     });
   });

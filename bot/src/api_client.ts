@@ -11,6 +11,16 @@ if (!API_URL) {
 
 export const client: Client = hcWithType(API_URL);
 
+function extractErrorMessage(payload: unknown): string | undefined {
+  if (payload && typeof payload === "object") {
+    const candidate = (payload as Record<string, unknown>).error;
+    if (typeof candidate === "string") {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
 async function linkAccountByRiotId(
   discordId: string,
   gameName: string,
@@ -22,12 +32,9 @@ async function linkAccountByRiotId(
     });
 
     if (!res.ok) {
-      const errorBody = await res.json().catch(() => null);
-      const error = errorBody && typeof errorBody === "object" &&
-          "error" in errorBody &&
-          typeof (errorBody as { error: unknown }).error === "string"
-        ? (errorBody as { error: string }).error
-        : `API Error: ${res.status} ${res.statusText}`;
+      const errorBody = await res.json().catch(() => undefined);
+      const error = extractErrorMessage(errorBody) ??
+        `API Error: ${res.status} ${res.statusText}`;
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return { success: false, error };
     }
