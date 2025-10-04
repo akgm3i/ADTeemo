@@ -81,15 +81,15 @@ APIルートハンドラのユニットテストです。責務は「リクエ�
 describe("POST /users", () => {
   describe("正常系", () => {
     test("有効なユーザー名が指定されたとき、dbActions.createUserを呼び出し、作成されたユーザー情報と共に201レスポンスを返す", async () => {
-      // Setup: 依存するDB操作モジュールをスタブ化
+      // Arrange
       using createUserStub = stub(dbActions, "createUser", (name) =>
         Promise.resolve({ id: "user-abc-123", name, createdAt: new Date() })
       );
 
-      // Action: テストクライアントでAPIを呼び出す
+      // Act
       const res = await client.users.$post({ json: { name: "Teemo" } });
 
-      // Assert: レスポンス、呼び出し回数、呼び出し内容を検証
+      // Assert
       assertEquals(res.status, 201);
       const body = await res.json();
       assertEquals(body.name, "Teemo");
@@ -109,7 +109,7 @@ describe("POST /users", () => {
 describe("/set-main-role command", () => {
   describe("正常系", () => {
     test("有効なロール名が指定されたとき、apiClientとmessagesを呼び出し、成功メッセージで応答する", async () => {
-      // Setup: 依存するモジュールをすべてスタブ化
+      // Arrange
       using setMainRoleStub = stub(apiClient, "setMainRole", () => Promise.resolve({ success: true }));
       using successMessageStub = stub(messages, "success", () => "メインロールをJungleに設定しました。");
 
@@ -119,10 +119,10 @@ describe("/set-main-role command", () => {
         .build();
       using editReplySpy = spy(interaction, "editReply");
 
-      // Action
+      // Act
       await execute(interaction);
 
-      // Assert: 各モックの呼び出し回数と内容を検証
+      // Assert
       assertSpyCalls(setMainRoleStub, 1);
       assertSpyCall(setMainRoleStub, 0, { args: ["user-123", "Jungle"] });
       assertSpyCalls(successMessageStub, 1);
@@ -142,15 +142,15 @@ describe("/set-main-role command", () => {
 describe("apiClient.setMainRole", () => {
   describe("正常系", () => {
     test("ユーザーIDとロールが与えられたとき、適切なPUTリクエストをfetchで送信する", async () => {
-      // Setup: 依存するfetchをスタブ化
+      // Arrange
       using fetchStub = stub(globalThis, "fetch", () =>
         Promise.resolve(new Response(JSON.stringify({ success: true })))
       );
 
-      // Action
+      // Act
       await apiClient.setMainRole("user-123", "Jungle");
 
-      // Assert: fetchの呼び出し回数と内容を検証
+      // Assert
       assertSpyCalls(fetchStub, 1);
       assertSpyCall(fetchStub, 0, {
         args: [
@@ -171,7 +171,7 @@ describe("apiClient.setMainRole", () => {
 - **目的**: 複数のコンポーネント（`bot`, `api`, `db`）を実際に連携させ、ユーザーの操作から始まる一連のシナリオが正しく動作することを保証します。
 
 - **原則**:
-    - **APIのテスト**: `test_client` を使用してAPIリクエストを送信し、レスポンスの内容や、その結果としてデータベースの状態が正しく変更されたかを検証します。
+    - **APIのテスト**: `testClient` を使用してAPIリクエストを送信し、レスポンスの内容や、その結果としてデータベースの状態が正しく変更されたかを検証します。
     - **Botのテスト**: Discordの `interaction` を模倣してコマンドを実行し、Botからの応答メッセージや、API連携を通じてデータベースの状態が正しく変更されたかを検証します。
     - Riot APIやDiscord APIのような、プロジェクト管理外の外部ドメインのサービスは、引き続きモックを使用します。
 
@@ -187,14 +187,14 @@ describe("シナリオ: カスタムゲーム作成", () => {
   describe("正常系", () => {
     // Suite Setup: このテストスイートの実行前に、テスト用のAPIサーバーとDBをセットアップする
     test("ユーザーがゲーム作成コマンドを実行したとき、APIを通じてDBにイベントが記録される", async () => {
-      // 1. Setup: Discordからのコマンド実行を模倣
+      // Arrange
       const interaction = new MockInteractionBuilder("create-custom-game")
         .withStringOption("name", "今夜のカスタム").build();
 
-      // 2. Action: Botのコマンドハンドラを実行（内部のapiClientは実物のAPIを叩く）
+      // Act
       await createCustomGame.execute(interaction);
 
-      // 3. Assert: テスト用DBを直接確認し、イベントが作成されたことを検証
+      // Assert
       const eventInDb = await testDb.query.events.findFirst();
       assertExists(eventInDb);
       assertEquals(eventInDb.name, "今夜のカスタム");
@@ -242,3 +242,79 @@ describe("シナリオ: カスタムゲーム作成", () => {
 ## 2.3. テストユーティリティ
 
 テストのセットアップ（例: `Interaction`オブジェクトの生成）をDRY（Don't Repeat Yourself）に保つため、繰り返し利用するヘルパー関数やモックビルダーは、`test_utils.ts`のようなファイルにまとめることを推奨します。ユーティリティのスコープに応じて、適切なディレクトリ（例: `bot/src/`や`api/src/`）に配置してください。
+
+## 2.4. テストケースの構造 (Arrange-Act-Assert パターン)
+
+各テストケース (`test` ブロック) は、可読性を高めるために **Arrange-Act-Assert (AAA)** パターンに従って構造化することを強く推奨します。
+
+- **`// Arrange` (準備):** テスト対象の実行に必要な前提条件（データ、スタブ、モックなど）をすべて準備します。
+- **`// Act` (実行):** テスト対象のコード（関数やメソッド）を呼び出します。
+- **`// Assert` (検証):** 実行結果が期待通りであったかをアサーション関数を使って検証します。
+
+各ブロック間には空行を入れ、`// Arrange`等のコメントで視覚的な区切りを明確にします。
+
+## 2.5. 意味のあるアサーションの原則
+
+テストにおけるアサーションは、テスト対象コードのロジックや振る舞いを検証するものでなければなりません。
+
+### スタブの戻り値の伝搬を検証する場合
+
+スタブした関数の戻り値が、最終的なレスポンスに正しく含まれているかを検証することは、境界間の連携をテストする上で有効です。
+
+ただし、その検証は可能な限り厳密に行うべきです。
+
+```typescript
+// Arrange
+using getAuthorizationUrlStub = stub(
+  rso,
+  "getAuthorizationUrl",
+  (state: string) => `https://mock.auth.url/authorize?state=${state}`,
+);
+// ...
+
+// Act
+const res = await client.auth.rso["login-url"].$get(...);
+const body = await res.json();
+
+// Assert
+// 呼び出し回数を検証する
+assertSpyCalls(getAuthorizationUrlStub, 1);
+
+// レスポンスボディに含まれるURLの「静的な部分」が完全一致することを検証する
+const state = getAuthorizationUrlStub.calls[0].args[0];
+assertEquals(body.url, `https://mock.auth.url/authorize?state=${state}`);
+```
+`startsWith`のような曖昧な比較ではなく、動的な部分（この例では`state`）を含めた完全なURLで比較することで、「余計な文字列が付与されていないか」「URLの形式が意図せず変わっていないか」といった点まで含めて厳密に検証できます。
+
+## 2.6. 予測不可能な値の扱い
+
+テストは常に予測可能であるべきです。テスト対象のコード内で`new Date()`や`crypto.randomUUID()`のような実行するたびに結果が変わる関数が使われている場合、その扱いには注意が必要です。
+
+### 原則: テスト対象が「直接」呼び出す動的関数はスタブ化する
+
+テスト対象のコードが、その内部で**直接** `crypto.randomUUID()` や `new Date()` を呼び出している場合、それらの関数はスタブ化して値を固定するのが最も推奨されるベストプラクティスです。
+
+今回の`auth.ts`の例では、ルートハンドラ内で直接`crypto.randomUUID()`を呼び出しているため、このパターンに該当します。
+
+```typescript
+// 良い例: crypto.randomUUID()を直接スタブ化する
+// Arrange
+const FIXED_UUID = "fixed-uuid-for-test";
+using _uuidStub = stub(crypto, "randomUUID", () => FIXED_UUID);
+using createAuthStateStub = stub(dbActions, "createAuthState");
+using getAuthorizationUrlStub = stub(rso, "getAuthorizationUrl");
+
+// Act
+await client.auth.rso["login-url"].$get(...);
+
+// Assert
+// 各モジュールが、固定化されたUUIDで呼び出されたことを個別に検証する
+assertSpyCall(createAuthStateStub, 0, { args: [FIXED_UUID, "discord-123"] });
+assertSpyCall(getAuthorizationUrlStub, 0, { args: [FIXED_UUID] });
+```
+
+### 禁止事項: 外部モジュールの実装詳細へのスタブ化
+
+テスト対象が呼び出す**外部モジュール**（例: `someApiSdk`）が、その**内部で** `crypto.randomUUID()` を使用している場合、テストコードから`crypto.randomUUID()`をスタブ化してはいけません。これは「直接の依存関係のみをモックする」という大原則に反し、外部モジュールの実装詳細に依存した脆いテストになるためです。
+
+その場合は、外部モジュール（`someApiSdk`）のメソッド自体をスタブ化し、動的な値を含んだ最終的な戻り値をテスト側で定義してください。

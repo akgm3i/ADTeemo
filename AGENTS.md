@@ -19,6 +19,7 @@ This project uses **Deno v2.5** or a later version. All development must adhere 
 - **Package Registry:** The primary package registry is **JSR (`jsr.io`)**. The legacy `deno.land/x` registry should not be used for adding new dependencies.
 - **Node.js Compatibility:** Deno v2 provides strong compatibility with Node.js and npm packages, which can be leveraged when necessary via `npm:` specifiers.
 - **Testing & Mocks:** Tests are written using the standard library (e.g., `jsr:@std/testing/bdd`). For mocking dependencies in unit tests, this project uses the `stub` and `spy` functionalities from `@std/testing/mock`, combined with `using` declarations for automatic cleanup. This approach allows for creating isolated and stable tests by mocking direct dependencies. For detailed guidelines and examples, please refer to the [Testing Style Guide](./TESTING_STYLE.md).
+- **Quality Checks:** Before pushing changes, run `deno check`, `deno lint`, then `deno fmt` to catch type issues, lint violations, and formatting problems in that order.
 
 ### Hono Technology Notes
 
@@ -103,6 +104,9 @@ Commit messages should describe the context behind the changes, rather than what
 ## Development Conventions
 
 - The project strictly follows a Test-Driven Development (TDD) workflow. All new features or bug fixes must start with writing tests.
+- Work must be captured via proper branch creation and commits; review past work through the commit log.
+- Raise concerns, issues, or improvement ideas to GitHub by opening issues via the `gh` CLI during development.
+- After completing a task, check off the relevant entry in `TASKS.md`, push your branch, and open a pull request on GitHub.
 
 ### TDD Workflow
 
@@ -117,5 +121,5 @@ Commit messages should describe the context behind the changes, rather than what
 
 - **Test Style:** Tests are written in Japanese and follow a Behavior-Driven Development (BDD) style, using `describe` and `it` blocks from `jsr:@std/testing/bdd`. For detailed guidelines on test structure, file organization (unit vs. integration), and mocking strategies, please refer to the [Testing Style Guide](./TESTING_STYLE.md).
 - **File Location:** The location of test files depends on their type. Refer to the [Testing Style Guide](./TESTING_STYLE.md) for details.
-- **Project Structure:** The project is divided into `api` and `bot` workspaces.
-- **Specification Document:** The `SPEC.md` file contains the detailed project specification and should be consulted for in-depth understanding.
+- **Project Structure:** The project is divided into `api`, `bot`, and `messages` workspaces. The `messages` workspace stores localized response templates and related tooling.
+- **Specification Document:** The `SPEC.md` file contains the detailed project specification and should be consulted for in-depth understanding. Any pending implementation work required to satisfy the specification is tracked in `TASKS.md`.
