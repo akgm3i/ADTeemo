@@ -75,8 +75,14 @@ Commit messages should describe the context behind the changes, rather than what
 ```
 <type>[optional scope]: <description>
 
-[optional body]
+[body]
 ```
+
+#### Message body requirements
+
+- Provide at least one paragraph that explains the background, problem statement, or decision that motivated the change.
+- Describe the intended impact, expected benefits, and any known risks so the rationale is clear for release notes and reviewers.
+- Only in self-evident cases (e.g., typo fixes) may the body be omitted; in all other cases, include the explanation.
 
 #### `type`
 
