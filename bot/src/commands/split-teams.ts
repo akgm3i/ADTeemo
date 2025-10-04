@@ -10,7 +10,7 @@ import {
   User,
 } from "discord.js";
 import { apiClient } from "../api_client.ts";
-import { formatMessage, messageKeys } from "../messages.ts";
+import { messageHandler, messageKeys } from "../messages.ts";
 import {
   ROLE_DISPLAY_NAMES,
   ROLE_EMOJIS,
@@ -19,69 +19,17 @@ import {
 } from "../constants.ts";
 import { type Event, type Lane, lanes } from "@adteemo/api/schema";
 
-// Exported for testing purposes
-export const testable = {
-  apiClient,
-  formatMessage,
-  fetchEvent,
-  fetchRecruitmentMessage,
-  fetchParticipants,
-  validateParticipants,
-  splitTeams,
-  moveMembersToVoiceChannels,
-  announceTeams,
-};
-
 export const data = new SlashCommandBuilder()
   .setName("split-teams")
   .setDescription("現在の参加者でチーム分けを行います。");
 
-export async function execute(interaction: CommandInteraction) {
-  if (!interaction.isChatInputCommand()) return;
-  if (!interaction.inGuild() || !interaction.guild) {
-    await interaction.reply({
-      content: testable.formatMessage(
-        messageKeys.common.info.guildOnlyCommand,
-      ),
-      ephemeral: true,
-    });
-    return;
-  }
-  await interaction.deferReply({ ephemeral: true });
-
-  try {
-    const event = await testable.fetchEvent(interaction.user.id);
-    const recruitmentMessage = await testable.fetchRecruitmentMessage(
-      interaction.guild,
-      interaction.channelId,
-      event.recruitmentMessageId,
-    );
-    const { participantsByRole, allParticipants } = await testable
-      .fetchParticipants(
-        recruitmentMessage,
-      );
-    testable.validateParticipants(participantsByRole, allParticipants);
-    const { teamA, teamB } = testable.splitTeams(participantsByRole);
-    await testable.moveMembersToVoiceChannels(
-      interaction.guild,
-      teamA,
-      teamB,
-    );
-    await testable.announceTeams(interaction, teamA, teamB);
-  } catch (error) {
-    await interaction.editReply(
-      error instanceof Error ? error.message : "An unknown error occurred.",
-    );
-  }
-}
-
-async function fetchEvent(creatorId: string): Promise<Event> {
-  const eventResult = await testable.apiClient.getEventStartingTodayByCreatorId(
+export async function fetchEvent(creatorId: string): Promise<Event> {
+  const eventResult = await apiClient.getEventStartingTodayByCreatorId(
     creatorId,
   );
   if (eventResult.success === false || !eventResult.event) {
     throw new Error(
-      testable.formatMessage(
+      messageHandler.formatMessage(
         messageKeys.customGame.split.error.noEventFound,
       ),
     );
@@ -94,7 +42,7 @@ async function fetchEvent(creatorId: string): Promise<Event> {
   };
 }
 
-async function fetchRecruitmentMessage(
+export async function fetchRecruitmentMessage(
   guild: Guild,
   channelId: string,
   messageId: string,
@@ -102,7 +50,7 @@ async function fetchRecruitmentMessage(
   const channel = await guild.channels.fetch(channelId);
   if (!channel || channel.type !== ChannelType.GuildText) {
     throw new Error(
-      testable.formatMessage(
+      messageHandler.formatMessage(
         messageKeys.customGame.split.error.noRecruitmentChannel,
       ),
     );
@@ -111,7 +59,7 @@ async function fetchRecruitmentMessage(
   const message = await (channel as TextChannel).messages.fetch(messageId);
   if (!message) {
     throw new Error(
-      testable.formatMessage(
+      messageHandler.formatMessage(
         messageKeys.customGame.split.error.noRecruitmentMessage,
       ),
     );
@@ -119,7 +67,7 @@ async function fetchRecruitmentMessage(
   return message;
 }
 
-async function fetchParticipants(recruitmentMessage: Message) {
+export async function fetchParticipants(recruitmentMessage: Message) {
   const participantsByRole = new Map<Lane, User[]>();
   const allParticipants = new Set<User>();
 
@@ -141,13 +89,13 @@ async function fetchParticipants(recruitmentMessage: Message) {
   return { participantsByRole, allParticipants };
 }
 
-function validateParticipants(
+export function validateParticipants(
   participantsByRole: Map<Lane, User[]>,
   allParticipants: Set<User>,
 ) {
   if (allParticipants.size !== 10) {
     throw new Error(
-      testable.formatMessage(
+      messageHandler.formatMessage(
         messageKeys.customGame.split.error.invalidPlayerCount,
         {
           count: allParticipants.size,
@@ -159,7 +107,7 @@ function validateParticipants(
     const participants = participantsByRole.get(lane);
     if (!participants || participants.length !== 2) {
       throw new Error(
-        testable.formatMessage(
+        messageHandler.formatMessage(
           messageKeys.customGame.split.error.invalidRoleCount,
           {
             role: ROLE_DISPLAY_NAMES[lane],
@@ -170,7 +118,7 @@ function validateParticipants(
   }
 }
 
-function splitTeams(participantsByRole: Map<Lane, User[]>) {
+export function splitTeams(participantsByRole: Map<Lane, User[]>) {
   const teamA = new Map<Lane, User>();
   const teamB = new Map<Lane, User>();
 
@@ -184,7 +132,7 @@ function splitTeams(participantsByRole: Map<Lane, User[]>) {
   return { teamA, teamB };
 }
 
-async function moveMembersToVoiceChannels(
+export async function moveMembersToVoiceChannels(
   guild: Guild,
   teamA: Map<Lane, User>,
   teamB: Map<Lane, User>,
@@ -199,7 +147,7 @@ async function moveMembersToVoiceChannels(
 
   if (!teamAVc || !teamBVc) {
     throw new Error(
-      testable.formatMessage(
+      messageHandler.formatMessage(
         messageKeys.customGame.split.error.noVoiceChannels,
       ),
     );
@@ -230,12 +178,12 @@ function formatTeam(team: Map<Lane, User>): string {
     .join("\n");
 }
 
-async function announceTeams(
+export async function announceTeams(
   interaction: ChatInputCommandInteraction,
   teamA: Map<Lane, User>,
   teamB: Map<Lane, User>,
 ) {
-  const replyContent = testable.formatMessage(
+  const replyContent = messageHandler.formatMessage(
     messageKeys.customGame.split.success,
     {
       teamA: formatTeam(teamA),
@@ -244,4 +192,51 @@ async function announceTeams(
   );
 
   await interaction.editReply(replyContent);
+}
+
+export const splitTeamHandlers = {
+  fetchEvent,
+  fetchRecruitmentMessage,
+  fetchParticipants,
+  validateParticipants,
+  splitTeams,
+  moveMembersToVoiceChannels,
+  announceTeams,
+};
+
+export async function execute(interaction: CommandInteraction) {
+  if (!interaction.isChatInputCommand()) return;
+  if (!interaction.inGuild() || !interaction.guild) {
+    await interaction.reply({
+      content: messageHandler.formatMessage(
+        messageKeys.common.info.guildOnlyCommand,
+      ),
+      ephemeral: true,
+    });
+    return;
+  }
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    const event = await splitTeamHandlers.fetchEvent(interaction.user.id);
+    const recruitmentMessage = await splitTeamHandlers.fetchRecruitmentMessage(
+      interaction.guild,
+      interaction.channelId,
+      event.recruitmentMessageId,
+    );
+    const { participantsByRole, allParticipants } = await splitTeamHandlers
+      .fetchParticipants(recruitmentMessage);
+    splitTeamHandlers.validateParticipants(participantsByRole, allParticipants);
+    const { teamA, teamB } = splitTeamHandlers.splitTeams(participantsByRole);
+    await splitTeamHandlers.moveMembersToVoiceChannels(
+      interaction.guild,
+      teamA,
+      teamB,
+    );
+    await splitTeamHandlers.announceTeams(interaction, teamA, teamB);
+  } catch (error) {
+    await interaction.editReply(
+      error instanceof Error ? error.message : "An unknown error occurred.",
+    );
+  }
 }

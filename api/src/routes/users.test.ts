@@ -1,10 +1,11 @@
 import { testClient } from "@hono/hono/testing";
-import { assert, assertEquals } from "@std/assert";
-import { describe, it, test } from "@std/testing/bdd";
-import { assertSpyCall, stub } from "@std/testing/mock";
+import { assert, assertEquals, assertExists } from "@std/assert";
+import { describe, test } from "@std/testing/bdd";
+import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
 import app from "../app.ts";
 import { dbActions } from "../db/actions.ts";
 import { riotApi } from "../riot_api.ts";
+import { messageHandler, messageKeys } from "../messages.ts";
 
 describe("routes/users.ts", () => {
   const client = testClient(app);
@@ -17,7 +18,7 @@ describe("routes/users.ts", () => {
 
     describe("正常系", () => {
       test("Riotアカウントが見つかり、DB更新が成功した場合、成功レスポンスを返す", async () => {
-        // Setup
+        // Arrange
         using getAccountStub = stub(
           riotApi,
           "getAccountByRiotId",
@@ -30,13 +31,12 @@ describe("routes/users.ts", () => {
         );
 
         // Act
-        const res = await client.users["link-by-riot-id"].$post({
+        const res = await client.users["link-by-riot-id"].$patch({
           json: { discordId, gameName, tagLine },
         });
 
         // Assert
         assert(res.ok);
-
         assertSpyCall(getAccountStub, 0, { args: [gameName, tagLine] });
         assertSpyCall(updateUserStub, 0, { args: [discordId, puuid] });
       });
@@ -44,25 +44,32 @@ describe("routes/users.ts", () => {
 
     describe("異常系", () => {
       test("Riotアカウントが見つからない場合、404エラーレスポンスを返す", async () => {
-        // Setup
+        // Arrange
         using getAccountStub = stub(
           riotApi,
           "getAccountByRiotId",
           () => Promise.resolve(null),
         );
-        const updateUserSpy = stub(dbActions, "updateUserRiotId");
+        using updateUserSpy = stub(dbActions, "updateUserRiotId");
+        using mockFormatMessage = stub(
+          messageHandler,
+          "formatMessage",
+          () => "error message",
+        );
 
         // Act
-        const res = await client.users["link-by-riot-id"].$post({
+        const res = await client.users["link-by-riot-id"].$patch({
           json: { discordId, gameName, tagLine },
         });
 
         // Assert
         assert(res.status === 404);
         const body = await res.json();
-
-        assert(body.error.includes("見つかりません"));
-
+        assertExists(body.error);
+        assertSpyCalls(mockFormatMessage, 1);
+        assertSpyCall(mockFormatMessage, 0, {
+          args: [messageKeys.riotAccount.set.error.summonerNotFound],
+        });
         assertSpyCall(getAccountStub, 0, { args: [gameName, tagLine] });
         assertEquals(updateUserSpy.calls.length, 0);
       });
@@ -73,8 +80,8 @@ describe("routes/users.ts", () => {
     const userId = "test-user-id";
 
     describe("正常系", () => {
-      it("有効なロールが指定されたとき、ユーザーのメインロールが設定され、成功レスポンスを返す", async () => {
-        // Setup
+      test("有効なロールが指定されたとき、ユーザーのメインロールが設定され、成功レスポンスを返す", async () => {
+        // Arrange
         const role = "Jungle";
         using setMainRoleStub = stub(
           dbActions,
@@ -99,14 +106,14 @@ describe("routes/users.ts", () => {
         // Assert
         assert(res.ok);
         const body = await res.json();
-
         assertEquals(body, { success: true });
         assertSpyCall(setMainRoleStub, 0, { args: [userId, role] });
       });
     });
 
     describe("異常系", () => {
-      it("無効なロールが指定されたとき、400エラーを返す", async () => {
+      test("無効なロールが指定されたとき、400エラーを返す", async () => {
+        // Arrange
         const role = "InvalidRole";
         const req = new Request(
           `http://localhost/users/${userId}/main-role`,
@@ -117,7 +124,10 @@ describe("routes/users.ts", () => {
           },
         );
 
+        // Act
         const res = await app.request(req);
+
+        // Assert
         assertEquals(res.status, 400);
       });
     });

@@ -1,12 +1,13 @@
-import { describe, it } from "@std/testing/bdd";
+import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
-import { execute, testable } from "./health.ts";
-import { messageKeys } from "../messages.ts";
+import { execute } from "./health.ts";
+import { messageHandler, messageKeys } from "../messages.ts";
 import { MockInteractionBuilder } from "../test_utils.ts";
 
 describe("Health Command", () => {
   describe("execute", () => {
-    it("APIが正常な時にコマンドを実行すると、APIからの成功メッセージで応答する", async () => {
+    test("APIが正常な時にコマンドを実行すると、APIからの成功メッセージで応答する", async () => {
+      // Arrange
       const response = new Response(
         JSON.stringify({
           ok: true,
@@ -26,50 +27,58 @@ describe("Health Command", () => {
       using deferSpy = spy(interaction, "deferReply");
       using editSpy = spy(interaction, "editReply");
 
+      // Act
       await execute(interaction);
 
+      // Assert
       assertSpyCall(deferSpy, 0);
       assertSpyCall(editSpy, 0, {
         args: ["All systems operational."],
       });
     });
 
-    it("APIがエラーを返す時にコマンドを実行すると、APIのエラーを含んだメッセージで応答する", async () => {
+    test("APIがエラーを返す時にコマンドを実行すると、APIのエラーを含んだメッセージで応答する", async () => {
+      // Arrange
       const response = new Response("Internal Server Error", { status: 500 });
       using _fetchStub = stub(
         globalThis,
         "fetch",
         () => Promise.resolve(response),
       );
-      using formatMessageSpy = spy(testable, "formatMessage");
+      using formatMessageSpy = spy(messageHandler, "formatMessage");
       const interaction = new MockInteractionBuilder().build();
       using deferSpy = spy(interaction, "deferReply");
       using editSpy = spy(interaction, "editReply");
 
+      // Act
       await execute(interaction);
 
+      // Assert
       assertSpyCall(deferSpy, 0);
       assertSpyCall(editSpy, 0);
       assertSpyCall(formatMessageSpy, 0, {
         args: [messageKeys.health.error.failure, {
-          error: "API returned status 500",
+          error: "API Error: 500 ",
         }],
       });
     });
 
-    it("APIとの通信に失敗した時にコマンドを実行すると、通信失敗を示すメッセージで応答する", async () => {
+    test("APIとの通信に失敗した時にコマンドを実行すると、通信失敗を示すメッセージで応答する", async () => {
+      // Arrange
       using _fetchStub = stub(
         globalThis,
         "fetch",
         () => Promise.reject(new Error("Network disconnect")),
       );
-      using formatMessageSpy = spy(testable, "formatMessage");
+      using formatMessageSpy = spy(messageHandler, "formatMessage");
       const interaction = new MockInteractionBuilder().build();
       using deferSpy = spy(interaction, "deferReply");
       using editSpy = spy(interaction, "editReply");
 
+      // Act
       await execute(interaction);
 
+      // Assert
       assertSpyCall(deferSpy, 0);
       assertSpyCall(editSpy, 0);
       assertSpyCall(formatMessageSpy, 0, {
@@ -79,14 +88,17 @@ describe("Health Command", () => {
       });
     });
 
-    it("ChatInputCommandでないInteractionで実行すると、何もせずに処理を中断する", async () => {
+    test("ChatInputCommandでないInteractionで実行すると、何もせずに処理を中断する", async () => {
+      // Arrange
       const interaction = new MockInteractionBuilder()
         .setIsChatInputCommand(false)
         .build();
       using deferSpy = spy(interaction, "deferReply");
 
+      // Act
       await execute(interaction);
 
+      // Assert
       assertSpyCalls(deferSpy, 0);
     });
   });

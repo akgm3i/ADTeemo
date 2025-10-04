@@ -101,6 +101,12 @@
     }
   },
   "riotAccount": {
+    "set": {
+      "error": {
+        "summonerNotFound": "サモナーが見つかりませんでした。サモナー名を確認してください。",
+        "invalidFormat": "Riot IDの形式が正しくありません。「サモナー名#タグライン」の形式で入力してください。"
+      }
+    },
     "link": {
       "instructions": "Riot Gamesアカウントと連携するには、以下のリンクにアクセスして認証を完了してください。\n\n{url}",
       "success": {
@@ -110,8 +116,7 @@
       "error": {
         "generic": "エラーが発生しました: {error}",
         "urlNotFound": "URLが取得できませんでした。",
-        "invalidState": "認証セッションが無効か期限切れです。もう一度コマンドを実行してください。",
-        "invalidFormat": "Riot IDの形式が正しくありません。「サモナー名#タグライン」の形式で入力してください。"
+        "invalidState": "認証セッションが無効か期限切れです。もう一度コマンドを実行してください。"
       }
     }
   }

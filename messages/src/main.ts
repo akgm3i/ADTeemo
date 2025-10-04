@@ -31,6 +31,12 @@ type NestedKeyObject<T> = {
   [K in keyof T]: T[K] extends object ? NestedKeyObject<T[K]> : MessageKey;
 };
 
+/**
+ * A type that mirrors the structure of the message files, providing type-safe access to message keys.
+ * This explicit type can help IDEs with intellisense and type resolution.
+ */
+export type MessageKeys = NestedKeyObject<typeof systemMessages>;
+
 // --- Message loading and validation ---
 
 function loadMessages(
@@ -138,4 +144,4 @@ function createKeyMirror<T extends object>(
   ) as NestedKeyObject<T>;
 }
 
-export const messageKeys = createKeyMirror(systemMessages);
+export const messageKeys: MessageKeys = createKeyMirror(systemMessages);

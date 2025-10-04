@@ -1,15 +1,17 @@
-import { describe, it } from "@std/testing/bdd";
+import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import {
   type ChatInputCommandInteraction,
   InteractionResponse,
   Message,
 } from "discord.js";
-import { type MatchParticipant } from "../api_client.ts";
-import { execute, testable } from "./record-match.ts";
+import { apiClient, type MatchParticipant } from "../api_client.ts";
+import { execute } from "./record-match.ts";
 import { MockInteractionBuilder } from "../test_utils.ts";
 import { assertEquals } from "@std/assert";
 import type { Lane } from "@adteemo/api/schema";
+import { matchTracker } from "../features/match_tracking.ts";
+import { statCollector } from "../features/stat_collector.ts";
 
 describe("/record-match command", () => {
   const mockParticipants: {
@@ -25,14 +27,15 @@ describe("/record-match command", () => {
     },
   ];
 
-  it("対話フローが正常に完了し、全プレイヤーのデータがAPIに送信される", async () => {
+  test("対話フローが正常に完了し、全プレイヤーのデータがAPIに送信される", async () => {
+    // Arrange
     using _getActiveParticipantsStub = stub(
-      testable.matchTracker,
+      matchTracker,
       "getActiveParticipants",
       () => Promise.resolve(mockParticipants),
     );
     using createParticipantStub = stub(
-      testable.apiClient,
+      apiClient,
       "createMatchParticipant",
       () => Promise.resolve({ success: true, id: 1, error: null }),
     );
@@ -49,7 +52,7 @@ describe("/record-match command", () => {
       150,
       11000,
     ];
-    using _askForStatStub = stub(testable.statCollector, "askForStat", () => {
+    using _askForStatStub = stub(statCollector, "askForStat", () => {
       return Promise.resolve(askValues[askCount++]);
     });
 
@@ -75,8 +78,10 @@ describe("/record-match command", () => {
     (interaction.channel as { isTextBased: () => true }).isTextBased = () =>
       true;
 
+    // Act
     await execute(interaction as ChatInputCommandInteraction);
 
+    // Assert
     assertSpyCalls(createParticipantStub, 2);
 
     const firstCallArgs = createParticipantStub.calls[0].args as [

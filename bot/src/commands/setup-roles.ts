@@ -4,14 +4,8 @@ import {
   PermissionFlagsBits,
   SlashCommandBuilder,
 } from "discord.js";
-import * as roleManager from "../features/role-management.ts";
-import { formatMessage, messageKeys } from "../messages.ts";
-
-// Exported for testing purposes
-export const testable = {
-  formatMessage,
-  ensureRoles: roleManager.ensureRoles,
-};
+import { roleManager } from "../features/role-management.ts";
+import { messageHandler, messageKeys } from "../messages.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("setup-roles")
@@ -23,7 +17,7 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: CommandInteraction) {
   if (!interaction.guild) {
     await interaction.reply({
-      content: testable.formatMessage(
+      content: messageHandler.formatMessage(
         messageKeys.common.info.guildOnlyCommand,
       ),
       flags: MessageFlags.Ephemeral,
@@ -33,14 +27,14 @@ export async function execute(interaction: CommandInteraction) {
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const result = await testable.ensureRoles(interaction.guild);
+  const result = await roleManager.ensureRoles(interaction.guild);
   let message = "";
 
   switch (result.status) {
     case "SUCCESS": {
       const { created, existing } = result.summary;
       if (created.length > 0) {
-        message = testable.formatMessage(
+        message = messageHandler.formatMessage(
           messageKeys.guild.setup.success.created,
           {
             count: created.length,
@@ -48,7 +42,7 @@ export async function execute(interaction: CommandInteraction) {
           },
         );
         if (existing.length > 0) {
-          message += testable.formatMessage(
+          message += messageHandler.formatMessage(
             messageKeys.guild.setup.success.existing,
             {
               count: existing.length,
@@ -57,14 +51,14 @@ export async function execute(interaction: CommandInteraction) {
           );
         }
       } else {
-        message = testable.formatMessage(
+        message = messageHandler.formatMessage(
           messageKeys.guild.setup.success.noAction,
         );
       }
       break;
     }
     case "PERMISSION_ERROR":
-      message = testable.formatMessage(
+      message = messageHandler.formatMessage(
         messageKeys.guild.setup.error.permission,
         {
           message: result.message,
@@ -72,7 +66,9 @@ export async function execute(interaction: CommandInteraction) {
       );
       break;
     case "UNKNOWN_ERROR":
-      message = testable.formatMessage(messageKeys.guild.setup.error.unknown);
+      message = messageHandler.formatMessage(
+        messageKeys.guild.setup.error.unknown,
+      );
       console.error(
         `Error setting up roles via command in guild ${interaction.guild.id}:`,
         result.error,

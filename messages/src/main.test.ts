@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { afterEach, beforeEach, describe, it } from "@std/testing/bdd";
+import { afterEach, beforeEach, describe, test } from "@std/testing/bdd";
 import { assertSpyCalls, spy, stub } from "@std/testing/mock";
 import type { Stub } from "@std/testing/mock";
 import { initializeMessages } from "./main.ts";
@@ -56,21 +56,34 @@ describe("formatMessage (Message Translation)", () => {
       envStub.restore();
     });
 
-    it("指定したキーのメッセージを返す", () => {
-      assertEquals(formatMessage("common.ok" as MessageKey), "はい");
+    test("指定したキーのメッセージを返す", () => {
+      // Act
+      const result = formatMessage("common.ok" as MessageKey);
+
+      // Assert
+      assertEquals(result, "はい");
     });
 
-    it("プレースホルダーを置換したメッセージを返す", () => {
-      assertEquals(
-        formatMessage("greeting" as MessageKey, { name: "ゲスト" }),
-        "こんにちは、ゲストさん",
-      );
+    test("プレースホルダーを置換したメッセージを返す", () => {
+      // Act
+      const result = formatMessage("greeting" as MessageKey, {
+        name: "ゲスト",
+      });
+
+      // Assert
+      assertEquals(result, "こんにちは、ゲストさん");
     });
 
-    it("見つからないキーについては、警告を表示しキー自体を文字列として返す", () => {
+    test("見つからないキーについては、警告を表示しキー自体を文字列として返す", () => {
+      // Arrange
       const missingKey = "a.b.c" as MessageKey;
       using consoleWarnSpy = spy(console, "warn");
-      assertEquals(formatMessage(missingKey), missingKey);
+
+      // Act
+      const result = formatMessage(missingKey);
+
+      // Assert
+      assertEquals(result, missingKey);
       assertSpyCalls(consoleWarnSpy, 1);
     });
   });
@@ -91,16 +104,24 @@ describe("formatMessage (Message Translation)", () => {
       envStub.restore();
     });
 
-    it("テーマに存在するキーは、テーマのメッセージを優先して返す", () => {
-      assertEquals(
-        formatMessage("greeting" as MessageKey, { name: "隊長" }),
-        "やぁ、隊長！",
-      );
-      assertEquals(formatMessage("common.ok" as MessageKey), "調子はどう？");
+    test("テーマに存在するキーは、テーマのメッセージを優先して返す", () => {
+      // Act
+      const greeting = formatMessage("greeting" as MessageKey, {
+        name: "隊長",
+      });
+      const ok = formatMessage("common.ok" as MessageKey);
+
+      // Assert
+      assertEquals(greeting, "やぁ、隊長！");
+      assertEquals(ok, "調子はどう？");
     });
 
-    it("テーマに存在しないがデフォルトには存在するキーは、デフォルトのメッセージを返す", () => {
-      assertEquals(formatMessage("common.cancel" as MessageKey), "キャンセル");
+    test("テーマに存在しないがデフォルトには存在するキーは、デフォルトのメッセージを返す", () => {
+      // Act
+      const result = formatMessage("common.cancel" as MessageKey);
+
+      // Assert
+      assertEquals(result, "キャンセル");
     });
   });
 });

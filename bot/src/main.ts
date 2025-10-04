@@ -9,12 +9,7 @@ import {
 import { ensureRoles } from "./features/role-management.ts";
 import { loadCommands } from "./common/command_loader.ts";
 import { apiClient } from "./api_client.ts";
-import { formatMessage, messageKeys } from "./messages.ts";
-
-export const testable = {
-  formatMessage,
-  apiClient,
-};
+import { messageHandler, messageKeys } from "./messages.ts";
 
 // Create a new client instance
 const client = new Client({
@@ -54,12 +49,16 @@ export async function handleInteractionCreate(interaction: Interaction) {
       console.error(error);
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp({
-          content: testable.formatMessage(messageKeys.common.error.command),
+          content: messageHandler.formatMessage(
+            messageKeys.common.error.command,
+          ),
           flags: MessageFlags.Ephemeral,
         });
       } else {
         await interaction.reply({
-          content: testable.formatMessage(messageKeys.common.error.command),
+          content: messageHandler.formatMessage(
+            messageKeys.common.error.command,
+          ),
           flags: MessageFlags.Ephemeral,
         });
       }
@@ -75,7 +74,7 @@ export async function handleInteractionCreate(interaction: Interaction) {
         const [discordEventId, recruitmentMessageId] = interaction.values[0]
           .split(":");
 
-        const deleteResult = await testable.apiClient.deleteCustomGameEvent(
+        const deleteResult = await apiClient.deleteCustomGameEvent(
           discordEventId,
         );
 
@@ -85,7 +84,7 @@ export async function handleInteractionCreate(interaction: Interaction) {
             deleteResult.error,
           );
           await interaction.editReply({
-            content: testable.formatMessage(
+            content: messageHandler.formatMessage(
               messageKeys.customGame.cancel.error.interaction,
             ),
             components: [],
@@ -114,7 +113,7 @@ export async function handleInteractionCreate(interaction: Interaction) {
         }
 
         await interaction.editReply({
-          content: testable.formatMessage(
+          content: messageHandler.formatMessage(
             messageKeys.customGame.cancel.success,
           ),
           components: [],
@@ -122,7 +121,7 @@ export async function handleInteractionCreate(interaction: Interaction) {
       } catch (e) {
         console.error("Error handling cancel-event-select:", e);
         await interaction.editReply({
-          content: testable.formatMessage(
+          content: messageHandler.formatMessage(
             messageKeys.customGame.cancel.error.generic,
           ),
           components: [],
@@ -148,7 +147,7 @@ client.on(Events.GuildCreate, async (guild) => {
       case "SUCCESS": {
         const createdCount = result.summary.created.length;
         if (createdCount > 0) {
-          message = formatMessage(
+          message = messageHandler.formatMessage(
             messageKeys.guild.welcome.success.createdRoles,
             {
               guildName: guild.name,
@@ -157,21 +156,30 @@ client.on(Events.GuildCreate, async (guild) => {
             },
           );
         } else {
-          message = formatMessage(messageKeys.guild.welcome.success.noAction, {
-            guildName: guild.name,
-          });
+          message = messageHandler.formatMessage(
+            messageKeys.guild.welcome.success.noAction,
+            {
+              guildName: guild.name,
+            },
+          );
         }
         break;
       }
       case "PERMISSION_ERROR":
-        message = formatMessage(messageKeys.guild.welcome.error.permission, {
-          guildName: guild.name,
-        });
+        message = messageHandler.formatMessage(
+          messageKeys.guild.welcome.error.permission,
+          {
+            guildName: guild.name,
+          },
+        );
         break;
       case "UNKNOWN_ERROR":
-        message = formatMessage(messageKeys.guild.welcome.error.unknown, {
-          guildName: guild.name,
-        });
+        message = messageHandler.formatMessage(
+          messageKeys.guild.welcome.error.unknown,
+          {
+            guildName: guild.name,
+          },
+        );
         console.error(
           `Error setting up roles for guild ${guild.id}:`,
           result.error,

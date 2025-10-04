@@ -1,11 +1,6 @@
 import { CommandInteraction, SlashCommandBuilder } from "discord.js";
 import { apiClient } from "../api_client.ts";
-import { formatMessage, messageKeys } from "../messages.ts";
-
-// Exported for testing purposes
-export const testable = {
-  apiClient,
-};
+import { messageHandler, messageKeys } from "../messages.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("link-riot-account")
@@ -14,23 +9,31 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: CommandInteraction) {
   const discordId = interaction.user.id;
 
-  const result = await testable.apiClient.getLoginUrl(discordId);
+  const result = await apiClient.getLoginUrl(discordId);
 
   if (!result.success || !result.url) {
     await interaction.reply({
-      content: formatMessage(messageKeys.riotAccount.link.error.generic, {
-        error: result.error ||
-          formatMessage(messageKeys.riotAccount.link.error.urlNotFound),
-      }),
+      content: messageHandler.formatMessage(
+        messageKeys.riotAccount.link.error.generic,
+        {
+          error: result.error ||
+            messageHandler.formatMessage(
+              messageKeys.riotAccount.link.error.urlNotFound,
+            ),
+        },
+      ),
       ephemeral: true,
     });
     return;
   }
 
   await interaction.reply({
-    content: formatMessage(messageKeys.riotAccount.link.instructions, {
-      url: result.url,
-    }),
+    content: messageHandler.formatMessage(
+      messageKeys.riotAccount.link.instructions,
+      {
+        url: result.url,
+      },
+    ),
     ephemeral: true,
   });
 }

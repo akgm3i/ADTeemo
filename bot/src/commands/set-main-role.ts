@@ -6,13 +6,7 @@ import {
 import { type Lane, lanes } from "@adteemo/api/schema";
 import { ROLE_DISPLAY_NAMES } from "../constants.ts";
 import { apiClient } from "../api_client.ts";
-import { formatMessage, messageKeys } from "../messages.ts";
-
-// Exported for testing purposes
-export const testable = {
-  apiClient,
-  formatMessage,
-};
+import { messageHandler, messageKeys } from "../messages.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("set-main-role")
@@ -39,18 +33,18 @@ export async function execute(interaction: CommandInteraction) {
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const result = await testable.apiClient.setMainRole(userId, role);
+  const result = await apiClient.setMainRole(userId, role);
 
   if (result.success) {
     await interaction.editReply(
-      testable.formatMessage(
+      messageHandler.formatMessage(
         messageKeys.userManagement.setMainRole.success,
         { role },
       ),
     );
   } else {
     await interaction.editReply(
-      testable.formatMessage(
+      messageHandler.formatMessage(
         messageKeys.userManagement.setMainRole.failure,
         {
           error: result.error || "",

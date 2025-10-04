@@ -1,5 +1,5 @@
 import { Collection, CommandInteraction, Message, Snowflake } from "discord.js";
-import { formatMessage, type MessageKey } from "../messages.ts";
+import { messageHandler, type MessageKey } from "../messages.ts";
 
 async function askForStat<T extends string | number>(
   interaction: CommandInteraction,
@@ -13,7 +13,9 @@ async function askForStat<T extends string | number>(
   }
 
   while (true) {
-    await interaction.editReply(formatMessage(promptKey, { username }));
+    await interaction.editReply(
+      messageHandler.formatMessage(promptKey, { username }),
+    );
 
     const filter = (m: Message) => m.author.id === interaction.user.id;
     if (!interaction.channel) return null;
@@ -46,7 +48,7 @@ async function askForStat<T extends string | number>(
         }
       } else {
         const warning = await interaction.followUp({
-          content: formatMessage(errorKey),
+          content: messageHandler.formatMessage(errorKey),
           ephemeral: true,
         });
         setTimeout(() => warning.delete().catch(() => {}), 5000);

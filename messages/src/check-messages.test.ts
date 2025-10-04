@@ -1,4 +1,4 @@
-import { describe, it } from "@std/testing/bdd";
+import { describe, test } from "@std/testing/bdd";
 import { assertStringIncludes } from "@std/assert";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import { main as checkMessagesMain } from "./check-messages.ts";
@@ -17,7 +17,8 @@ const MOCK_TARGET_MISSING = {
 };
 
 describe("check-messages script", () => {
-  it("すべてのキーが存在する場合、成功メッセージを表示して正常終了する", () => {
+  test("すべてのキーが存在する場合、成功メッセージを表示して正常終了する", () => {
+    // Arrange
     using _exitStub = stub(Deno, "exit");
     using consoleLogSpy = spy(console, "log");
     using _readFileSyncStub = stub(
@@ -26,8 +27,10 @@ describe("check-messages script", () => {
       () => JSON.stringify(MOCK_TARGET_OK),
     );
 
+    // Act
     checkMessagesMain();
 
+    // Assert
     assertSpyCalls(_exitStub, 0);
     const lastLogCall = consoleLogSpy.calls[consoleLogSpy.calls.length - 1];
     assertStringIncludes(
@@ -36,7 +39,8 @@ describe("check-messages script", () => {
     );
   });
 
-  it("キーが不足している場合、警告とエラーを表示してコード1で終了する", () => {
+  test("キーが不足している場合、警告とエラーを表示してコード1で終了する", () => {
+    // Arrange
     using exitStub = stub(Deno, "exit");
     using consoleWarnSpy = spy(console, "warn");
     using consoleErrorSpy = spy(console, "error");
@@ -47,8 +51,10 @@ describe("check-messages script", () => {
       return JSON.stringify(MOCK_TARGET_MISSING);
     });
 
+    // Act
     checkMessagesMain();
 
+    // Assert
     assertSpyCall(consoleWarnSpy, 0, { args: ["  -  Missing key: b.c"] });
     assertSpyCall(consoleWarnSpy, 1, { args: ["  -  Missing key: d"] });
     assertSpyCall(consoleErrorSpy, 0, {
@@ -57,7 +63,8 @@ describe("check-messages script", () => {
     assertSpyCall(exitStub, 0, { args: [1] });
   });
 
-  it("対象ファイルが見つからない場合、警告を表示してコード1で終了する", () => {
+  test("対象ファイルが見つからない場合、警告を表示してコード1で終了する", () => {
+    // Arrange
     using exitStub = stub(Deno, "exit");
     using consoleWarnSpy = spy(console, "warn");
     using consoleErrorSpy = spy(console, "error");
@@ -71,18 +78,18 @@ describe("check-messages script", () => {
       return JSON.stringify(MOCK_TARGET_OK);
     });
 
+    // Act
     checkMessagesMain();
 
+    // Assert
     assertSpyCalls(consoleWarnSpy, 2); // ja/teemo, en/teemo
     assertSpyCall(consoleWarnSpy, 0, {
       args: ["  - File not found, skipping."],
     });
-
     assertSpyCalls(consoleErrorSpy, 1);
     assertSpyCall(consoleErrorSpy, 0, {
       args: ["\n❌ Some target files were not found and were skipped."],
     });
-
     assertSpyCalls(exitStub, 1);
     assertSpyCall(exitStub, 0, { args: [1] });
   });

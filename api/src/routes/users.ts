@@ -4,6 +4,7 @@ import { z } from "zod";
 import { lanes } from "../db/schema.ts";
 import { dbActions } from "../db/actions.ts";
 import { riotApi } from "../riot_api.ts";
+import { messageHandler, messageKeys } from "../messages.ts";
 
 const roleSchema = z.object({
   role: z.enum(lanes),
@@ -16,7 +17,7 @@ const linkByRiotIdSchema = z.object({
 });
 
 export const usersRoutes = new Hono()
-  .post(
+  .patch(
     "/link-by-riot-id",
     zValidator("json", linkByRiotIdSchema),
     async (c) => {
@@ -25,12 +26,16 @@ export const usersRoutes = new Hono()
       const account = await riotApi.getAccountByRiotId(gameName, tagLine);
 
       if (!account) {
-        return c.json({ error: "Riotアカウントが見つかりません。" }, 404);
+        return c.json({
+          error: messageHandler.formatMessage(
+            messageKeys.riotAccount.set.error.summonerNotFound,
+          ),
+        }, 404);
       }
 
       await dbActions.updateUserRiotId(discordId, account.puuid);
 
-      return c.json({ discordId }, 201);
+      return c.body(null, 204);
     },
   )
   .put(

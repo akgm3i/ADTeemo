@@ -4,12 +4,7 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import { apiClient } from "../api_client.ts";
-import { formatMessage, messageKeys } from "../messages.ts";
-
-// Exported for testing purposes
-export const testable = {
-  formatMessage,
-};
+import { messageHandler, messageKeys } from "../messages.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("health")
@@ -22,13 +17,14 @@ export async function execute(interaction: CommandInteraction) {
 
   const result = await apiClient.checkHealth();
 
-  if (result.success && result.message) {
-    await interaction.editReply(result.message);
-  } else {
+  if (!result.success) {
     await interaction.editReply(
-      testable.formatMessage(messageKeys.health.error.failure, {
-        error: result.error || "",
+      messageHandler.formatMessage(messageKeys.health.error.failure, {
+        error: result.error,
       }),
     );
+    return;
   }
+
+  await interaction.editReply(result.message);
 }

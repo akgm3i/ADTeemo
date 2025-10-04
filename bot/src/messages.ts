@@ -4,6 +4,8 @@ import {
   messageKeys,
 } from "@adteemo/messages";
 
-const { formatMessage } = initializeMessages();
+// The handler is exported, so its properties can be stubbed.
+export const messageHandler = initializeMessages();
 
-export { formatMessage, type MessageKey, messageKeys };
+// Re-export types and keys for convenience
+export { type MessageKey, messageKeys };

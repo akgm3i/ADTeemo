@@ -1,9 +1,9 @@
 import { Hono } from "@hono/hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import type { Env } from "../app.ts";
 import { dbActions } from "../db/actions.ts";
 import { rso } from "../rso.ts";
+import { messageHandler, messageKeys } from "../messages.ts";
 
 const callbackQuerySchema = z.object({
   code: z.string().min(1),
@@ -14,7 +14,7 @@ const loginUrlQuerySchema = z.object({
   discordId: z.string().min(1),
 });
 
-export const authRoutes = new Hono<Env>()
+export const authRoutes = new Hono()
   .get(
     "/rso/login-url",
     zValidator("query", loginUrlQuerySchema),
@@ -33,7 +33,6 @@ export const authRoutes = new Hono<Env>()
     "/rso/callback",
     zValidator("query", callbackQuerySchema),
     async (c) => {
-      const { formatMessage, messageKeys } = c.var;
       const { code, state } = c.req.valid("query");
 
       // 1. Validate state and get discordId
@@ -49,7 +48,7 @@ export const authRoutes = new Hono<Env>()
         }
         return c.json({
           success: false,
-          error: formatMessage(
+          error: messageHandler.formatMessage(
             messageKeys.riotAccount.link.error.invalidState,
           ),
         }, 400);
@@ -74,7 +73,9 @@ export const authRoutes = new Hono<Env>()
           <html>
             <head>
               <title>${
-          formatMessage(messageKeys.riotAccount.link.success.title)
+          messageHandler.formatMessage(
+            messageKeys.riotAccount.link.success.title,
+          )
         }</title>
               <style>
                 body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
@@ -84,10 +85,14 @@ export const authRoutes = new Hono<Env>()
             <body>
               <div class="container">
                 <h1>${
-          formatMessage(messageKeys.riotAccount.link.success.title)
+          messageHandler.formatMessage(
+            messageKeys.riotAccount.link.success.title,
+          )
         }</h1>
                 <p>${
-          formatMessage(messageKeys.riotAccount.link.success.body)
+          messageHandler.formatMessage(
+            messageKeys.riotAccount.link.success.body,
+          )
         }</p>
               </div>
             </body>
@@ -98,7 +103,7 @@ export const authRoutes = new Hono<Env>()
         return c.json(
           {
             success: false,
-            error: formatMessage(
+            error: messageHandler.formatMessage(
               messageKeys.common.error.internalServerError,
             ),
           },
