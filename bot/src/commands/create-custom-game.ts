@@ -83,12 +83,11 @@ export async function execute(interaction: CommandInteraction) {
 
   const scheduledStartTime = parseDate(dateStr, timeStr);
   if (!scheduledStartTime) {
-    await interaction.reply({
-      content: messageHandler.formatMessage(
+    await interaction.editReply(
+      messageHandler.formatMessage(
         messageKeys.customGame.create.error.invalidDateTimeFormat,
       ),
-      flags: MessageFlags.Ephemeral,
-    });
+    );
     return;
   }
 

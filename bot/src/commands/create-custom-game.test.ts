@@ -186,6 +186,11 @@ describe("Create Custom Game Command", () => {
         );
         const interaction = new MockInteractionBuilder("create-custom-game")
           .withGuild(mockGuild)
+          .withChannel(
+            {
+              send: spy(() => Promise.resolve({} as Message)),
+            } as unknown as Channel,
+          )
           .withStringOption("event-name", "Test")
           .withStringOption("start-date", "invalid-date")
           .withStringOption("start-time", "21:00")
@@ -196,6 +201,8 @@ describe("Create Custom Game Command", () => {
           .build();
         (interaction as { inGuild: () => true }).inGuild = () => true;
         using replySpy = spy(interaction, "reply");
+        using deferSpy = spy(interaction, "deferReply");
+        using editSpy = spy(interaction, "editReply");
         using formatSpy = stub(
           messageHandler,
           "formatMessage",
@@ -206,12 +213,13 @@ describe("Create Custom Game Command", () => {
         await execute(interaction);
 
         // Assert
-        assertSpyCall(replySpy, 0, {
-          args: [{
-            content: "mocked error message",
-            flags: MessageFlags.Ephemeral,
-          }],
+        assertSpyCall(deferSpy, 0, {
+          args: [{ flags: MessageFlags.Ephemeral }],
         });
+        assertSpyCall(editSpy, 0, {
+          args: ["mocked error message"],
+        });
+        assertSpyCalls(replySpy, 0);
         assertSpyCall(formatSpy, 0, {
           args: [
             messageKeys.customGame.create.error.invalidDateTimeFormat,

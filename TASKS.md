@@ -2,7 +2,7 @@
 
 このファイルは Codex が進捗管理しやすいよう、実装順に並べたチェックリストです。完了したタスクは `[x]` に更新してください。
 
-1. [ ] `bot/src/commands/create-custom-game.ts`: `deferReply` 後に `reply` を再度呼び出しているパスを修正し、常に `editReply`/`followUp` を用いる。
+1. [x] `bot/src/commands/create-custom-game.ts`: `deferReply` 後に `reply` を再度呼び出しているパスを修正し、常に `editReply`/`followUp` を用いる。
 2. [ ] `api/src/routes/users.ts` + `api/src/db/actions.ts`: Riot ID 連携時にユーザーを確実に永続化するため `upsertUser` を組み込み、未登録でも 204 を返さないようにする。
 3. [ ] 共通ロガーを導入し、API・Bot の主要エントリポイントから構造化ログを出力する（例: `api/src/app.ts`, `bot/src/main.ts`）。
 4. [ ] CI 要件定義を実施し、GitHub Actions で実行すべき検証（lint/fmt/check/test・デプロイ連携など）とトリガー条件を整理する。
