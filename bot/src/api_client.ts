@@ -9,7 +9,7 @@ if (!API_URL) {
   throw new Error("API_URL environment variable must be set");
 }
 
-const client: Client = hcWithType(API_URL);
+export const client: Client = hcWithType(API_URL);
 
 async function linkAccountByRiotId(
   discordId: string,
@@ -17,18 +17,17 @@ async function linkAccountByRiotId(
   tagLine: string,
 ) {
   try {
-    const res = await client.users["link-by-riot-id"].$post({
+    const res = await client.users["link-by-riot-id"].$patch({
       json: { discordId, gameName, tagLine },
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      return { success: true, discordId: data.discordId };
-    } else {
+    if (!res.ok) {
       const errorBody = await res.json();
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return { success: false, error: errorBody.error };
     }
+
+    return { success: true };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return { success: false, error: "Failed to communicate with API" };
@@ -37,18 +36,21 @@ async function linkAccountByRiotId(
 
 async function checkHealth() {
   try {
-    const res = await client.health.$get({});
-    if (res.ok) {
-      const data = await res.json();
-      return { success: data.ok, message: data.message, error: null };
-    } else {
-      const errorBody = await res.text();
-      console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
-      return { success: false, error: `API returned status ${res.status}` };
+    const res = await client.health.$get();
+    if (!res.ok) {
+      const error = `API Error: ${res.status} ${res.statusText}`;
+      console.error(error);
+      return { success: false as const, error };
     }
+
+    const data = await res.json();
+    return { success: true as const, message: data.message };
   } catch (error) {
     console.error("Failed to communicate with API", error);
-    return { success: false, error: "Failed to communicate with API" };
+    return {
+      success: false as const,
+      error: "Failed to communicate with API",
+    };
   }
 }
 
@@ -59,14 +61,14 @@ async function setMainRole(userId: string, role: Lane) {
       json: { role: role },
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      return { success: data.success, error: null };
-    } else {
+    if (!res.ok) {
       const errorBody = await res.text();
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return { success: false, error: `API returned status ${res.status}` };
     }
+
+    const data = await res.json();
+    return { success: data.success, error: null };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return { success: false, error: "Failed to communicate with API" };
@@ -84,14 +86,14 @@ async function createCustomGameEvent(event: {
   try {
     const res = await client.events.$post({ json: event });
 
-    if (res.ok) {
-      const data = await res.json();
-      return { success: data.success, error: null };
-    } else {
+    if (!res.ok) {
       const errorBody = await res.text();
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return { success: false, error: `API returned status ${res.status}` };
     }
+
+    const data = await res.json();
+    return { success: data.success, error: null };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return { success: false, error: "Failed to communicate with API" };
@@ -104,10 +106,7 @@ async function getCustomGameEventsByCreatorId(creatorId: string) {
       param: { creatorId },
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      return { success: data.success, events: data.events, error: null };
-    } else {
+    if (!res.ok) {
       const errorBody = await res.text();
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return {
@@ -116,6 +115,9 @@ async function getCustomGameEventsByCreatorId(creatorId: string) {
         error: `API returned status ${res.status}`,
       };
     }
+
+    const data = await res.json();
+    return { success: data.success, events: data.events, error: null };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return {
@@ -132,14 +134,14 @@ async function deleteCustomGameEvent(discordEventId: string) {
       param: { discordEventId },
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      return { success: data.success, error: null };
-    } else {
+    if (!res.ok) {
       const errorBody = await res.text();
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return { success: false, error: `API returned status ${res.status}` };
     }
+
+    const data = await res.json();
+    return { success: data.success, error: null };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return { success: false, error: "Failed to communicate with API" };
@@ -201,10 +203,7 @@ async function createMatchParticipant(
       json: participant,
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      return { success: data.success, id: data.id, error: null };
-    } else {
+    if (!res.ok) {
       const errorBody = await res.text();
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return {
@@ -213,6 +212,9 @@ async function createMatchParticipant(
         error: `API returned status ${res.status}`,
       };
     }
+
+    const data = await res.json();
+    return { success: data.success, id: data.id, error: null };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return {
@@ -238,6 +240,7 @@ async function getLoginUrl(
         error: `API Error: ${res.status}  ${res.statusText}`,
       };
     }
+
     const data = await res.json();
     return { success: true, url: data.url, error: null };
   } catch (e) {

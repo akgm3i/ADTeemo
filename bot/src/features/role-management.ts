@@ -95,3 +95,7 @@ export async function ensureRoles(guild: Guild): Promise<EnsureRolesResult> {
     },
   };
 }
+
+export const roleManager = {
+  ensureRoles,
+};
