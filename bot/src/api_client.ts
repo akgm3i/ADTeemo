@@ -56,8 +56,10 @@ async function checkHealth() {
   try {
     const res = await client.health.$get();
     if (!res.ok) {
-      const error = `API Error: ${res.status} ${res.statusText}`;
-      console.error(error);
+      const errorBody = await res.json().catch(() => undefined);
+      const error = extractErrorMessage(errorBody) ??
+        `API Error: ${res.status} ${res.statusText}`;
+      console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return { success: false as const, error };
     }
 
@@ -80,11 +82,13 @@ async function setMainRole(userId: string, role: Lane): Promise<Result> {
     });
 
     if (!res.ok) {
-      const errorBody = await res.text();
+      const errorBody = await res.json().catch(() => undefined);
+      const error = extractErrorMessage(errorBody) ??
+        `API returned status ${res.status}`;
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return {
         success: false as const,
-        error: `API returned status ${res.status}`,
+        error,
       };
     }
     return { success: true as const, error: null };
@@ -106,11 +110,13 @@ async function createCustomGameEvent(event: {
     const res = await client.events.$post({ json: event });
 
     if (!res.ok) {
-      const errorBody = await res.text();
+      const errorBody = await res.json().catch(() => undefined);
+      const error = extractErrorMessage(errorBody) ??
+        `API returned status ${res.status}`;
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return {
         success: false as const,
-        error: `API returned status ${res.status}`,
+        error,
       };
     }
     return { success: true as const, error: null };
@@ -127,12 +133,14 @@ async function getCustomGameEventsByCreatorId(creatorId: string) {
     });
 
     if (!res.ok) {
-      const errorBody = await res.text();
+      const errorBody = await res.json().catch(() => undefined);
+      const error = extractErrorMessage(errorBody) ??
+        `API returned status ${res.status}`;
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return {
         success: false as const,
         events: [],
-        error: `API returned status ${res.status}`,
+        error,
       };
     }
 
@@ -161,11 +169,13 @@ async function deleteCustomGameEvent(
     });
 
     if (!res.ok) {
-      const errorBody = await res.text();
+      const errorBody = await res.json().catch(() => undefined);
+      const error = extractErrorMessage(errorBody) ??
+        `API returned status ${res.status}`;
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return {
         success: false as const,
-        error: `API returned status ${res.status}`,
+        error,
       };
     }
 
@@ -194,12 +204,14 @@ async function getEventStartingTodayByCreatorId(
     }
 
     if (!res.ok) {
-      const errorBody = await res.text();
+      const errorBody = await res.json().catch(() => undefined);
+      const error = extractErrorMessage(errorBody) ??
+        `API returned status ${res.status}`;
       console.error(`API Error: ${res.status} ${res.statusText}`, errorBody);
       return {
         success: false as const,
         event: null,
-        error: `API returned status ${res.status}`,
+        error,
       };
     }
 
@@ -276,10 +288,13 @@ async function getLoginUrl(
     });
 
     if (!res.ok) {
-      console.error("API Error:", res.status, await res.text());
+      const errorBody = await res.json().catch(() => undefined);
+      const error = extractErrorMessage(errorBody) ??
+        `API Error: ${res.status}  ${res.statusText}`;
+      console.error("API Error:", res.status, errorBody);
       return {
         success: false,
-        error: `API Error: ${res.status}  ${res.statusText}`,
+        error,
       };
     }
 

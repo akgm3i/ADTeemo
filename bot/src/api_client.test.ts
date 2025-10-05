@@ -50,7 +50,7 @@ describe("apiClient", () => {
 
       // Assert
       assertEquals(result.success, false);
-      assertEquals(result.error, "API Error: 500 ");
+      assertEquals(result.error, "Internal Server Error");
       assertSpyCalls(fetchStub, 1);
     });
 
@@ -103,8 +103,9 @@ describe("apiClient", () => {
         "fetch",
         () =>
           Promise.resolve(
-            new Response("Bad Request", {
+            new Response(JSON.stringify({ error: "Bad Request" }), {
               status: 400,
+              headers: { "Content-Type": "application/json" },
             }),
           ),
       );
@@ -114,7 +115,7 @@ describe("apiClient", () => {
 
       // Assert
       assertEquals(result.success, false);
-      assertEquals(result.error, "API returned status 400");
+      assertEquals(result.error, "Bad Request");
       assertSpyCalls(fetchStub, 1);
     });
 
