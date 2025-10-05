@@ -44,8 +44,7 @@ describe("Command: cancel-custom-game", () => {
     using getEventsStub = stub(
       apiClient,
       "getCustomGameEventsByCreatorId",
-      () =>
-        Promise.resolve({ success: true, events: mockDbEvents, error: null }),
+      () => Promise.resolve({ success: true, events: mockDbEvents }),
     );
     const mockGuild = new MockGuildBuilder("guild-456")
       .withScheduledEvent({
@@ -92,7 +91,7 @@ describe("Command: cancel-custom-game", () => {
     using _getEventsStub = stub(
       apiClient,
       "getCustomGameEventsByCreatorId",
-      () => Promise.resolve({ success: true, events: [], error: null }),
+      () => Promise.resolve({ success: true, events: [] }),
     );
     using formatMessageSpy = spy(messageHandler, "formatMessage");
     const mockGuild = new MockGuildBuilder("guild-456").build();
@@ -120,7 +119,7 @@ describe("Command: cancel-custom-game", () => {
     using _getEventsStub = stub(
       apiClient,
       "getCustomGameEventsByCreatorId",
-      () => Promise.resolve({ success: false, events: [], error: "DB Error" }),
+      () => Promise.resolve({ success: false, error: "DB Error" }),
     );
     using formatMessageSpy = spy(messageHandler, "formatMessage");
     const interaction = new MockInteractionBuilder("cancel-custom-game")

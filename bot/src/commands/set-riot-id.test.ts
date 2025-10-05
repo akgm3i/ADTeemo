@@ -18,7 +18,7 @@ describe("Command: set-riot-id", () => {
     using linkAccountByRiotIdStub = stub(
       apiClient,
       "linkAccountByRiotId",
-      () => Promise.resolve({ success: true as const, error: null }),
+      () => Promise.resolve({ success: true as const }),
     );
     using formatMessageSpy = spy(messageHandler, "formatMessage");
     const editReplySpy = spy(mockInteraction, "editReply");

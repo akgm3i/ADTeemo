@@ -39,9 +39,7 @@ describe("apiClient", () => {
         "fetch",
         () =>
           Promise.resolve(
-            new Response(JSON.stringify({ error: "Internal Server Error" }), {
-              status: 500,
-            }),
+            new Response("Internal Server Error", { status: 500 }),
           ),
       );
 
@@ -50,7 +48,7 @@ describe("apiClient", () => {
 
       // Assert
       assertEquals(result.success, false);
-      assertEquals(result.error, "Internal Server Error");
+      assertEquals(result.error, "Failed to communicate with API");
       assertSpyCalls(fetchStub, 1);
     });
 
@@ -92,7 +90,6 @@ describe("apiClient", () => {
 
       // Assert
       assertEquals(result.success, true);
-      assertEquals(result.error, null);
       assertSpyCalls(fetchStub, 1);
     });
 
@@ -101,13 +98,7 @@ describe("apiClient", () => {
       using fetchStub = stub(
         globalThis,
         "fetch",
-        () =>
-          Promise.resolve(
-            new Response(JSON.stringify({ error: "Bad Request" }), {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            }),
-          ),
+        () => Promise.resolve(new Response("Bad Request", { status: 400 })),
       );
 
       // Act
@@ -115,7 +106,7 @@ describe("apiClient", () => {
 
       // Assert
       assertEquals(result.success, false);
-      assertEquals(result.error, "Bad Request");
+      assertEquals(result.error, "Failed to communicate with API");
       assertSpyCalls(fetchStub, 1);
     });
 

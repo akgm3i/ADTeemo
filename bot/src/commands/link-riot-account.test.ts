@@ -19,12 +19,7 @@ describe("Command: link-riot-account", () => {
     using getLoginUrlStub = stub(
       apiClient,
       "getLoginUrl",
-      () =>
-        Promise.resolve({
-          success: true as const,
-          url: mockAuthUrl,
-          error: null,
-        }),
+      () => Promise.resolve({ success: true as const, url: mockAuthUrl }),
     );
     using formatMessageStub = stub(
       messageHandler,

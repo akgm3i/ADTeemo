@@ -58,7 +58,7 @@ describe("Health Command", () => {
       assertSpyCall(editSpy, 0);
       assertSpyCall(formatMessageSpy, 0, {
         args: [messageKeys.health.error.failure, {
-          error: "API Error: 500 ",
+          error: "Failed to communicate with API",
         }],
       });
     });

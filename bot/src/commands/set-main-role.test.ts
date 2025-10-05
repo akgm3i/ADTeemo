@@ -13,7 +13,7 @@ describe("Set Main Role Command", () => {
       using setMainRoleStub = stub(
         apiClient,
         "setMainRole",
-        () => Promise.resolve({ success: true, error: null }),
+        () => Promise.resolve({ success: true }),
       );
       using formatMessageSpy = spy(messageHandler, "formatMessage");
       const interaction = new MockInteractionBuilder()
