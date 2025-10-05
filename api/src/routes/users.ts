@@ -35,7 +35,7 @@ export const usersRoutes = new Hono()
 
       await dbActions.linkUserWithRiotId(discordId, account.puuid);
 
-      return c.json({ success: true });
+      return c.body(null, 204);
     },
   )
   .put(
@@ -45,7 +45,7 @@ export const usersRoutes = new Hono()
       const { userId } = c.req.param();
       const { role } = c.req.valid("json");
       await dbActions.setMainRole(userId, role);
-      return c.json({ success: true });
+      return c.body(null, 204);
     },
   );
 

@@ -2,6 +2,7 @@ import { testClient } from "@hono/hono/testing";
 import { assert, assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, stub } from "@std/testing/mock";
+import { z } from "zod";
 import app from "../app.ts";
 import { dbActions } from "../db/actions.ts";
 
@@ -9,9 +10,21 @@ describe("routes/events.ts", () => {
   const client = testClient(app);
   const FIXED_DATE = "2025-09-27T10:00:00.000Z";
 
+  const eventsResponseSchema = z.object({
+    events: z.array(z.object({ name: z.string() })),
+  });
+
+  const eventResponseSchema = z.object({
+    event: z.object({ name: z.string() }),
+  });
+
+  const errorResponseSchema = z.object({
+    error: z.string(),
+  });
+
   describe("POST /events", () => {
     describe("正常系", () => {
-      test("有効なイベントデータでリクエストを送信したとき、イベントが作成され成功レスポンスを返す", async () => {
+      test("有効なイベントデータでリクエストを送信するとイベントを作成し、201 Createdと空ボディを返す", async () => {
         // Arrange
         using createEventStub = stub(
           dbActions,
@@ -31,9 +44,8 @@ describe("routes/events.ts", () => {
         const res = await client.events.$post({ json: eventData });
 
         // Assert
-        assert(res.ok);
-        const body = await res.json();
-        assertEquals(body.success, true);
+        assert(res.status === 201);
+        assertEquals(await res.text(), "");
         assertSpyCall(createEventStub, 0, {
           args: [{
             ...eventData,
@@ -111,11 +123,10 @@ describe("routes/events.ts", () => {
         });
 
         // Assert
-        assert(res.ok);
-        const body = await res.json();
-        assertEquals(body.success, true);
-        assertEquals(body.events?.length, 1);
-        assertEquals(body.events?.[0].name, "Test Event");
+        assert(res.status === 200);
+        const { events } = eventsResponseSchema.parse(await res.json());
+        assertEquals(events.length, 1);
+        assertEquals(events[0].name, "Test Event");
         assertSpyCall(getEventsStub, 0, { args: ["test-creator"] });
       });
     });
@@ -156,9 +167,8 @@ describe("routes/events.ts", () => {
         });
 
         // Assert
-        assert(res.ok);
-        const body = await res.json();
-        assertEquals(body.success, true);
+        assert(res.status === 204);
+        assertEquals(await res.text(), "");
         assertSpyCall(deleteEventStub, 0, { args: ["test-event-id"] });
       });
     });
@@ -209,10 +219,9 @@ describe("routes/events.ts", () => {
         });
 
         // Assert
-        assert(res.ok);
-        const body = await res.json();
-        assertEquals(body.success, true);
-        assertEquals(body.event?.name, "Test Event Today");
+        assert(res.status === 200);
+        const { event } = eventResponseSchema.parse(await res.json());
+        assertEquals(event.name, "Test Event Today");
         assertSpyCall(getEventStub, 0, { args: ["test-creator"] });
       });
     });
@@ -232,9 +241,9 @@ describe("routes/events.ts", () => {
         });
 
         // Assert
-        assertEquals(res.status, 404);
-        const body = await res.json();
-        assertEquals(body.success, false);
+        assert(res.status === 404);
+        const { error } = errorResponseSchema.parse(await res.json());
+        assertEquals(error, "Event not found");
         assertSpyCall(getEventStub, 0, { args: ["non-existent"] });
       });
 

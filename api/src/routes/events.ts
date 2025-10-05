@@ -16,12 +16,12 @@ export const eventsRoutes = new Hono()
   .post("/", zValidator("json", createEventSchema), async (c) => {
     const event = c.req.valid("json");
     await dbActions.createCustomGameEvent(event);
-    return c.json({ success: true });
+    return c.body(null, 201);
   })
   .get("/by-creator/:creatorId", async (c) => {
     const { creatorId } = c.req.param();
     const events = await dbActions.getCustomGameEventsByCreatorId(creatorId);
-    return c.json({ success: true, events });
+    return c.json({ events });
   })
   .get("/today/by-creator/:creatorId", async (c) => {
     const { creatorId } = c.req.param();
@@ -29,14 +29,14 @@ export const eventsRoutes = new Hono()
       creatorId,
     );
     if (!event) {
-      return c.json({ success: false, error: "Event not found" }, 404);
+      return c.json({ error: "Event not found" }, 404);
     }
-    return c.json({ success: true, event });
+    return c.json({ event });
   })
   .delete("/:discordEventId", async (c) => {
     const { discordEventId } = c.req.param();
     await dbActions.deleteCustomGameEventByDiscordEventId(discordEventId);
-    return c.json({ success: true });
+    return c.body(null, 204);
   });
 
 export type EventsRoutes = typeof eventsRoutes;

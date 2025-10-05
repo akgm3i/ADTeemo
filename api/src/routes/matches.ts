@@ -17,10 +17,10 @@ export const matchesRoutes = new Hono()
           ...participantData,
           matchId,
         });
-        return c.json({ success: true, id: result.id }, 201);
+        return c.json({ id: result.id }, 201);
       } catch (e) {
         if (e instanceof RecordNotFoundError) {
-          return c.json({ success: false, error: e.message }, 400);
+          return c.json({ error: e.message }, 404);
         }
         throw e;
       }
