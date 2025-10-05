@@ -25,6 +25,8 @@ async function linkAccountByRiotId(
         const body = await res.json();
         return { success: false as const, error: body.error };
       }
+
+      throw new Error(`Unexpected response: ${res}`);
     }
 
     return { success: true as const };
@@ -40,6 +42,10 @@ async function linkAccountByRiotId(
 async function checkHealth() {
   try {
     const res = await client.health.$get();
+
+    if (!res.ok) {
+      throw new Error(`Unexpected response: ${res}`);
+    }
 
     const body = await res.json();
     return { success: true as const, message: body.message };
@@ -79,7 +85,11 @@ async function createCustomGameEvent(event: {
   scheduledStartAt: Date;
 }) {
   try {
-    await client.events.$post({ json: event });
+    const res = await client.events.$post({ json: event });
+
+    if (!res.ok) {
+      throw new Error(`Unexpected response: ${res}`);
+    }
 
     return { success: true as const };
   } catch (error) {
@@ -94,6 +104,10 @@ async function getCustomGameEventsByCreatorId(creatorId: string) {
       param: { creatorId },
     });
 
+    if (!res.ok) {
+      throw new Error(`Unexpected response: ${res}`);
+    }
+
     const body = await res.json();
     return { success: true as const, events: body.events };
   } catch (error) {
@@ -104,9 +118,13 @@ async function getCustomGameEventsByCreatorId(creatorId: string) {
 
 async function deleteCustomGameEvent(discordEventId: string) {
   try {
-    await client.events[":discordEventId"].$delete({
+    const res = await client.events[":discordEventId"].$delete({
       param: { discordEventId },
     });
+
+    if (!res.ok) {
+      throw new Error(`Unexpected response: ${res}`);
+    }
 
     return { success: true as const };
   } catch (error) {
@@ -126,6 +144,8 @@ async function getEventStartingTodayByCreatorId(creatorId: string) {
         const body = await res.json();
         return { success: false as const, error: body.error };
       }
+
+      throw new Error(`Unexpected response: ${res}`);
     }
 
     const data = await res.json();
@@ -160,6 +180,8 @@ async function createMatchParticipant(
         console.error(`API Error: ${res.status} ${res.statusText}`, body);
         return { success: false as const, error: body.error };
       }
+
+      throw new Error(`Unexpected response: ${res}`);
     }
 
     const data = await res.json();
@@ -183,6 +205,10 @@ async function getLoginUrl(discordId: string) {
     const res = await client.auth.rso["login-url"].$get({
       query: { discordId },
     });
+
+    if (!res.ok) {
+      throw new Error(`Unexpected response: ${res}`);
+    }
 
     const body = await res.json();
     return { success: true as const, url: body.url };
