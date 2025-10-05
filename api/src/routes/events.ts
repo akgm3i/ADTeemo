@@ -31,7 +31,7 @@ export const eventsRoutes = new Hono()
     if (!event) {
       return c.json({ error: "Event not found" }, 404);
     }
-    return c.json({ event });
+    return c.json({ event }, 200);
   })
   .delete("/:discordEventId", async (c) => {
     const { discordEventId } = c.req.param();

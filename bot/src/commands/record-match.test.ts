@@ -37,7 +37,7 @@ describe("/record-match command", () => {
     using createParticipantStub = stub(
       apiClient,
       "createMatchParticipant",
-      () => Promise.resolve({ success: true, id: 1, error: null }),
+      () => Promise.resolve({ success: true, id: 1 }),
     );
     const mockMatchId: `${string}-${string}-${string}-${string}-${string}` =
       "a1b2c3d4-e5f6-7890-1234-567890abcdef";

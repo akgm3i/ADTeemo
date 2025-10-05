@@ -40,7 +40,7 @@ describe("Create Custom Game Command", () => {
         using _apiStub = stub(
           apiClient,
           "createCustomGameEvent",
-          () => Promise.resolve({ success: true, error: null }),
+          () => Promise.resolve({ success: true }),
         );
         using _formatSpy = spy(messageHandler, "formatMessage");
         const mockGuild = new MockGuildBuilder().build();
@@ -95,7 +95,7 @@ describe("Create Custom Game Command", () => {
         using _ = stub(
           apiClient,
           "createCustomGameEvent",
-          () => Promise.resolve({ success: true, error: null }),
+          () => Promise.resolve({ success: true }),
         );
         const mockGuild = new MockGuildBuilder().build();
         const createScheduledEventSpy = spy(
@@ -140,7 +140,7 @@ describe("Create Custom Game Command", () => {
         using _ = stub(
           apiClient,
           "createCustomGameEvent",
-          () => Promise.resolve({ success: true, error: null }),
+          () => Promise.resolve({ success: true }),
         );
         using formatSpy = spy(messageHandler, "formatMessage");
         const interaction = new MockInteractionBuilder("create-custom-game")
