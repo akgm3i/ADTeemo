@@ -83,7 +83,7 @@ describe("apiClient", () => {
         "fetch",
         () =>
           Promise.resolve(
-            new Response(JSON.stringify({ success: true }), { status: 200 }),
+            new Response(null, { status: 204 }),
           ),
       );
 

@@ -39,7 +39,7 @@ describe("Setup Roles Command", () => {
     using ensureRolesStub = stub(
       roleManager,
       "ensureRoles",
-      async () => ensureRolesResult,
+      () => Promise.resolve(ensureRolesResult),
     );
     using formatMessageSpy = spy(messageHandler, "formatMessage");
     using deferSpy = spy(interaction, "deferReply");
@@ -78,7 +78,7 @@ describe("Setup Roles Command", () => {
     using ensureRolesStub = stub(
       roleManager,
       "ensureRoles",
-      async () => ensureRolesResult,
+      () => Promise.resolve(ensureRolesResult),
     );
     using formatMessageSpy = spy(messageHandler, "formatMessage");
     using deferSpy = spy(interaction, "deferReply");
@@ -108,7 +108,7 @@ describe("Setup Roles Command", () => {
     using ensureRolesStub = stub(
       roleManager,
       "ensureRoles",
-      async () => ensureRolesResult,
+      () => Promise.resolve(ensureRolesResult),
     );
     using formatMessageSpy = spy(messageHandler, "formatMessage");
     using deferSpy = spy(interaction, "deferReply");
@@ -141,7 +141,7 @@ describe("Setup Roles Command", () => {
     using ensureRolesStub = stub(
       roleManager,
       "ensureRoles",
-      async () => ensureRolesResult,
+      () => Promise.resolve(ensureRolesResult),
     );
     using formatMessageSpy = spy(messageHandler, "formatMessage");
     using deferSpy = spy(interaction, "deferReply");

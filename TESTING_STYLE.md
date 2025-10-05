@@ -66,7 +66,7 @@ import { apiClient } from "../api_client.ts"; // 直接の依存先をインポ�
 
 // ...
 // health.tsの直接の依存先であるapiClient.checkHealthをスタブしている
-using checkHealthStub = stub(apiClient, "checkHealth", () => Promise.resolve({ success: true, ... }));
+using checkHealthStub = stub(apiClient, "checkHealth", () => Promise.resolve({ success: true, message: "ok" }));
 await execute(interaction);
 ```
 
@@ -78,27 +78,32 @@ APIルートハンドラのユニットテストです。責務は「リクエ�
 
 ```typescript
 // api/src/routes/users.test.ts
+import { z } from "zod";
+
 describe("POST /users", () => {
   describe("正常系", () => {
-    test("有効なユーザー名が指定されたとき、dbActions.createUserを呼び出し、作成されたユーザー情報と共に201レスポンスを返す", async () => {
+    test("有効なユーザー名が指定されたとき、dbActions.createUserを呼び出し、201 Createdと作成されたユーザー情報を返す", async () => {
       // Arrange
       using createUserStub = stub(dbActions, "createUser", (name) =>
         Promise.resolve({ id: "user-abc-123", name, createdAt: new Date() })
       );
+      const userResponseSchema = z.object({ name: z.string() });
 
       // Act
       const res = await client.users.$post({ json: { name: "Teemo" } });
 
       // Assert
-      assertEquals(res.status, 201);
-      const body = await res.json();
-      assertEquals(body.name, "Teemo");
+      assert(res.status === 201);
+      const { name } = userResponseSchema.parse(await res.json());
+      assertEquals(name, "Teemo");
       assertSpyCalls(createUserStub, 1);
       assertSpyCall(createUserStub, 0, { args: ["Teemo"] });
     });
   });
 });
 ```
+
+ここで成否判定はHTTPステータスのみで行い、レスポンスボディは`zod`のスキーマで検証しています。API側で`success`フラグを返さない方針でも、型安全にアサーションできる点を示しています。
 
 ### 具体例2: Botのコマンドハンドラ
 
@@ -110,7 +115,9 @@ describe("/set-main-role command", () => {
   describe("正常系", () => {
     test("有効なロール名が指定されたとき、apiClientとmessagesを呼び出し、成功メッセージで応答する", async () => {
       // Arrange
-      using setMainRoleStub = stub(apiClient, "setMainRole", () => Promise.resolve({ success: true }));
+      using setMainRoleStub = stub(apiClient, "setMainRole", () =>
+        Promise.resolve({ success: true, error: null })
+      );
       using successMessageStub = stub(messages, "success", () => "メインロールをJungleに設定しました。");
 
       const interaction = new MockInteractionBuilder("set-main-role")
@@ -144,11 +151,11 @@ describe("apiClient.setMainRole", () => {
     test("ユーザーIDとロールが与えられたとき、適切なPUTリクエストをfetchで送信する", async () => {
       // Arrange
       using fetchStub = stub(globalThis, "fetch", () =>
-        Promise.resolve(new Response(JSON.stringify({ success: true })))
+        Promise.resolve(new Response(null, { status: 204 }))
       );
 
       // Act
-      await apiClient.setMainRole("user-123", "Jungle");
+      const result = await apiClient.setMainRole("user-123", "Jungle");
 
       // Assert
       assertSpyCalls(fetchStub, 1);
@@ -161,6 +168,7 @@ describe("apiClient.setMainRole", () => {
           },
         ],
       });
+      assertEquals(result.success, true);
     });
   });
 });

@@ -1,6 +1,6 @@
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
-import { Guild, Message, User } from "discord.js";
+import { Message, User } from "discord.js";
 import { execute, splitTeamHandlers as handlers } from "./split-teams.ts";
 import { type Event, type Lane } from "@adteemo/api/schema";
 
@@ -34,47 +34,43 @@ describe("split-teams command", () => {
       };
       const teams = { teamA: new Map(), teamB: new Map() };
 
-      using fetchEventStub = stub(handlers, "fetchEvent", async (creatorId) => {
-        return event;
-      });
+      using fetchEventStub = stub(
+        handlers,
+        "fetchEvent",
+        (_creatorId) => Promise.resolve(event),
+      );
       using fetchMsgStub = stub(
         handlers,
         "fetchRecruitmentMessage",
-        async (guildArg, channelId, messageId) => {
-          return message;
-        },
+        (_guildArg, _channelId, _messageId) => Promise.resolve(message),
       );
       using fetchParticipantsStub = stub(
         handlers,
         "fetchParticipants",
-        async (msg) => {
-          return participants;
-        },
+        (_msg) => Promise.resolve(participants),
       );
       using validateStub = stub(
         handlers,
         "validateParticipants",
-        (participantsByRole, allParticipants) => {
+        (_participantsByRole, _allParticipants) => {
         },
       );
       using splitStub = stub(
         handlers,
         "splitTeams",
-        (participantsByRole) => {
+        (_participantsByRole) => {
           return teams;
         },
       );
       using moveStub = stub(
         handlers,
         "moveMembersToVoiceChannels",
-        async (guildArg, teamA, teamB) => {
-        },
+        (_guildArg, _teamA, _teamB) => Promise.resolve(),
       );
       using announceStub = stub(
         handlers,
         "announceTeams",
-        async (interactionArg, teamA, teamB) => {
-        },
+        (_interactionArg, _teamA, _teamB) => Promise.resolve(),
       );
       using deferSpy = spy(interaction, "deferReply");
       using editSpy = spy(interaction, "editReply");

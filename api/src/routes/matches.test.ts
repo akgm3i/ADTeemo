@@ -35,7 +35,7 @@ describe("routes/matches.ts", () => {
     };
 
     describe("正常系", () => {
-      test("有効な参加者データが指定されたとき、参加者の戦績が記録され、201 Createdを返す", async () => {
+      test("有効な参加者データが指定されたとき、参加者の戦績が記録され、201 CreatedとIDを返す", async () => {
         // Arrange
         using createParticipantStub = stub(
           dbActions,
@@ -50,8 +50,9 @@ describe("routes/matches.ts", () => {
         });
 
         // Assert
-        assertEquals(res.status, 201);
-        assert(res.ok);
+        assert(res.status === 201);
+        const body = await res.json();
+        assertEquals(body, { id: 1 });
         assertSpyCall(createParticipantStub, 0, {
           args: [{ ...participantData, matchId }],
         });
@@ -81,7 +82,7 @@ describe("routes/matches.ts", () => {
         assertEquals(res.status, 400);
       });
 
-      test("存在しないIDが指定されたとき、400エラーを返す", async () => {
+      test("存在しないIDが指定されたとき、404とエラーメッセージを返す", async () => {
         // Arrange
         using _createParticipantStub = stub(
           dbActions,
@@ -96,14 +97,9 @@ describe("routes/matches.ts", () => {
         });
 
         // Assert
-        assertEquals(res.status, 400);
+        assert(res.status === 404);
         const body = await res.json();
-        assertEquals(body.success, false);
-        assert(
-          "error" in body,
-          "Response body should contain an error property",
-        );
-        assertEquals(body.error, "Not found");
+        assertEquals(body, { error: "Not found" });
       });
 
       test("予期せぬDBエラーが発生したとき、500エラーを返す", async () => {

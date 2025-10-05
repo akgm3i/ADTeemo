@@ -1,14 +1,16 @@
 import { testClient } from "@hono/hono/testing";
-import { assert, assertEquals, assertExists } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
 import app from "../app.ts";
 import { dbActions } from "../db/actions.ts";
 import { riotApi } from "../riot_api.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
+import { z } from "zod";
 
 describe("routes/users.ts", () => {
   const client = testClient(app);
+  const errorResponseSchema = z.object({ error: z.string() });
 
   describe("POST /users/link-by-riot-id", () => {
     const discordId = "test-discord-id";
@@ -18,7 +20,7 @@ describe("routes/users.ts", () => {
 
     describe("正常系", () => {
       test(
-        "未登録のDiscord IDでRiot ID連携するとリンク用アクションを呼び出し、200と{ success: true }を返す",
+        "未登録のDiscord IDでRiot ID連携を実行するとリンク用アクションを呼び出し、204 No Contentを返す",
         async () => {
           // Arrange
           using getAccountStub = stub(
@@ -38,9 +40,8 @@ describe("routes/users.ts", () => {
           });
 
           // Assert
-          assertEquals(res.status, 200);
-          const body = await res.json();
-          assertEquals(body, { success: true });
+          assert(res.status === 204);
+          assertEquals(await res.text(), "");
           assertSpyCall(getAccountStub, 0, { args: [gameName, tagLine] });
           assertSpyCall(linkUserWithRiotIdStub, 0, {
             args: [discordId, puuid],
@@ -48,7 +49,7 @@ describe("routes/users.ts", () => {
         },
       );
 
-      test("Riotアカウントが見つかり、リンク処理が成功した場合、成功レスポンスを返す", async () => {
+      test("Riotアカウントが見つかりリンク処理が成功した場合、204 No Contentを返す", async () => {
         // Arrange
         using getAccountStub = stub(
           riotApi,
@@ -67,7 +68,8 @@ describe("routes/users.ts", () => {
         });
 
         // Assert
-        assert(res.ok);
+        assert(res.status === 204);
+        assertEquals(await res.text(), "");
         assertSpyCall(getAccountStub, 0, { args: [gameName, tagLine] });
         assertSpyCall(linkUserWithRiotIdStub, 0, {
           args: [discordId, puuid],
@@ -76,7 +78,7 @@ describe("routes/users.ts", () => {
     });
 
     describe("異常系", () => {
-      test("Riotアカウントが見つからない場合、404エラーレスポンスを返す", async () => {
+      test("Riotアカウントが見つからない場合、404とエラーメッセージを返す", async () => {
         // Arrange
         using getAccountStub = stub(
           riotApi,
@@ -100,13 +102,13 @@ describe("routes/users.ts", () => {
 
         // Assert
         assert(res.status === 404);
-        const body = await res.json() as { error?: string };
-        assertExists(body.error);
+        const { error } = errorResponseSchema.parse(await res.json());
         assertSpyCalls(mockFormatMessage, 1);
         assertSpyCall(mockFormatMessage, 0, {
           args: [messageKeys.riotAccount.set.error.summonerNotFound],
         });
         assertSpyCall(getAccountStub, 0, { args: [gameName, tagLine] });
+        assertEquals(error, "error message");
         assertEquals(linkUserWithRiotIdSpy.calls.length, 0);
       });
     });
@@ -116,7 +118,7 @@ describe("routes/users.ts", () => {
     const userId = "test-user-id";
 
     describe("正常系", () => {
-      test("有効なロールが指定されたとき、ユーザーのメインロールが設定され、成功レスポンスを返す", async () => {
+      test("有効なロールが指定されたとき、ユーザーのメインロールを設定して204 No Contentを返す", async () => {
         // Arrange
         const role = "Jungle";
         using setMainRoleStub = stub(
@@ -140,9 +142,8 @@ describe("routes/users.ts", () => {
         });
 
         // Assert
-        assert(res.ok);
-        const body = await res.json();
-        assertEquals(body, { success: true });
+        assert(res.status === 204);
+        assertEquals(await res.text(), "");
         assertSpyCall(setMainRoleStub, 0, { args: [userId, role] });
       });
     });
