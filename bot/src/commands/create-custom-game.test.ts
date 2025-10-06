@@ -7,7 +7,7 @@ import {
   stub,
 } from "@std/testing/mock";
 import { FakeTime } from "@std/testing/time";
-import { execute } from "./create-custom-game.ts";
+import { data, execute } from "./create-custom-game.ts";
 import {
   Channel,
   ChannelType,
@@ -22,6 +22,39 @@ import { parse } from "@std/datetime";
 import { apiClient } from "../api_client.ts";
 
 describe("Create Custom Game Command", () => {
+  describe("定義", () => {
+    test("コマンド名、説明、オプションが期待通りに設定されている", () => {
+      const json = data.toJSON();
+
+      assertEquals(json.name, "create-custom-game");
+      assertEquals(
+        json.description,
+        "カスタムゲームのイベントを作成して参加募集を始めます。",
+      );
+
+      const options = json.options ?? [];
+      assertEquals(options.map((option) => option.name), [
+        "title",
+        "date",
+        "time",
+        "voice",
+      ]);
+
+      const optionByName = new Map(
+        options.map((option) => [option.name, option]),
+      );
+      assertEquals(optionByName.get("title")?.description, "イベント名");
+      assertEquals(optionByName.get("date")?.description, "開始日 (MM/DD形式)");
+      assertEquals(
+        optionByName.get("time")?.description,
+        "開始時刻 (HH:mm形式)",
+      );
+      const voiceOption = optionByName.get("voice");
+      assertEquals(voiceOption?.description, "使用するボイスチャンネル");
+      assertEquals(voiceOption?.type, 7); // 7 = Channel option
+    });
+  });
+
   let time: FakeTime;
   const mockNow = new Date("2025-09-03T10:00:00Z"); // It's a Wednesday
 
@@ -62,10 +95,10 @@ describe("Create Custom Game Command", () => {
         const interaction = new MockInteractionBuilder("create-custom-game")
           .withGuild(mockGuild)
           .withChannel(mockChannel)
-          .withStringOption("event-name", "週末カスタム")
-          .withStringOption("start-date", "09/13")
-          .withStringOption("start-time", "21:00")
-          .withChannelOption("voice-channel", mockVoiceChannel)
+          .withStringOption("title", "週末カスタム")
+          .withStringOption("date", "09/13")
+          .withStringOption("time", "21:00")
+          .withChannelOption("voice", mockVoiceChannel)
           .build();
         (interaction as { inGuild: () => true }).inGuild = () => true;
         using deferSpy = spy(interaction, "deferReply");
@@ -110,11 +143,11 @@ describe("Create Custom Game Command", () => {
                 Promise.resolve({ react: spy() } as unknown as Message),
             } as unknown as Channel,
           )
-          .withStringOption("event-name", "新年カスタム")
-          .withStringOption("start-date", "01/15")
-          .withStringOption("start-time", "12:00")
+          .withStringOption("title", "新年カスタム")
+          .withStringOption("date", "01/15")
+          .withStringOption("time", "12:00")
           .withChannelOption(
-            "voice-channel",
+            "voice",
             { id: "vc-id" } as unknown as Channel,
           )
           .build();
@@ -151,11 +184,11 @@ describe("Create Custom Game Command", () => {
                 Promise.resolve({ react: spy() } as unknown as Message),
             } as unknown as Channel,
           )
-          .withStringOption("event-name", "未来のカスタム")
-          .withStringOption("start-date", "12/25")
-          .withStringOption("start-time", "12:00")
+          .withStringOption("title", "未来のカスタム")
+          .withStringOption("date", "12/25")
+          .withStringOption("time", "12:00")
           .withChannelOption(
-            "voice-channel",
+            "voice",
             { id: "vc-id" } as unknown as Channel,
           )
           .build();
@@ -191,11 +224,11 @@ describe("Create Custom Game Command", () => {
               send: spy(() => Promise.resolve({} as Message)),
             } as unknown as Channel,
           )
-          .withStringOption("event-name", "Test")
-          .withStringOption("start-date", "invalid-date")
-          .withStringOption("start-time", "21:00")
+          .withStringOption("title", "Test")
+          .withStringOption("date", "invalid-date")
+          .withStringOption("time", "21:00")
           .withChannelOption(
-            "voice-channel",
+            "voice",
             { id: "vc-id" } as unknown as Channel,
           )
           .build();

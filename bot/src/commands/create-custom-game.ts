@@ -31,29 +31,29 @@ function parseDate(dateStr: string, timeStr: string): Date | null {
 export const data = new SlashCommandBuilder()
   .setName("create-custom-game")
   .setDescription(
-    "新しいカスタムゲームのイベントを作成し、参加者の募集を開始します。",
+    "カスタムゲームのイベントを作成して参加募集を始めます。",
   )
   .addStringOption((option) =>
     option
-      .setName("event-name")
+      .setName("title")
       .setDescription("イベント名")
       .setRequired(true)
   )
   .addStringOption((option) =>
     option
-      .setName("start-date")
+      .setName("date")
       .setDescription("開始日 (MM/DD形式)")
       .setRequired(true)
   )
   .addStringOption((option) =>
     option
-      .setName("start-time")
+      .setName("time")
       .setDescription("開始時刻 (HH:mm形式)")
       .setRequired(true)
   )
   .addChannelOption((option) =>
     option
-      .setName("voice-channel")
+      .setName("voice")
       .setDescription("使用するボイスチャンネル")
       .setRequired(true)
       .addChannelTypes(ChannelType.GuildVoice)
@@ -76,10 +76,10 @@ export async function execute(interaction: CommandInteraction) {
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const eventName = interaction.options.getString("event-name", true);
-  const dateStr = interaction.options.getString("start-date", true);
-  const timeStr = interaction.options.getString("start-time", true);
-  const voiceChannel = interaction.options.getChannel("voice-channel", true);
+  const eventName = interaction.options.getString("title", true);
+  const dateStr = interaction.options.getString("date", true);
+  const timeStr = interaction.options.getString("time", true);
+  const voiceChannel = interaction.options.getChannel("voice", true);
 
   const scheduledStartTime = parseDate(dateStr, timeStr);
   if (!scheduledStartTime) {

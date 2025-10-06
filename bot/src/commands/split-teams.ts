@@ -21,7 +21,7 @@ import { type Event, type Lane, lanes } from "@adteemo/api/schema";
 
 export const data = new SlashCommandBuilder()
   .setName("split-teams")
-  .setDescription("現在の参加者でチーム分けを行います。");
+  .setDescription("現在の参加者を自動で2チームに分けます。");
 
 export async function fetchEvent(creatorId: string): Promise<Event> {
   const eventResult = await apiClient.getEventStartingTodayByCreatorId(

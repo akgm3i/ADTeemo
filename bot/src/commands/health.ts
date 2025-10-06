@@ -8,7 +8,7 @@ import { messageHandler, messageKeys } from "../messages.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("health")
-  .setDescription("Checks the health of the bot.");
+  .setDescription("Botとバックエンドの稼働状況を確認します。");
 
 export async function execute(interaction: CommandInteraction) {
   if (!interaction.isChatInputCommand()) return;

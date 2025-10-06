@@ -1,13 +1,21 @@
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, spy, stub } from "@std/testing/mock";
-import { assertObjectMatch } from "@std/assert";
+import { assertEquals, assertObjectMatch } from "@std/assert";
 import { CommandInteraction } from "discord.js";
-import { execute } from "./link-riot-account.ts";
+import { data, execute } from "./link-riot-account.ts";
 import { MockInteractionBuilder } from "../test_utils.ts";
 import { apiClient } from "../api_client.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 
 describe("Command: link-riot-account", () => {
+  describe("定義", () => {
+    test("コマンド名と説明が期待通りに設定されている", () => {
+      const json = data.toJSON();
+      assertEquals(json.name, "link-riot-account");
+      assertEquals(json.description, "Riot GamesアカウントをBotに連携します。");
+    });
+  });
+
   test("コマンドが実行されたとき、APIから取得した認証URLを返信する", async () => {
     // Arrange
     const mockUserId = "user-456";

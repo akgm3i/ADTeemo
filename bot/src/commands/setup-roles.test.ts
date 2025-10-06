@@ -1,6 +1,7 @@
 import { describe, test } from "@std/testing/bdd";
+import { assertEquals } from "@std/assert";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
-import { execute } from "./setup-roles.ts";
+import { data, execute } from "./setup-roles.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import { MockGuildBuilder, MockInteractionBuilder } from "../test_utils.ts";
 import {
@@ -9,10 +10,23 @@ import {
 } from "../features/role-management.ts";
 
 describe("Setup Roles Command", () => {
+  describe("定義", () => {
+    test("コマンド名と説明が期待通りに設定されている", () => {
+      const json = data.toJSON();
+      assertEquals(json.name, "setup-roles");
+      assertEquals(
+        json.description,
+        "Botが必要とするロールを自動で作成します。",
+      );
+    });
+  });
+
   test("ギルド（サーバー）外でコマンドを実行すると、エラーメッセージを返信する", async () => {
     // Arrange
     using formatMessageSpy = spy(messageHandler, "formatMessage");
-    const interaction = new MockInteractionBuilder().withGuild(null).build();
+    const interaction = new MockInteractionBuilder("setup-roles")
+      .withGuild(null)
+      .build();
     using replySpy = spy(interaction, "reply");
     using deferSpy = spy(interaction, "deferReply");
 
@@ -30,7 +44,8 @@ describe("Setup Roles Command", () => {
   test("不足しているロールがある場合にコマンドを実行すると、それらを作成して成功を報告する", async () => {
     // Arrange
     const mockGuild = new MockGuildBuilder().build();
-    const interaction = new MockInteractionBuilder().withGuild(mockGuild)
+    const interaction = new MockInteractionBuilder("setup-roles")
+      .withGuild(mockGuild)
       .build();
     const ensureRolesResult: EnsureRolesResult = {
       status: "SUCCESS",
@@ -69,7 +84,8 @@ describe("Setup Roles Command", () => {
   test("管理対象の全ロールが既に存在する場合にコマンドを実行すると、ロールを作成せずに成功を報告する", async () => {
     // Arrange
     const mockGuild = new MockGuildBuilder().build();
-    const interaction = new MockInteractionBuilder().withGuild(mockGuild)
+    const interaction = new MockInteractionBuilder("setup-roles")
+      .withGuild(mockGuild)
       .build();
     const ensureRolesResult: EnsureRolesResult = {
       status: "SUCCESS",
@@ -99,7 +115,8 @@ describe("Setup Roles Command", () => {
   test("ロール作成中に権限エラーが発生した場合、コマンドは権限エラーとして処理する", async () => {
     // Arrange
     const mockGuild = new MockGuildBuilder().build();
-    const interaction = new MockInteractionBuilder().withGuild(mockGuild)
+    const interaction = new MockInteractionBuilder("setup-roles")
+      .withGuild(mockGuild)
       .build();
     const ensureRolesResult: EnsureRolesResult = {
       status: "PERMISSION_ERROR",
@@ -132,7 +149,8 @@ describe("Setup Roles Command", () => {
   test("ロール作成中に不明なエラーが発生した場合、コマンドは不明なエラーとして処理する", async () => {
     // Arrange
     const mockGuild = new MockGuildBuilder().build();
-    const interaction = new MockInteractionBuilder().withGuild(mockGuild)
+    const interaction = new MockInteractionBuilder("setup-roles")
+      .withGuild(mockGuild)
       .build();
     const ensureRolesResult: EnsureRolesResult = {
       status: "UNKNOWN_ERROR",

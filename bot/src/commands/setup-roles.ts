@@ -10,7 +10,7 @@ import { messageHandler, messageKeys } from "../messages.ts";
 export const data = new SlashCommandBuilder()
   .setName("setup-roles")
   .setDescription(
-    "Creates the necessary roles for the bot if they are missing.",
+    "Botが必要とするロールを自動で作成します。",
   )
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 

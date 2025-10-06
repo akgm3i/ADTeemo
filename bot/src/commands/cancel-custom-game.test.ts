@@ -1,7 +1,7 @@
 import { describe, test } from "@std/testing/bdd";
 import { assertEquals, assertExists } from "@std/assert";
 import { assertSpyCall, spy, stub } from "@std/testing/mock";
-import { execute } from "./cancel-custom-game.ts";
+import { data, execute } from "./cancel-custom-game.ts";
 import { MockGuildBuilder, MockInteractionBuilder } from "../test_utils.ts";
 import {
   ActionRowBuilder,
@@ -15,6 +15,17 @@ import { CustomGameEvent } from "../types.ts";
 import { apiClient } from "../api_client.ts";
 
 describe("Command: cancel-custom-game", () => {
+  describe("定義", () => {
+    test("コマンド名と説明が期待通りに設定されている", () => {
+      const json = data.toJSON();
+      assertEquals(json.name, "cancel-custom-game");
+      assertEquals(
+        json.description,
+        "自分が作成したカスタムゲームイベントをキャンセルします。",
+      );
+    });
+  });
+
   const FIXED_DATE = "2025-09-28T00:00:00.000Z";
 
   test("アクティブなイベントが存在する場合、イベント選択用のセレクトメニューを表示する", async () => {

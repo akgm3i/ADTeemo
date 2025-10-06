@@ -10,10 +10,10 @@ import { messageHandler, messageKeys } from "../messages.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("set-main-role")
-  .setDescription("Sets your main role for custom games.")
+  .setDescription("カスタムゲームでのメインロールを登録します。")
   .addStringOption((option) =>
     option.setName("role")
-      .setDescription("The role you want to set as your main.")
+      .setDescription("メインロールとして登録するロール")
       .setRequired(true)
       .addChoices(
         // The `lanes` array is imported directly from the API schema.

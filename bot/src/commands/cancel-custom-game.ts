@@ -12,7 +12,7 @@ import { messageHandler, messageKeys } from "../messages.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("cancel-custom-game")
-  .setDescription("Cancels a custom game event you created.");
+  .setDescription("自分が作成したカスタムゲームイベントをキャンセルします。");
 
 export async function execute(interaction: CommandInteraction) {
   if (!interaction.isChatInputCommand() || !interaction.inGuild()) {

@@ -6,7 +6,7 @@ import {
   Message,
 } from "discord.js";
 import { apiClient, type MatchParticipant } from "../api_client.ts";
-import { execute } from "./record-match.ts";
+import { data, execute } from "./record-match.ts";
 import { MockInteractionBuilder } from "../test_utils.ts";
 import { assertEquals } from "@std/assert";
 import type { Lane } from "@adteemo/api/schema";
@@ -14,6 +14,37 @@ import { matchTracker } from "../features/match_tracking.ts";
 import { statCollector } from "../features/stat_collector.ts";
 
 describe("/record-match command", () => {
+  describe("定義", () => {
+    test("コマンド名、説明、オプションが期待通りに設定されている", () => {
+      const json = data.toJSON();
+
+      assertEquals(json.name, "record-match");
+      assertEquals(
+        json.description,
+        "カスタムゲームの結果を対話形式で記録します。",
+      );
+
+      const options = json.options ?? [];
+      assertEquals(options.map((option) => option.name), ["winner"]);
+      const winnerOption = options[0] as {
+        description?: string;
+        required?: boolean;
+        choices?: { name: string; value: string }[];
+      } | undefined;
+      assertEquals(winnerOption?.description, "勝利したチーム");
+      assertEquals(winnerOption?.required, true);
+      const winnerChoices = winnerOption?.choices ?? [];
+      assertEquals(
+        winnerChoices.map((choice) => choice.name),
+        ["ブルーチーム", "レッドチーム"],
+      );
+      assertEquals(
+        winnerChoices.map((choice) => choice.value),
+        ["BLUE", "RED"],
+      );
+    });
+  });
+
   const mockParticipants: {
     user: { id: string; username: string };
     lane: Lane;
@@ -57,7 +88,7 @@ describe("/record-match command", () => {
     });
 
     const interaction = new MockInteractionBuilder("record-match")
-      .withStringOption("winning_team", "BLUE")
+      .withStringOption("winner", "BLUE")
       .build();
 
     const mockReply = {

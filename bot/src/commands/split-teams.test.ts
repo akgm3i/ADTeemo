@@ -1,17 +1,28 @@
 import { describe, test } from "@std/testing/bdd";
+import { assertEquals } from "@std/assert";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import { Message, User } from "discord.js";
-import { execute, splitTeamHandlers as handlers } from "./split-teams.ts";
+import { data, execute, splitTeamHandlers as handlers } from "./split-teams.ts";
 import { type Event, type Lane } from "@adteemo/api/schema";
 
 import { MockGuildBuilder, MockInteractionBuilder } from "../test_utils.ts";
 
 describe("split-teams command", () => {
+  describe("定義", () => {
+    test("コマンド名と説明が期待通りに設定されている", () => {
+      const json = data.toJSON();
+      assertEquals(json.name, "split-teams");
+      assertEquals(json.description, "現在の参加者を自動で2チームに分けます。");
+    });
+  });
+
   describe("execute", () => {
     test("正常なフローで、各ヘルパー関数を正しい引数で呼び出す", async () => {
       // Arrange
       const guild = new MockGuildBuilder().build();
-      const interaction = new MockInteractionBuilder().withGuild(guild).build();
+      const interaction = new MockInteractionBuilder("split-teams")
+        .withGuild(guild)
+        .build();
       (interaction as { inGuild: () => true }).inGuild = () => true;
 
       const event: Event = {

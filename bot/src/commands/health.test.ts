@@ -1,10 +1,22 @@
 import { describe, test } from "@std/testing/bdd";
+import { assertEquals } from "@std/assert";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
-import { execute } from "./health.ts";
+import { data, execute } from "./health.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import { MockInteractionBuilder } from "../test_utils.ts";
 
 describe("Health Command", () => {
+  describe("定義", () => {
+    test("コマンド名と説明が期待通りに設定されている", () => {
+      const json = data.toJSON();
+      assertEquals(json.name, "health");
+      assertEquals(
+        json.description,
+        "Botとバックエンドの稼働状況を確認します。",
+      );
+    });
+  });
+
   describe("execute", () => {
     test("APIが正常な時にコマンドを実行すると、APIからの成功メッセージで応答する", async () => {
       // Arrange

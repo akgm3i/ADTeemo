@@ -1,12 +1,30 @@
 import { describe, test } from "@std/testing/bdd";
+import { assertEquals } from "@std/assert";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
-import { execute } from "./set-main-role.ts";
+import { data, execute } from "./set-main-role.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import { MockInteractionBuilder } from "../test_utils.ts";
 import { Lane } from "@adteemo/api/schema";
 import { apiClient } from "../api_client.ts";
 
 describe("Set Main Role Command", () => {
+  describe("定義", () => {
+    test("コマンド名と説明が期待通りに設定されている", () => {
+      const json = data.toJSON();
+      assertEquals(json.name, "set-main-role");
+      assertEquals(
+        json.description,
+        "カスタムゲームでのメインロールを登録します。",
+      );
+
+      const options = json.options ?? [];
+      assertEquals(options.map((option) => option.name), ["role"]);
+      const roleOption = options[0];
+      assertEquals(roleOption?.description, "メインロールとして登録するロール");
+      assertEquals(roleOption?.required, true);
+    });
+  });
+
   describe("execute", () => {
     test("API呼び出しが成功した時にメインロールを設定すると、成功メッセージで応答する", async () => {
       // Arrange
@@ -16,7 +34,7 @@ describe("Set Main Role Command", () => {
         () => Promise.resolve({ success: true }),
       );
       using formatMessageSpy = spy(messageHandler, "formatMessage");
-      const interaction = new MockInteractionBuilder()
+      const interaction = new MockInteractionBuilder("set-main-role")
         .withStringOption("role", "Jungle")
         .build();
       using deferSpy = spy(interaction, "deferReply");
@@ -46,7 +64,7 @@ describe("Set Main Role Command", () => {
         () => Promise.resolve({ success: false, error: "API error" }),
       );
       using formatMessageSpy = spy(messageHandler, "formatMessage");
-      const interaction = new MockInteractionBuilder()
+      const interaction = new MockInteractionBuilder("set-main-role")
         .withStringOption("role", "Jungle")
         .build();
       using deferSpy = spy(interaction, "deferReply");
@@ -70,7 +88,7 @@ describe("Set Main Role Command", () => {
 
     test("ChatInputCommandでないInteractionで実行すると、何もせずに処理を中断する", async () => {
       // Arrange
-      const interaction = new MockInteractionBuilder()
+      const interaction = new MockInteractionBuilder("set-main-role")
         .setIsChatInputCommand(false)
         .build();
       using deferSpy = spy(interaction, "deferReply");

@@ -197,7 +197,7 @@ describe("シナリオ: カスタムゲーム作成", () => {
     test("ユーザーがゲーム作成コマンドを実行したとき、APIを通じてDBにイベントが記録される", async () => {
       // Arrange
       const interaction = new MockInteractionBuilder("create-custom-game")
-        .withStringOption("name", "今夜のカスタム").build();
+        .withStringOption("title", "今夜のカスタム").build();
 
       // Act
       await createCustomGame.execute(interaction);

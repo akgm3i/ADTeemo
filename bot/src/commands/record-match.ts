@@ -15,14 +15,14 @@ import { MessageFlags } from "discord.js";
 
 export const data = new SlashCommandBuilder()
   .setName("record-match")
-  .setDescription("Records the results of a custom game through conversation.")
+  .setDescription("カスタムゲームの結果を対話形式で記録します。")
   .addStringOption((option) =>
-    option.setName("winning_team")
-      .setDescription("The team that won the game.")
+    option.setName("winner")
+      .setDescription("勝利したチーム")
       .setRequired(true)
       .addChoices(
-        { name: "Blue Team", value: "BLUE" },
-        { name: "Red Team", value: "RED" },
+        { name: "ブルーチーム", value: "BLUE" },
+        { name: "レッドチーム", value: "RED" },
       )
   );
 
@@ -46,7 +46,7 @@ export async function execute(interaction: CommandInteraction) {
 
   try {
     const winningTeam = interaction.options.getString(
-      "winning_team",
+      "winner",
       true,
     ) as Team;
 
