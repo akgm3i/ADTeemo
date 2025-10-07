@@ -1,6 +1,11 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
-import { assertSpyCalls, stub } from "@std/testing/mock";
+import {
+  assertSpyCall,
+  assertSpyCallArgs,
+  assertSpyCalls,
+  stub,
+} from "@std/testing/mock";
 import { apiClient } from "./api_client.ts";
 import { type Client } from "@adteemo/api/hc";
 import { type InferResponseType } from "@hono/hono";
@@ -72,6 +77,7 @@ describe("apiClient", () => {
 
   describe("setMainRole", () => {
     const userId = "test-user";
+    const guildId = "test-guild";
     const role = "Top";
 
     test("API呼び出しが成功した場合にメインロールを設定すると、成功ステータスが返される", async () => {
@@ -84,13 +90,17 @@ describe("apiClient", () => {
             new Response(null, { status: 204 }),
           ),
       );
-
       // Act
-      const result = await apiClient.setMainRole(userId, role);
+      const result = await apiClient.setMainRole(userId, guildId, role);
 
       // Assert
       assertEquals(result.success, true);
+
       assertSpyCalls(fetchStub, 1);
+      const [url, init] = fetchStub.calls[0].args;
+      assertEquals(url, `${Deno.env.get("API_URL")}/users/${userId}/main-role`);
+      assertEquals(init?.method, "PUT");
+      assertEquals(init?.body, JSON.stringify({ guildId, role }));
     });
 
     test("APIが200以外のステータスを返す場合にメインロールを設定すると、エラーステータスが返される", async () => {
@@ -100,9 +110,8 @@ describe("apiClient", () => {
         "fetch",
         () => Promise.resolve(new Response("Bad Request", { status: 400 })),
       );
-
       // Act
-      const result = await apiClient.setMainRole(userId, role);
+      const result = await apiClient.setMainRole(userId, guildId, role);
 
       // Assert
       assertEquals(result.success, false);
@@ -117,9 +126,8 @@ describe("apiClient", () => {
         "fetch",
         () => Promise.reject(new Error("Network error")),
       );
-
       // Act
-      const result = await apiClient.setMainRole(userId, role);
+      const result = await apiClient.setMainRole(userId, guildId, role);
 
       // Assert
       assertEquals(result.success, false);

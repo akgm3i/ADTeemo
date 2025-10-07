@@ -58,11 +58,11 @@ async function checkHealth() {
   }
 }
 
-async function setMainRole(userId: string, role: Lane) {
+async function setMainRole(userId: string, guildId: string, role: Lane) {
   try {
     const res = await client.users[":userId"]["main-role"].$put({
       param: { userId: userId },
-      json: { role: role },
+      json: { guildId, role },
     });
 
     if (!res.ok) {

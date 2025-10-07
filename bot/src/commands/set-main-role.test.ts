@@ -4,7 +4,6 @@ import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import { data, execute } from "./set-main-role.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import { MockInteractionBuilder } from "../test_utils.ts";
-import { Lane } from "@adteemo/api/schema";
 import { apiClient } from "../api_client.ts";
 
 describe("Set Main Role Command", () => {
@@ -37,6 +36,7 @@ describe("Set Main Role Command", () => {
       const interaction = new MockInteractionBuilder("set-main-role")
         .withStringOption("role", "Jungle")
         .build();
+      const guildId = interaction.guild?.id ?? "";
       using deferSpy = spy(interaction, "deferReply");
       using editSpy = spy(interaction, "editReply");
 
@@ -45,9 +45,11 @@ describe("Set Main Role Command", () => {
 
       // Assert
       assertSpyCall(deferSpy, 0);
-      assertSpyCall(setMainRoleStub, 0, {
-        args: [interaction.user.id, "Jungle" as Lane],
-      });
+      const call = setMainRoleStub.calls[0];
+      const args = call.args as unknown[];
+      assertEquals(args[0], interaction.user.id);
+      assertEquals(args[1], guildId);
+      assertEquals(args[2], "Jungle");
       assertSpyCall(formatMessageSpy, 0, {
         args: [messageKeys.userManagement.setMainRole.success, {
           role: "Jungle",
@@ -67,6 +69,7 @@ describe("Set Main Role Command", () => {
       const interaction = new MockInteractionBuilder("set-main-role")
         .withStringOption("role", "Jungle")
         .build();
+      const guildId = interaction.guild?.id ?? "";
       using deferSpy = spy(interaction, "deferReply");
       using editSpy = spy(interaction, "editReply");
 
@@ -75,9 +78,11 @@ describe("Set Main Role Command", () => {
 
       // Assert
       assertSpyCall(deferSpy, 0);
-      assertSpyCall(setMainRoleStub, 0, {
-        args: [interaction.user.id, "Jungle" as Lane],
-      });
+      const call = setMainRoleStub.calls[0];
+      const args = call.args as unknown[];
+      assertEquals(args[0], interaction.user.id);
+      assertEquals(args[1], guildId);
+      assertEquals(args[2], "Jungle");
       assertSpyCall(formatMessageSpy, 0, {
         args: [messageKeys.userManagement.setMainRole.failure, {
           error: "API error",

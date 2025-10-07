@@ -8,18 +8,18 @@
 
 本プロジェクトのテストは、以下の2種類に大別されます。
 
-1.  **ユニットテスト (Unit Tests)**: モジュール単体の機能を検証する。
-2.  **統合テスト (Integration Tests)**: 複数のコンポーネントを連携させ、実際のユーザー操作に近いシナリオを検証する。
+1. **ユニットテスト (Unit Tests)**: モジュール単体の機能を検証する。
+2. **統合テスト (Integration Tests)**: 複数のコンポーネントを連携させ、実際のユーザー操作に近いシナリオを検証する。
 
 ## 1.2. ユニットテスト (Unit Tests)
 
 - **目的**: モジュール単体（通常は1ファイル）の機能と、そのインターフェース（入力と出力）が仕様通りに動作することを保証します。
 
 - **原則**: テスト対象モジュールが依存する**他のモジュールや外部APIとの境界は、すべてモック**します。これには以下が含まれます。
-    - 同じサービス内の他のモジュール（ヘルパー関数、サービスクラスなど）
-    - データベース (DB)
-    - 他のサービス (例: Botから見たAPIサーバー)
-    - 外部APIとの通信（例: `fetch`の呼び出し）
+  - 同じサービス内の他のモジュール（ヘルパー関数、サービスクラスなど）
+  - データベース (DB)
+  - 他のサービス (例: Botから見たAPIサーバー)
+  - 外部APIとの通信（例: `fetch`の呼び出し）
 
 - **配置**: 各サービスディレクトリ（`api/`, `bot/`など）の内部に、テスト対象ファイルと同じ階層に `*.test.ts` として配置します。
 
@@ -66,7 +66,11 @@ import { apiClient } from "../api_client.ts"; // 直接の依存先をインポ�
 
 // ...
 // health.tsの直接の依存先であるapiClient.checkHealthをスタブしている
-using checkHealthStub = stub(apiClient, "checkHealth", () => Promise.resolve({ success: true, message: "ok" }));
+using checkHealthStub = stub(
+  apiClient,
+  "checkHealth",
+  () => Promise.resolve({ success: true, message: "ok" }),
+);
 await execute(interaction);
 ```
 
@@ -84,8 +88,11 @@ describe("POST /users", () => {
   describe("正常系", () => {
     test("有効なユーザー名が指定されたとき、dbActions.createUserを呼び出し、201 Createdと作成されたユーザー情報を返す", async () => {
       // Arrange
-      using createUserStub = stub(dbActions, "createUser", (name) =>
-        Promise.resolve({ id: "user-abc-123", name, createdAt: new Date() })
+      using createUserStub = stub(
+        dbActions,
+        "createUser",
+        (name) =>
+          Promise.resolve({ id: "user-abc-123", name, createdAt: new Date() }),
       );
       const userResponseSchema = z.object({ name: z.string() });
 
@@ -115,10 +122,16 @@ describe("/set-main-role command", () => {
   describe("正常系", () => {
     test("有効なロール名が指定されたとき、apiClientとmessagesを呼び出し、成功メッセージで応答する", async () => {
       // Arrange
-      using setMainRoleStub = stub(apiClient, "setMainRole", () =>
-        Promise.resolve({ success: true, error: null })
+      using setMainRoleStub = stub(
+        apiClient,
+        "setMainRole",
+        () => Promise.resolve({ success: true, error: null }),
       );
-      using successMessageStub = stub(messages, "success", () => "メインロールをJungleに設定しました。");
+      using successMessageStub = stub(
+        messages,
+        "success",
+        () => "メインロールをJungleに設定しました。",
+      );
 
       const interaction = new MockInteractionBuilder("set-main-role")
         .withUser({ id: "user-123" })
@@ -131,10 +144,14 @@ describe("/set-main-role command", () => {
 
       // Assert
       assertSpyCalls(setMainRoleStub, 1);
-      assertSpyCall(setMainRoleStub, 0, { args: ["user-123", "Jungle"] });
+      assertSpyCall(setMainRoleStub, 0, {
+        args: ["user-123", "mock-guild-id", "Jungle"],
+      });
       assertSpyCalls(successMessageStub, 1);
       assertSpyCalls(editReplySpy, 1);
-      assertSpyCall(editReplySpy, 0, { args: ["メインロールをJungleに設定しました。"] });
+      assertSpyCall(editReplySpy, 0, {
+        args: ["メインロールをJungleに設定しました。"],
+      });
     });
   });
 });
@@ -150,12 +167,18 @@ describe("apiClient.setMainRole", () => {
   describe("正常系", () => {
     test("ユーザーIDとロールが与えられたとき、適切なPUTリクエストをfetchで送信する", async () => {
       // Arrange
-      using fetchStub = stub(globalThis, "fetch", () =>
-        Promise.resolve(new Response(null, { status: 204 }))
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () => Promise.resolve(new Response(null, { status: 204 })),
       );
 
       // Act
-      const result = await apiClient.setMainRole("user-123", "Jungle");
+      const result = await apiClient.setMainRole(
+        "user-123",
+        "guild-456",
+        "Jungle",
+      );
 
       // Assert
       assertSpyCalls(fetchStub, 1);
@@ -164,7 +187,7 @@ describe("apiClient.setMainRole", () => {
           "https://api.example.com/users/user-123/role",
           {
             method: "PUT",
-            body: JSON.stringify({ role: "Jungle" }),
+            body: JSON.stringify({ guildId: "guild-456", role: "Jungle" }),
           },
         ],
       });
@@ -179,9 +202,9 @@ describe("apiClient.setMainRole", () => {
 - **目的**: 複数のコンポーネント（`bot`, `api`, `db`）を実際に連携させ、ユーザーの操作から始まる一連のシナリオが正しく動作することを保証します。
 
 - **原則**:
-    - **APIのテスト**: `testClient` を使用してAPIリクエストを送信し、レスポンスの内容や、その結果としてデータベースの状態が正しく変更されたかを検証します。
-    - **Botのテスト**: Discordの `interaction` を模倣してコマンドを実行し、Botからの応答メッセージや、API連携を通じてデータベースの状態が正しく変更されたかを検証します。
-    - Riot APIやDiscord APIのような、プロジェクト管理外の外部ドメインのサービスは、引き続きモックを使用します。
+  - **APIのテスト**: `testClient` を使用してAPIリクエストを送信し、レスポンスの内容や、その結果としてデータベースの状態が正しく変更されたかを検証します。
+  - **Botのテスト**: Discordの `interaction` を模倣してコマンドを実行し、Botからの応答メッセージや、API連携を通じてデータベースの状態が正しく変更されたかを検証します。
+  - Riot APIやDiscord APIのような、プロジェクト管理外の外部ドメインのサービスは、引き続きモックを使用します。
 
 - **配置**: プロジェクトのルートに `tests/integration/` ディレクトリを作成し、その中に配置します。
 
@@ -216,12 +239,15 @@ describe("シナリオ: カスタムゲーム作成", () => {
 ## 2.1. テストの構造と命名
 
 ### `describe`: コンテキストの定義
+
 `describe`ブロックは、テスト対象のコンテキスト（状況や環境）を定義します。APIのエンドポイント名、コンポーネント名、特定のシナリオ名などが該当します。
 
 ### `test`: 振る舞いの記述
+
 `test`ブロックは、`describe`で定義されたコンテキスト内でのシステムの**振る舞い**を記述します。テストケース名は**「（条件）のとき、（操作）を行うと、（結果）となる」** という形式を基本とします。
 
 ### 正常系と異常系のグループ化
+
 `describe`をネストさせて`describe("正常系", ...)`と`describe("異常系", ...)`のようにグループ化し、テストの可読性を高めることを強く推奨します。
 
 システムの堅牢性を保証するため、特に異常系のテストを網羅することが重要です。異常系のテストでは、主に以下のような観点を検証します。
@@ -292,6 +318,7 @@ assertSpyCalls(getAuthorizationUrlStub, 1);
 const state = getAuthorizationUrlStub.calls[0].args[0];
 assertEquals(body.url, `https://mock.auth.url/authorize?state=${state}`);
 ```
+
 `startsWith`のような曖昧な比較ではなく、動的な部分（この例では`state`）を含めた完全なURLで比較することで、「余計な文字列が付与されていないか」「URLの形式が意図せず変わっていないか」といった点まで含めて厳密に検証できます。
 
 ## 2.6. 予測不可能な値の扱い
