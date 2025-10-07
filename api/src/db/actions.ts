@@ -43,21 +43,33 @@ async function deleteUser(userId: string) {
 }
 
 async function setMainRole(userId: string, guildId: string, role: Lane) {
-  await upsertUser(userId);
-  await ensureGuild(guildId);
-  const payload = userGuildProfileInsertSchema.parse({
-    userId,
-    guildId,
-    mainRole: role,
-  });
+  await db.transaction(async (tx) => {
+    // ユーザーが存在しない場合は作成する
+    const userPayload = userInsertSchema.parse({ discordId: userId });
+    await tx.insert(users).values(userPayload).onConflictDoNothing().execute();
 
-  await db.insert(userGuildProfiles).values(payload).onConflictDoUpdate({
-    target: [userGuildProfiles.userId, userGuildProfiles.guildId],
-    set: {
+    // ギルドが存在しない場合は作成する
+    const guildPayload = guildInsertSchema.parse({ id: guildId });
+    await tx.insert(guilds).values(guildPayload).onConflictDoNothing().execute();
+
+    // ユーザーのギルドプロファイル（メインロール）を更新または作成する
+    const profilePayload = userGuildProfileInsertSchema.parse({
+      userId,
+      guildId,
       mainRole: role,
-      updatedAt: new Date(),
-    },
-  }).execute();
+    });
+
+    await tx.insert(userGuildProfiles).values(profilePayload)
+      .onConflictDoUpdate(
+        {
+          target: [userGuildProfiles.userId, userGuildProfiles.guildId],
+          set: {
+            mainRole: role,
+            updatedAt: new Date(),
+          },
+        },
+      ).execute();
+  });
 }
 
 async function createCustomGameEvent(event: {
@@ -68,11 +80,19 @@ async function createCustomGameEvent(event: {
   recruitmentMessageId: string;
   scheduledStartAt: Date;
 }) {
-  // Ensure the creator exists as a user.
-  await upsertUser(event.creatorId);
-  await ensureGuild(event.guildId);
-  const parsed = customGameEventInsertSchema.parse(event);
-  await db.insert(customGameEvents).values(parsed).execute();
+  await db.transaction(async (tx) => {
+    // ユーザーが存在しない場合は作成する
+    const userPayload = userInsertSchema.parse({ discordId: event.creatorId });
+    await tx.insert(users).values(userPayload).onConflictDoNothing().execute();
+
+    // ギルドが存在しない場合は作成する
+    const guildPayload = guildInsertSchema.parse({ id: event.guildId });
+    await tx.insert(guilds).values(guildPayload).onConflictDoNothing().execute();
+
+    // カスタムゲームイベントを作成する
+    const parsedEvent = customGameEventInsertSchema.parse(event);
+    await tx.insert(customGameEvents).values(parsedEvent).execute();
+  });
 }
 
 async function getCustomGameEventsByCreatorId(creatorId: string) {
