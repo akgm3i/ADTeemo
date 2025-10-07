@@ -4,7 +4,7 @@
 
 1. [x] `bot/src/commands/create-custom-game.ts`: `deferReply` 後に `reply` を再度呼び出しているパスを修正し、常に `editReply`/`followUp` を用いる。
 2. [x] `api/src/routes/users.ts` + `api/src/db/actions.ts`: Riot ID 連携時にユーザーを確実に永続化するため `upsertUser` を組み込み、未登録でも 204 を返さないようにする。
-3. [ ] 共通ロガーを導入し、API・Bot の主要エントリポイントから構造化ログを出力する（例: `api/src/app.ts`, `bot/src/main.ts`）。
+3. [ ] ロガーを導入し、API・Bot の主要エントリポイントからそれぞれ構造化ログを出力する（例: `api/src/app.ts`, `bot/src/main.ts`）。
 4. [ ] CI 要件定義を実施し、GitHub Actions で実行すべき検証（lint/fmt/check/test・デプロイ連携など）とトリガー条件を整理する。
 5. [ ] GitHub Actions を設定し、`deno lint`/`deno fmt --check`/`deno check`/テストを実行する CI ワークフロー（例: `.github/workflows/ci.yml`）を追加する。
 6. [x] `api/src/db/schema.ts` 等を拡張し、`custom_game_events` などに `guild_id` を追加。ユーザーと Riot ID の関連はギルド間で共通しているので、正規化する。
@@ -23,3 +23,8 @@
 19. [ ] Web サイトの要件定義を実施し、主要ユースケース・API 連携要件を整理する。
 20. [ ] 上記要件に基づき Web UI（管理者・参加者向け）を実装する。
 21. [x] API 応答に含まれている `success` フラグを整理し、HTTP ステータスコードだけで成否を判定できるよう統一する方針を設計・実装する。
+22. [ ] `/record-match` コマンドの戦績入力鵜を簡易化する。Message ComponentsやModal Componentsを使用する。
+23. [ ] `/start-event` を作成し、特定のイベントを開始するコマンドを実装する。 `/start-matching`, `/split-teams` などをMessage Component上のボタンなどで実行できるようにする。
+24. [ ] messagesでどの言語、スタイルを使用するか環境変数から設定できるようにする。
+25. [ ] `/split-teams` で今日開始のイベントを取得するのではなく、作成されているイベントの中からどれを指定するか選べるようにする。
+26. [ ] コマンド全体の構造を見直し、サブコマンドも検討する。
