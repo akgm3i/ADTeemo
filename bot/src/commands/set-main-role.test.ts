@@ -44,17 +44,18 @@ describe("Set Main Role Command", () => {
       await execute(interaction);
 
       // Assert
-      assertSpyCall(deferSpy, 0);
-      const call = setMainRoleStub.calls[0];
-      const args = call.args as unknown[];
-      assertEquals(args[0], interaction.user.id);
-      assertEquals(args[1], guildId);
-      assertEquals(args[2], "Jungle");
+      assertSpyCalls(deferSpy, 1);
+      assertSpyCalls(setMainRoleStub, 1);
+      assertSpyCall(setMainRoleStub, 0, {
+        args: [interaction.user.id, guildId, "Jungle"],
+      });
+      assertSpyCalls(formatMessageSpy, 1);
       assertSpyCall(formatMessageSpy, 0, {
         args: [messageKeys.userManagement.setMainRole.success, {
           role: "Jungle",
         }],
       });
+      assertSpyCalls(editSpy, 1);
       assertSpyCall(editSpy, 0);
     });
 
@@ -77,18 +78,18 @@ describe("Set Main Role Command", () => {
       await execute(interaction);
 
       // Assert
-      assertSpyCall(deferSpy, 0);
-      const call = setMainRoleStub.calls[0];
-      const args = call.args as unknown[];
-      assertEquals(args[0], interaction.user.id);
-      assertEquals(args[1], guildId);
-      assertEquals(args[2], "Jungle");
+      assertSpyCalls(deferSpy, 1);
+      assertSpyCalls(setMainRoleStub, 1);
+      assertSpyCall(setMainRoleStub, 0, {
+        args: [interaction.user.id, guildId, "Jungle"],
+      });
+      assertSpyCalls(formatMessageSpy, 1);
       assertSpyCall(formatMessageSpy, 0, {
         args: [messageKeys.userManagement.setMainRole.failure, {
           error: "API error",
         }],
       });
-      assertSpyCall(editSpy, 0);
+      assertSpyCalls(editSpy, 1);
     });
 
     test("ChatInputCommandでないInteractionで実行すると、何もせずに処理を中断する", async () => {

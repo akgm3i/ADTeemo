@@ -139,12 +139,10 @@ describe("routes/users.ts", () => {
 
           // Assert
           assert(res.status === 204);
-          assertEquals(await res.text(), "");
-          const call = setMainRoleStub.calls[0];
-          const args = call.args as unknown[];
-          assertEquals(args[0], userId);
-          assertEquals(args[1], guildId);
-          assertEquals(args[2], role);
+          assertSpyCalls(setMainRoleStub, 1);
+          assertSpyCall(setMainRoleStub, 0, {
+            args: [userId, guildId, role],
+          });
         },
       );
     });

@@ -50,7 +50,8 @@ async function setMainRole(userId: string, guildId: string, role: Lane) {
 
     // ギルドが存在しない場合は作成する
     const guildPayload = guildInsertSchema.parse({ id: guildId });
-    await tx.insert(guilds).values(guildPayload).onConflictDoNothing().execute();
+    await tx.insert(guilds).values(guildPayload).onConflictDoNothing()
+      .execute();
 
     // ユーザーのギルドプロファイル（メインロール）を更新または作成する
     const profilePayload = userGuildProfileInsertSchema.parse({
@@ -87,7 +88,8 @@ async function createCustomGameEvent(event: {
 
     // ギルドが存在しない場合は作成する
     const guildPayload = guildInsertSchema.parse({ id: event.guildId });
-    await tx.insert(guilds).values(guildPayload).onConflictDoNothing().execute();
+    await tx.insert(guilds).values(guildPayload).onConflictDoNothing()
+      .execute();
 
     // カスタムゲームイベントを作成する
     const parsedEvent = customGameEventInsertSchema.parse(event);
