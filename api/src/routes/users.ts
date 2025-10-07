@@ -7,6 +7,7 @@ import { riotApi } from "../riot_api.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 
 const roleSchema = z.object({
+  guildId: z.string(),
   role: z.enum(lanes),
 });
 
@@ -43,8 +44,8 @@ export const usersRoutes = new Hono()
     zValidator("json", roleSchema),
     async (c) => {
       const { userId } = c.req.param();
-      const { role } = c.req.valid("json");
-      await dbActions.setMainRole(userId, role);
+      const { guildId, role } = c.req.valid("json");
+      await dbActions.setMainRole(userId, guildId, role);
       return c.body(null, 204);
     },
   );

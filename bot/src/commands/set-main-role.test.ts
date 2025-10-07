@@ -4,7 +4,6 @@ import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import { data, execute } from "./set-main-role.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import { MockInteractionBuilder } from "../test_utils.ts";
-import { Lane } from "@adteemo/api/schema";
 import { apiClient } from "../api_client.ts";
 
 describe("Set Main Role Command", () => {
@@ -37,6 +36,7 @@ describe("Set Main Role Command", () => {
       const interaction = new MockInteractionBuilder("set-main-role")
         .withStringOption("role", "Jungle")
         .build();
+      const guildId = interaction.guild?.id ?? "";
       using deferSpy = spy(interaction, "deferReply");
       using editSpy = spy(interaction, "editReply");
 
@@ -44,15 +44,18 @@ describe("Set Main Role Command", () => {
       await execute(interaction);
 
       // Assert
-      assertSpyCall(deferSpy, 0);
+      assertSpyCalls(deferSpy, 1);
+      assertSpyCalls(setMainRoleStub, 1);
       assertSpyCall(setMainRoleStub, 0, {
-        args: [interaction.user.id, "Jungle" as Lane],
+        args: [interaction.user.id, guildId, "Jungle"],
       });
+      assertSpyCalls(formatMessageSpy, 1);
       assertSpyCall(formatMessageSpy, 0, {
         args: [messageKeys.userManagement.setMainRole.success, {
           role: "Jungle",
         }],
       });
+      assertSpyCalls(editSpy, 1);
       assertSpyCall(editSpy, 0);
     });
 
@@ -67,6 +70,7 @@ describe("Set Main Role Command", () => {
       const interaction = new MockInteractionBuilder("set-main-role")
         .withStringOption("role", "Jungle")
         .build();
+      const guildId = interaction.guild?.id ?? "";
       using deferSpy = spy(interaction, "deferReply");
       using editSpy = spy(interaction, "editReply");
 
@@ -74,16 +78,18 @@ describe("Set Main Role Command", () => {
       await execute(interaction);
 
       // Assert
-      assertSpyCall(deferSpy, 0);
+      assertSpyCalls(deferSpy, 1);
+      assertSpyCalls(setMainRoleStub, 1);
       assertSpyCall(setMainRoleStub, 0, {
-        args: [interaction.user.id, "Jungle" as Lane],
+        args: [interaction.user.id, guildId, "Jungle"],
       });
+      assertSpyCalls(formatMessageSpy, 1);
       assertSpyCall(formatMessageSpy, 0, {
         args: [messageKeys.userManagement.setMainRole.failure, {
           error: "API error",
         }],
       });
-      assertSpyCall(editSpy, 0);
+      assertSpyCalls(editSpy, 1);
     });
 
     test("ChatInputCommandでないInteractionで実行すると、何もせずに処理を中断する", async () => {

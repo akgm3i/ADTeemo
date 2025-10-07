@@ -30,10 +30,21 @@ export async function execute(interaction: CommandInteraction) {
 
   const role = interaction.options.getString("role", true) as Lane;
   const userId = interaction.user.id;
+  const guildId = interaction.guild?.id;
+
+  if (!guildId) {
+    await interaction.reply({
+      content: messageHandler.formatMessage(
+        messageKeys.common.info.guildOnlyCommand,
+      ),
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const result = await apiClient.setMainRole(userId, role);
+  const result = await apiClient.setMainRole(userId, guildId, role);
 
   if (result.success) {
     await interaction.editReply(

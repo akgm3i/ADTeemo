@@ -7,6 +7,7 @@ import { dbActions } from "../db/actions.ts";
 import { riotApi } from "../riot_api.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import { z } from "zod";
+import type { Lane } from "../db/schema.ts";
 
 describe("routes/users.ts", () => {
   const client = testClient(app);
@@ -116,39 +117,59 @@ describe("routes/users.ts", () => {
 
   describe("PUT /users/:userId/main-role", () => {
     const userId = "test-user-id";
+    const guildId = "test-guild-id";
 
     describe("正常系", () => {
-      test("有効なロールが指定されたとき、ユーザーのメインロールを設定して204 No Contentを返す", async () => {
-        // Arrange
-        const role = "Jungle";
-        using setMainRoleStub = stub(
-          dbActions,
-          "setMainRole",
-          () =>
-            Promise.resolve({
-              rows: [],
-              columns: [],
-              rowsAffected: 0,
-              lastInsertRowid: undefined,
-              columnTypes: [],
-              toJSON: () => ({}),
-            }),
-        );
+      test(
+        "有効なロールとギルドIDが指定されたとき、ユーザーのメインロールを設定して204 No Contentを返す",
+        async () => {
+          // Arrange
+          const role: Lane = "Jungle";
+          using setMainRoleStub = stub(
+            dbActions,
+            "setMainRole",
+            () => Promise.resolve(),
+          );
 
-        // Act
-        const res = await client.users[":userId"]["main-role"].$put({
-          param: { userId },
-          json: { role },
-        });
+          // Act
+          const res = await client.users[":userId"]["main-role"].$put({
+            param: { userId },
+            json: { guildId, role },
+          });
 
-        // Assert
-        assert(res.status === 204);
-        assertEquals(await res.text(), "");
-        assertSpyCall(setMainRoleStub, 0, { args: [userId, role] });
-      });
+          // Assert
+          assert(res.status === 204);
+          assertSpyCalls(setMainRoleStub, 1);
+          assertSpyCall(setMainRoleStub, 0, {
+            args: [userId, guildId, role],
+          });
+        },
+      );
     });
 
     describe("異常系", () => {
+      test(
+        "ギルドIDが指定されていないとき、400エラーを返す",
+        async () => {
+          // Arrange
+          const role = "Jungle";
+          const req = new Request(
+            `http://localhost/users/${userId}/main-role`,
+            {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ role }),
+            },
+          );
+
+          // Act
+          const res = await app.request(req);
+
+          // Assert
+          assertEquals(res.status, 400);
+        },
+      );
+
       test("無効なロールが指定されたとき、400エラーを返す", async () => {
         // Arrange
         const role = "InvalidRole";

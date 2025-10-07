@@ -7,7 +7,7 @@
 3. [ ] 共通ロガーを導入し、API・Bot の主要エントリポイントから構造化ログを出力する（例: `api/src/app.ts`, `bot/src/main.ts`）。
 4. [ ] CI 要件定義を実施し、GitHub Actions で実行すべき検証（lint/fmt/check/test・デプロイ連携など）とトリガー条件を整理する。
 5. [ ] GitHub Actions を設定し、`deno lint`/`deno fmt --check`/`deno check`/テストを実行する CI ワークフロー（例: `.github/workflows/ci.yml`）を追加する。
-6. [ ] `api/src/db/schema.ts` 等を拡張し、`users`・`custom_game_events` などに `guild_id` を追加。ユーザーと Riot ID の関連はギルド共通テーブルに正規化する。
+6. [x] `api/src/db/schema.ts` 等を拡張し、`custom_game_events` などに `guild_id` を追加。ユーザーと Riot ID の関連はギルド間で共通しているので、正規化する。
 7. [ ] ギルド固有設定テーブル（募集チャンネル、VC、ロールID など）と対応する API を設計・実装し、Bot 側で参照できるようにする。
 8. [ ] `api/src/db/actions.ts`/`custom_game_events` に募集メッセージのチャンネルIDを保存し、`bot/src/commands/split-teams.ts` から利用する。
 9. [ ] `bot/src/features/role-management.ts`: Bot がギルド参加時に必要ロールを自動作成または検出し、ID を保存するロジックを追加する。

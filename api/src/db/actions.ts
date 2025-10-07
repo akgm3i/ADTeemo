@@ -1,19 +1,22 @@
 import { and, eq, gte, lte } from "drizzle-orm";
-import { createInsertSchema, createUpdateSchema } from "drizzle-zod";
+import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { db } from "./index.ts";
 import {
   authStates,
   customGameEvents,
+  guilds,
   type Lane,
   matches,
   matchParticipants,
+  userGuildProfiles,
   users,
 } from "./schema.ts";
 import { RecordNotFoundError } from "../errors.ts";
 
 const userInsertSchema = createInsertSchema(users);
-const userUpdateSchema = createUpdateSchema(users);
+const guildInsertSchema = createInsertSchema(guilds);
+const userGuildProfileInsertSchema = createInsertSchema(userGuildProfiles);
 const customGameEventInsertSchema = createInsertSchema(customGameEvents);
 const matchParticipantInsertSchema = createInsertSchema(matchParticipants);
 
@@ -30,17 +33,44 @@ async function upsertUser(userId: string) {
   return result;
 }
 
+async function ensureGuild(guildId: string) {
+  const payload = guildInsertSchema.parse({ id: guildId });
+  await db.insert(guilds).values(payload).onConflictDoNothing().execute();
+}
+
 async function deleteUser(userId: string) {
   await db.delete(users).where(eq(users.discordId, userId)).execute();
 }
 
-async function setMainRole(userId: string, role: Lane) {
-  await upsertUser(userId); // Ensure user exists
-  const user = { discordId: userId, mainRole: role };
-  const parsed = userUpdateSchema.parse(user);
-  return await db.update(users).set(parsed).where(
-    eq(users.discordId, userId),
-  ).execute();
+async function setMainRole(userId: string, guildId: string, role: Lane) {
+  await db.transaction(async (tx) => {
+    // ユーザーが存在しない場合は作成する
+    const userPayload = userInsertSchema.parse({ discordId: userId });
+    await tx.insert(users).values(userPayload).onConflictDoNothing().execute();
+
+    // ギルドが存在しない場合は作成する
+    const guildPayload = guildInsertSchema.parse({ id: guildId });
+    await tx.insert(guilds).values(guildPayload).onConflictDoNothing()
+      .execute();
+
+    // ユーザーのギルドプロファイル（メインロール）を更新または作成する
+    const profilePayload = userGuildProfileInsertSchema.parse({
+      userId,
+      guildId,
+      mainRole: role,
+    });
+
+    await tx.insert(userGuildProfiles).values(profilePayload)
+      .onConflictDoUpdate(
+        {
+          target: [userGuildProfiles.userId, userGuildProfiles.guildId],
+          set: {
+            mainRole: role,
+            updatedAt: new Date(),
+          },
+        },
+      ).execute();
+  });
 }
 
 async function createCustomGameEvent(event: {
@@ -51,10 +81,20 @@ async function createCustomGameEvent(event: {
   recruitmentMessageId: string;
   scheduledStartAt: Date;
 }) {
-  // Ensure the creator exists as a user.
-  await upsertUser(event.creatorId);
-  const parsed = customGameEventInsertSchema.parse(event);
-  await db.insert(customGameEvents).values(parsed).execute();
+  await db.transaction(async (tx) => {
+    // ユーザーが存在しない場合は作成する
+    const userPayload = userInsertSchema.parse({ discordId: event.creatorId });
+    await tx.insert(users).values(userPayload).onConflictDoNothing().execute();
+
+    // ギルドが存在しない場合は作成する
+    const guildPayload = guildInsertSchema.parse({ id: event.guildId });
+    await tx.insert(guilds).values(guildPayload).onConflictDoNothing()
+      .execute();
+
+    // カスタムゲームイベントを作成する
+    const parsedEvent = customGameEventInsertSchema.parse(event);
+    await tx.insert(customGameEvents).values(parsedEvent).execute();
+  });
 }
 
 async function getCustomGameEventsByCreatorId(creatorId: string) {
@@ -144,6 +184,7 @@ async function createAuthState(state: string, discordId: string) {
 
 export const dbActions = {
   upsertUser,
+  ensureGuild,
   deleteUser,
   setMainRole,
   createCustomGameEvent,
