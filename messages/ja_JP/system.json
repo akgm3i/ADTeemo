@@ -33,7 +33,7 @@
     "split": {
       "success": "### チーム分け完了！\n\n各プレイヤーをボイスチャンネルに移動しました。\n\n**Team 1 (Red Team)**\n{teamA}\n**Team 2 (Blue Team)**\n{teamB}",
       "error": {
-        "noEventFound": "あなたが今日作成したアクティブなイベントが見つかりませんでした。",
+        "noEventFound": "あなたが作成した本日開始のイベントが見つかりませんでした。",
         "noRecruitmentMessage": "参加者募集メッセージが見つかりませんでした。",
         "noRecruitmentChannel": "エラー: 参加者募集チャンネルが見つかりませんでした。",
         "invalidPlayerCount": "参加者が10人ではありません（現在 {count}人）。",

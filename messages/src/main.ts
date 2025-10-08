@@ -1,6 +1,6 @@
 import * as path from "@std/path";
 import { z } from "zod";
-import systemMessages from "../ja/system.json" with {
+import systemMessages from "../ja_JP/system.json" with {
   type: "json",
 };
 import { get as getMessageValue } from "./object-path.ts";
@@ -65,25 +65,17 @@ function loadMessages(
 }
 
 interface InitializeMessagesOptions {
-  lang: string;
+  lang?: string;
   theme?: string;
 }
 
-export function initializeMessages(
-  options: InitializeMessagesOptions = { lang: "ja" },
-) {
-  const { lang } = options;
-  const theme = options.theme ?? Deno.env.get("BOT_MESSAGE_THEME") ?? "system";
+export function initializeMessages( options: InitializeMessagesOptions ) {
+  const lang = (options.lang ?? Deno.env.get("LC_MESSAGES") ?? Deno.env.get("LC_ALL") ?? "ja_JP").split(".")[0];
+  const theme = options.theme ?? "system";
 
   const defaultMessages = loadMessages("ja", "system");
-
-  const langSystemMessages = (lang === "ja")
-    ? defaultMessages
-    : loadMessages(lang, "system");
-
-  const themeMessages = (theme && theme !== "system")
-    ? loadMessages(lang, theme)
-    : {};
+  const langSystemMessages = loadMessages(lang, "system");
+  const themeMessages = (theme !== "system") ? loadMessages(lang, theme) : {};
 
   function getMessage(
     messages: Record<string, unknown>,
