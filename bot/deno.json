@@ -5,8 +5,7 @@
   },
   "tasks": {
     "dev": "deno run -A --watch --env=../.env.dev src/main.ts",
-    "test": "deno test -A",
-    "deploy-commands": "deno run --allow-net --allow-read --allow-env --allow-ffi src/deploy-commands.ts"
+    "test": "deno test -A"
   },
   "compilerOptions": {
     "types": ["./src/@types/discord.js.d.ts"]

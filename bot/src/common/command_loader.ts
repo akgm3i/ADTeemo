@@ -9,7 +9,7 @@ export async function loadCommands(): Promise<Command[]> {
   for await (const dirEntry of Deno.readDir(commandsPath)) {
     if (
       dirEntry.isFile && dirEntry.name.endsWith(".ts") &&
-      !dirEntry.name.endsWith(".test.ts")
+      !dirEntry.name.endsWith(".test.ts") && !dirEntry.name.startsWith("link-riot-account")
     ) {
       const filePath = path.join(commandsPath, dirEntry.name);
       try {

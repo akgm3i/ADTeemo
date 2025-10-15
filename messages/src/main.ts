@@ -69,8 +69,10 @@ interface InitializeMessagesOptions {
   theme?: string;
 }
 
-export function initializeMessages( options: InitializeMessagesOptions ) {
-  const lang = (options.lang ?? Deno.env.get("LC_MESSAGES") ?? Deno.env.get("LC_ALL") ?? "ja_JP").split(".")[0];
+export function initializeMessages(options: InitializeMessagesOptions) {
+  const lang =
+    (options.lang ?? Deno.env.get("LC_MESSAGES") ?? Deno.env.get("LC_ALL") ??
+      "ja_JP").split(".")[0];
   const theme = options.theme ?? "system";
 
   const defaultMessages = loadMessages("ja", "system");

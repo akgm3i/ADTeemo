@@ -14,7 +14,7 @@ const guildId = Deno.env.get("DISCORD_GUILD_ID");
 
 if (!token || !clientId) {
   throw new Error(
-    "Missing DISCORD_TOKEN or DISCORD_CLIENT_ID in .env.dev file",
+    "Missing DISCORD_TOKEN or DISCORD_CLIENT_ID in .env file",
   );
 }
 
