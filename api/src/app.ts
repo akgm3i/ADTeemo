@@ -1,12 +1,51 @@
 import { Hono } from "@hono/hono";
-import { logger } from "@hono/hono/logger";
+import { createMiddleware } from "@hono/hono/factory";
 import { usersRoutes } from "./routes/users.ts";
 import { eventsRoutes } from "./routes/events.ts";
 import { matchesRoutes } from "./routes/matches.ts";
 import { authRoutes } from "./routes/auth.ts";
+import { apiLogger } from "./logger.ts";
+
+export const requestLoggingMiddleware = createMiddleware(async (c, next) => {
+  const start = performance.now();
+  try {
+    await next();
+    const durationMs = Math.round(performance.now() - start);
+    const context = {
+      http: {
+        method: c.req.method,
+        path: c.req.path,
+        status: c.res.status,
+      },
+      durationMs,
+    };
+
+    if (c.res.status >= 500) {
+      apiLogger.error("request.failed", context);
+      return;
+    }
+
+    apiLogger.info("request.completed", context);
+  } catch (error) {
+    const durationMs = Math.round(performance.now() - start);
+    apiLogger.error(
+      "request.failed",
+      {
+        http: {
+          method: c.req.method,
+          path: c.req.path,
+          status: c.res.status >= 500 ? c.res.status : 500,
+        },
+        durationMs,
+      },
+      error,
+    );
+    throw error;
+  }
+});
 
 const app = new Hono()
-  .use("*", logger())
+  .use("*", requestLoggingMiddleware)
   .get("/health", (c) => {
     return c.json({ message: "This API is healthy!" });
   })

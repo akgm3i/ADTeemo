@@ -1,7 +1,7 @@
 {
   "workspace": ["./api", "./bot", "./messages"],
   "tasks": {
-    "dev:all": {"dependencies": ["dev:api", "dev:bot"]},
+    "dev:all": { "dependencies": ["dev:api", "dev:bot"] },
     "dev:api": "deno task --cwd=api dev",
     "dev:bot": "deno task --cwd=bot dev",
     "dev:deploy-commands": "deno run --allow-net --allow-read --allow-env --allow-ffi --env=.env.dev bot/src/deploy-commands.ts",
@@ -19,7 +19,7 @@
     "strict": true
   },
   "fmt": {
-    "include": ["api/", "bot/", "messages/"],
+    "include": ["api/", "bot/", "messages/", "lib/"],
     "exclude": ["node_modules/", "coverage/"],
     "useTabs": false,
     "indentWidth": 2,
@@ -27,13 +27,16 @@
     "proseWrap": "preserve"
   },
   "lint": {
-    "include": ["api/", "bot/", "messages/"],
-    "exclude": ["node_modules/", "coeverage/"],
+    "include": ["api/", "bot/", "messages/", "lib/"],
+    "exclude": ["node_modules/", "coverage/"],
     "rules": {
       "tags": ["recommended"]
     }
   },
   "imports": {
+    "@std/assert": "jsr:@std/assert@^1.0.14",
+    "@std/log": "jsr:@std/log@^0.224.14",
+    "@std/testing": "jsr:@std/testing@^1.0.15",
     "drizzle-kit": "npm:drizzle-kit@^0.31.4"
   }
 }

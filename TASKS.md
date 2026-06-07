@@ -4,7 +4,7 @@
 
 1. [x] `bot/src/commands/create-custom-game.ts`: `deferReply` 後に `reply` を再度呼び出しているパスを修正し、常に `editReply`/`followUp` を用いる。
 2. [x] `api/src/routes/users.ts` + `api/src/db/actions.ts`: Riot ID 連携時にユーザーを確実に永続化するため `upsertUser` を組み込み、未登録でも 204 を返さないようにする。
-3. [ ] ロガーを導入し、API・Bot の主要エントリポイントからそれぞれ構造化ログを出力する（例: `api/src/app.ts`, `bot/src/main.ts`）。
+3. [x] ロガーを導入し、API・Bot の主要エントリポイントからそれぞれ構造化ログを出力する（例: `api/src/app.ts`, `bot/src/main.ts`）。
 4. [ ] CI 要件定義を実施し、GitHub Actions で実行すべき検証（lint/fmt/check/test・デプロイ連携など）とトリガー条件を整理する。
 5. [ ] GitHub Actions を設定し、`deno lint`/`deno fmt --check`/`deno check`/テストを実行する CI ワークフロー（例: `.github/workflows/ci.yml`）を追加する。
 6. [x] `api/src/db/schema.ts` 等を拡張し、`custom_game_events` などに `guild_id` を追加。ユーザーと Riot ID の関連はギルド間で共通しているので、正規化する。

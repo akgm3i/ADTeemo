@@ -10,6 +10,7 @@ import { ensureRoles } from "./features/role-management.ts";
 import { loadCommands } from "./common/command_loader.ts";
 import { apiClient } from "./api_client.ts";
 import { messageHandler, messageKeys } from "./messages.ts";
+import { botLogger } from "./logger.ts";
 
 // Create a new client instance
 const client = new Client({
@@ -27,7 +28,10 @@ client.commands = new Collection();
 
 // When the client is ready, run this code (only once)
 client.once(Events.ClientReady, (c) => {
-  console.log(`Ready! Logged in as ${c.user.tag}`);
+  botLogger.info("bot.ready", {
+    userTag: c.user.tag,
+    userId: c.user.id,
+  });
 });
 
 export async function handleInteractionCreate(interaction: Interaction) {
@@ -37,16 +41,25 @@ export async function handleInteractionCreate(interaction: Interaction) {
     );
 
     if (!command) {
-      console.error(
-        `No command matching ${interaction.commandName} was found.`,
-      );
+      botLogger.warn("command.not_found", {
+        commandName: interaction.commandName,
+        guildId: interaction.guild?.id ?? null,
+      });
       return;
     }
 
     try {
       await command.execute(interaction);
     } catch (error) {
-      console.error(error);
+      botLogger.error(
+        "command.execution_failed",
+        {
+          commandName: interaction.commandName,
+          guildId: interaction.guild?.id ?? null,
+          userId: interaction.user.id,
+        },
+        error,
+      );
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp({
           content: messageHandler.formatMessage(
@@ -79,9 +92,13 @@ export async function handleInteractionCreate(interaction: Interaction) {
         );
 
         if (!deleteResult.success) {
-          console.error(
-            `Failed to delete event ${discordEventId} from DB`,
-            deleteResult.error,
+          botLogger.error(
+            "custom_game.cancel.delete_failed",
+            {
+              discordEventId,
+              guildId: interaction.guild?.id ?? null,
+              error: deleteResult.error,
+            },
           );
           await interaction.editReply({
             content: messageHandler.formatMessage(
@@ -95,8 +112,12 @@ export async function handleInteractionCreate(interaction: Interaction) {
         try {
           await interaction.guild?.scheduledEvents.delete(discordEventId);
         } catch (e) {
-          console.error(
-            `Failed to delete scheduled event ${discordEventId}:`,
+          botLogger.error(
+            "custom_game.cancel.discord_event_delete_failed",
+            {
+              discordEventId,
+              guildId: interaction.guild?.id ?? null,
+            },
             e,
           );
         }
@@ -106,8 +127,13 @@ export async function handleInteractionCreate(interaction: Interaction) {
             await interaction.channel.messages.delete(recruitmentMessageId);
           }
         } catch (e) {
-          console.error(
-            `Failed to delete recruitment message ${recruitmentMessageId}:`,
+          botLogger.error(
+            "custom_game.cancel.recruitment_delete_failed",
+            {
+              recruitmentMessageId,
+              channelId: interaction.channel?.id ?? null,
+              guildId: interaction.guild?.id ?? null,
+            },
             e,
           );
         }
@@ -119,7 +145,13 @@ export async function handleInteractionCreate(interaction: Interaction) {
           components: [],
         });
       } catch (e) {
-        console.error("Error handling cancel-event-select:", e);
+        botLogger.error(
+          "custom_game.cancel.unhandled_error",
+          {
+            guildId: interaction.guild?.id ?? null,
+          },
+          e,
+        );
         await interaction.editReply({
           content: messageHandler.formatMessage(
             messageKeys.customGame.cancel.error.generic,
@@ -136,7 +168,10 @@ client.on(Events.InteractionCreate, handleInteractionCreate);
 
 // When the bot joins a new guild, run this code
 client.on(Events.GuildCreate, async (guild) => {
-  console.log(`Joined a new guild: ${guild.name} (id: ${guild.id})`);
+  botLogger.info("guild.joined", {
+    guildId: guild.id,
+    guildName: guild.name,
+  });
 
   try {
     const owner = await guild.fetchOwner();
@@ -180,8 +215,12 @@ client.on(Events.GuildCreate, async (guild) => {
             guildName: guild.name,
           },
         );
-        console.error(
-          `Error setting up roles for guild ${guild.id}:`,
+        botLogger.error(
+          "guild.roles.setup_failed",
+          {
+            guildId: guild.id,
+            guildName: guild.name,
+          },
           result.error,
         );
         break;
@@ -189,8 +228,12 @@ client.on(Events.GuildCreate, async (guild) => {
 
     await owner.send(message);
   } catch (error) {
-    console.error(
-      `Could not fetch owner or send DM to owner of guild ${guild.id}`,
+    botLogger.error(
+      "guild.owner_notification_failed",
+      {
+        guildId: guild.id,
+        guildName: guild.name,
+      },
       error,
     );
   }
@@ -200,7 +243,7 @@ client.on(Events.GuildCreate, async (guild) => {
 async function startBot() {
   const token = Deno.env.get("DISCORD_TOKEN");
   if (!token) {
-    console.error("Error: DISCORD_TOKEN environment variable not set.");
+    botLogger.error("bot.start.missing_token");
     Deno.exit(1);
   }
   const commands = await loadCommands();

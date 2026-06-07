@@ -1,11 +1,11 @@
-import { assert } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import { Collection, SlashCommandBuilder } from "discord.js";
-import { handleInteractionCreate } from "./main.ts";
 import { MockInteractionBuilder } from "./test_utils.ts";
 import type { Command } from "./types.ts";
 import { messageHandler, messageKeys } from "./messages.ts";
+import { handleInteractionCreate } from "./main.ts";
 
 describe("Main Bot Logic", () => {
   describe("handleInteractionCreate", () => {
@@ -29,9 +29,9 @@ describe("Main Bot Logic", () => {
       assertSpyCall(executeSpy, 0, { args: [interaction] });
     });
 
-    test("未登録のコマンドが実行されると、エラーがログに出力され、コマンドは実行されない", async () => {
+    test("未登録のコマンドが実行されると、コマンド名とギルドIDを含む構造化警告ログを出力する", async () => {
       // Arrange
-      using consoleErrorStub = stub(console, "error");
+      using consoleLogStub = stub(console, "log");
       const commands = new Collection<string, Command>();
       const interaction = new MockInteractionBuilder("unregistered")
         .withClient({ commands })
@@ -41,12 +41,15 @@ describe("Main Bot Logic", () => {
       await handleInteractionCreate(interaction);
 
       // Assert
-      assertSpyCall(consoleErrorStub, 0);
-      assert(
-        (consoleErrorStub.calls[0].args[0] as string).startsWith(
-          "No command matching",
-        ),
-      );
+      assertSpyCalls(consoleLogStub, 1);
+      const [firstCall] = consoleLogStub.calls;
+      const payload = firstCall.args[0] as string;
+      const parsed = JSON.parse(payload);
+      assertEquals(parsed.component, "bot");
+      assertEquals(parsed.level, "WARN");
+      assertEquals(parsed.message, "command.not_found");
+      assertEquals(parsed.commandName, "unregistered");
+      assertEquals(parsed.guildId, "mock-guild-id");
     });
 
     test("コマンドの実行中にエラーが発生すると、follow upメッセージでエラーを報告する", async () => {
