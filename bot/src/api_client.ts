@@ -1,4 +1,11 @@
 import type { Lane } from "@adteemo/api/schema";
+import type {
+  MatchWatcher,
+  MatchWatcherState,
+  RiotAccount,
+  RiotPlatform,
+  RiotRegion,
+} from "@adteemo/api/schema";
 import { type Client, hcWithType } from "@adteemo/api/hc";
 import { z } from "zod";
 import { createParticipantSchema } from "@adteemo/api/validators";
@@ -10,14 +17,61 @@ if (!API_URL) {
 
 export const client: Client = hcWithType(API_URL);
 
+function dateOrNull(value: string | Date | null) {
+  return value === null ? null : new Date(value);
+}
+
+function parseRiotAccount(
+  account: {
+    createdAt: string | Date;
+    updatedAt: string | Date | null;
+  } & Omit<RiotAccount, "createdAt" | "updatedAt">,
+): RiotAccount {
+  return {
+    ...account,
+    createdAt: new Date(account.createdAt),
+    updatedAt: dateOrNull(account.updatedAt),
+  };
+}
+
+function parseMatchWatcher(
+  watcher:
+    & {
+      createdAt: string | Date;
+      updatedAt: string | Date | null;
+      gameStartedAt: string | Date | null;
+      lastCheckedAt: string | Date | null;
+      lastInGameNotifiedAt: string | Date | null;
+    }
+    & Omit<
+      MatchWatcher,
+      | "createdAt"
+      | "updatedAt"
+      | "gameStartedAt"
+      | "lastCheckedAt"
+      | "lastInGameNotifiedAt"
+    >,
+): MatchWatcher {
+  return {
+    ...watcher,
+    createdAt: new Date(watcher.createdAt),
+    updatedAt: dateOrNull(watcher.updatedAt),
+    gameStartedAt: dateOrNull(watcher.gameStartedAt),
+    lastCheckedAt: dateOrNull(watcher.lastCheckedAt),
+    lastInGameNotifiedAt: dateOrNull(watcher.lastInGameNotifiedAt),
+  };
+}
+
 async function linkAccountByRiotId(
   discordId: string,
   gameName: string,
   tagLine: string,
+  platform?: RiotPlatform,
+  region?: RiotRegion,
 ) {
   try {
     const res = await client.users["link-by-riot-id"].$patch({
-      json: { discordId, gameName, tagLine },
+      json: { discordId, gameName, tagLine, platform, region },
     });
 
     if (!res.ok) {
@@ -36,6 +90,28 @@ async function linkAccountByRiotId(
       success: false as const,
       error: "Failed to communicate with API",
     };
+  }
+}
+
+async function getRiotAccount(discordId: string) {
+  try {
+    const res = await client.users[":userId"]["riot-account"].$get({
+      param: { userId: discordId },
+    });
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        const body = await res.json();
+        return { success: false as const, error: body.error };
+      }
+      throw new Error(`Unexpected response: ${res}`);
+    }
+
+    const body = await res.json();
+    return { success: true as const, account: parseRiotAccount(body.account) };
+  } catch (error) {
+    console.error("Failed to communicate with API", error);
+    return { success: false as const, error: "Failed to communicate with API" };
   }
 }
 
@@ -218,8 +294,101 @@ async function getLoginUrl(discordId: string) {
   }
 }
 
+async function watchMatch(watcher: {
+  guildId: string;
+  targetDiscordId: string;
+  requesterId: string;
+  channelId: string;
+}) {
+  try {
+    const res = await client["match-watchers"].$post({ json: watcher });
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        const body = await res.json();
+        return { success: false as const, error: body.error };
+      }
+      throw new Error(`Unexpected response: ${res}`);
+    }
+
+    return { success: true as const };
+  } catch (error) {
+    console.error("Failed to communicate with API", error);
+    return { success: false as const, error: "Failed to communicate with API" };
+  }
+}
+
+async function unwatchMatch(guildId: string, targetDiscordId: string) {
+  try {
+    const res = await client["match-watchers"][":guildId"][
+      ":targetDiscordId"
+    ].$delete({
+      param: { guildId, targetDiscordId },
+    });
+
+    if (!res.ok) {
+      throw new Error(`Unexpected response: ${res}`);
+    }
+
+    return { success: true as const };
+  } catch (error) {
+    console.error("Failed to communicate with API", error);
+    return { success: false as const, error: "Failed to communicate with API" };
+  }
+}
+
+async function getEnabledMatchWatchers() {
+  try {
+    const res = await client["match-watchers"].enabled.$get();
+
+    if (!res.ok) {
+      throw new Error(`Unexpected response: ${res}`);
+    }
+
+    const body = await res.json();
+    return {
+      success: true as const,
+      watchers: body.watchers.map(parseMatchWatcher),
+    };
+  } catch (error) {
+    console.error("Failed to communicate with API", error);
+    return { success: false as const, error: "Failed to communicate with API" };
+  }
+}
+
+async function updateMatchWatcherState(
+  guildId: string,
+  targetDiscordId: string,
+  state: {
+    lastState: MatchWatcherState;
+    currentGameId?: string | null;
+    currentMatchId?: string | null;
+    gameStartedAt?: Date | null;
+    lastCheckedAt?: Date | null;
+    lastInGameNotifiedAt?: Date | null;
+  },
+) {
+  try {
+    const res = await client["match-watchers"][":guildId"][":targetDiscordId"]
+      .state.$patch({
+        param: { guildId, targetDiscordId },
+        json: state,
+      });
+
+    if (!res.ok) {
+      throw new Error(`Unexpected response: ${res}`);
+    }
+
+    return { success: true as const };
+  } catch (error) {
+    console.error("Failed to communicate with API", error);
+    return { success: false as const, error: "Failed to communicate with API" };
+  }
+}
+
 export const apiClient = {
   linkAccountByRiotId,
+  getRiotAccount,
   checkHealth,
   setMainRole,
   createCustomGameEvent,
@@ -228,4 +397,8 @@ export const apiClient = {
   getEventStartingTodayByCreatorId,
   createMatchParticipant,
   getLoginUrl,
+  watchMatch,
+  unwatchMatch,
+  getEnabledMatchWatchers,
+  updateMatchWatcherState,
 };

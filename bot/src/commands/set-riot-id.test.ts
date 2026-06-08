@@ -18,7 +18,10 @@ describe("Command: set-riot-id", () => {
       );
 
       const options = json.options ?? [];
-      assertEquals(options.map((option) => option.name), ["riot-id"]);
+      assertEquals(options.map((option) => option.name), [
+        "riot-id",
+        "platform",
+      ]);
       const riotIdOption = options[0];
       assertEquals(
         riotIdOption?.description,
@@ -50,7 +53,7 @@ describe("Command: set-riot-id", () => {
     // Assert
     const [gameName, tagLine] = riotId.split("#");
     assertSpyCall(linkAccountByRiotIdStub, 0, {
-      args: [mockUserId, gameName, tagLine],
+      args: [mockUserId, gameName, tagLine, "jp1", "asia"],
     });
     assertSpyCall(editReplySpy, 0);
     assertSpyCall(formatMessageSpy, 0, {
@@ -81,7 +84,7 @@ describe("Command: set-riot-id", () => {
     // Assert
     const [gameName, tagLine] = riotId.split("#");
     assertSpyCall(linkAccountByRiotIdStub, 0, {
-      args: [mockUserId, gameName, tagLine],
+      args: [mockUserId, gameName, tagLine, "jp1", "asia"],
     });
     assertSpyCall(editReplySpy, 0);
     assertSpyCall(formatMessageSpy, 0, {

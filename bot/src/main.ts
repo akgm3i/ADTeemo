@@ -9,6 +9,7 @@ import {
 import { ensureRoles } from "./features/role-management.ts";
 import { loadCommands } from "./common/command_loader.ts";
 import { apiClient } from "./api_client.ts";
+import { matchTracker } from "./features/match_tracking.ts";
 import { messageHandler, messageKeys } from "./messages.ts";
 import { botLogger } from "./logger.ts";
 
@@ -32,6 +33,7 @@ client.once(Events.ClientReady, (c) => {
     userTag: c.user.tag,
     userId: c.user.id,
   });
+  matchTracker.startMatchTrackingWorker(c);
 });
 
 export async function handleInteractionCreate(interaction: Interaction) {
