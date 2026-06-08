@@ -17,7 +17,7 @@ import {
   userGuildProfiles,
   users,
 } from "./schema.ts";
-import { RecordNotFoundError } from "../errors.ts";
+import { MatchWatcherLimitError, RecordNotFoundError } from "../errors.ts";
 
 const userInsertSchema = createInsertSchema(users);
 const guildInsertSchema = createInsertSchema(guilds);
@@ -26,6 +26,13 @@ const userGuildProfileInsertSchema = createInsertSchema(userGuildProfiles);
 const customGameEventInsertSchema = createInsertSchema(customGameEvents);
 const matchParticipantInsertSchema = createInsertSchema(matchParticipants);
 const matchWatcherInsertSchema = createInsertSchema(matchWatchers);
+
+const DEFAULT_MATCH_WATCH_MAX_ENABLED_PER_GUILD = 20;
+
+function numberEnv(name: string, fallback: number) {
+  const value = Number(Deno.env.get(name));
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
 
 async function upsertUser(userId: string) {
   const user = { discordId: userId };
@@ -230,6 +237,11 @@ async function upsertMatchWatcher(watcher: {
   requesterId: string;
   channelId: string;
 }) {
+  const maxEnabledPerGuild = numberEnv(
+    "MATCH_WATCH_MAX_ENABLED_PER_GUILD",
+    DEFAULT_MATCH_WATCH_MAX_ENABLED_PER_GUILD,
+  );
+
   await db.transaction(async (tx) => {
     await tx.insert(guilds).values({ id: watcher.guildId })
       .onConflictDoNothing()
@@ -243,6 +255,23 @@ async function upsertMatchWatcher(watcher: {
     if (!targetAccount) {
       throw new RecordNotFoundError(
         `Riot account for ${watcher.targetDiscordId} not found`,
+      );
+    }
+
+    const enabledWatchers = await tx.query.matchWatchers.findMany({
+      where: and(
+        eq(matchWatchers.guildId, watcher.guildId),
+        eq(matchWatchers.enabled, true),
+      ),
+    });
+    const isAlreadyEnabledTarget = enabledWatchers.some((enabledWatcher) =>
+      enabledWatcher.targetDiscordId === watcher.targetDiscordId
+    );
+    if (
+      !isAlreadyEnabledTarget && enabledWatchers.length >= maxEnabledPerGuild
+    ) {
+      throw new MatchWatcherLimitError(
+        `Enabled match watchers limit exceeded for guild ${watcher.guildId}`,
       );
     }
 

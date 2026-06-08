@@ -61,6 +61,28 @@ describe("Command: set-riot-id", () => {
     });
   });
 
+  test("OCEプラットフォームが指定された場合、Regional Routingをseaとして登録する", async () => {
+    const mockUserId = "user-123";
+    const riotId = "TestSummoner#OCE";
+    const mockInteraction = new MockInteractionBuilder("set-riot-id")
+      .withUser({ id: mockUserId })
+      .withStringOption("riot-id", riotId)
+      .withStringOption("platform", "oc1")
+      .build();
+    using linkAccountByRiotIdStub = stub(
+      apiClient,
+      "linkAccountByRiotId",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await execute(mockInteraction as unknown as CommandInteraction);
+
+    const [gameName, tagLine] = riotId.split("#");
+    assertSpyCall(linkAccountByRiotIdStub, 0, {
+      args: [mockUserId, gameName, tagLine, "oc1", "sea"],
+    });
+  });
+
   test("APIでの連携に失敗した場合、エラーメッセージを返す", async () => {
     // Arrange
     const mockUserId = "user-123";

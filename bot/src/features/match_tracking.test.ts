@@ -5,6 +5,7 @@ import type { Client } from "discord.js";
 import type { MatchWatcher, RiotAccount } from "@adteemo/api/schema";
 import { riotApi } from "@adteemo/api/riot-api";
 import { apiClient } from "../api_client.ts";
+import { botLogger } from "../logger.ts";
 import { matchTracker } from "./match_tracking.ts";
 
 function watcher(overrides: Partial<MatchWatcher> = {}): MatchWatcher {
@@ -89,9 +90,11 @@ function match() {
   };
 }
 
-function clientWithSend() {
+function clientWithSend(
+  send: () => Promise<unknown> = () => Promise.resolve(),
+) {
   const channel = {
-    send: () => Promise.resolve(),
+    send,
   };
   const sendSpy = spy(channel, "send");
   const client = {
@@ -140,42 +143,56 @@ describe("match_tracking.ts", () => {
   });
 
   test("試合中通知間隔を過ぎたとき、概要更新を送る", async () => {
+    const originalInterval = Deno.env.get(
+      "MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS",
+    );
     Deno.env.set("MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS", "1");
-    const { client, sendSpy } = clientWithSend();
-    using _getWatchersStub = stub(
-      apiClient,
-      "getEnabledMatchWatchers",
-      () =>
-        Promise.resolve({
-          success: true as const,
-          watchers: [watcher({
-            lastState: "IN_GAME",
-            currentGameId: "12345",
-            lastInGameNotifiedAt: new Date(Date.now() - 10_000),
-          })],
-        }),
-    );
-    using _getAccountStub = stub(
-      apiClient,
-      "getRiotAccount",
-      () => Promise.resolve({ success: true as const, account: account() }),
-    );
-    using _activeGameStub = stub(
-      riotApi,
-      "getActiveGameByPuuid",
-      () => Promise.resolve(activeGame()),
-    );
-    using updateStub = stub(
-      apiClient,
-      "updateMatchWatcherState",
-      () => Promise.resolve({ success: true as const }),
-    );
+    try {
+      const { client, sendSpy } = clientWithSend();
+      using _getWatchersStub = stub(
+        apiClient,
+        "getEnabledMatchWatchers",
+        () =>
+          Promise.resolve({
+            success: true as const,
+            watchers: [watcher({
+              lastState: "IN_GAME",
+              currentGameId: "12345",
+              lastInGameNotifiedAt: new Date(Date.now() - 10_000),
+            })],
+          }),
+      );
+      using _getAccountStub = stub(
+        apiClient,
+        "getRiotAccount",
+        () => Promise.resolve({ success: true as const, account: account() }),
+      );
+      using _activeGameStub = stub(
+        riotApi,
+        "getActiveGameByPuuid",
+        () => Promise.resolve(activeGame()),
+      );
+      using updateStub = stub(
+        apiClient,
+        "updateMatchWatcherState",
+        () => Promise.resolve({ success: true as const }),
+      );
 
-    await matchTracker.processMatchWatchers(client);
+      await matchTracker.processMatchWatchers(client);
 
-    assertSpyCalls(sendSpy, 1);
-    assertEquals(updateStub.calls[0].args[2].lastState, "IN_GAME");
-    assertEquals(updateStub.calls[0].args[2].currentGameId, "12345");
+      assertSpyCalls(sendSpy, 1);
+      assertEquals(updateStub.calls[0].args[2].lastState, "IN_GAME");
+      assertEquals(updateStub.calls[0].args[2].currentGameId, "12345");
+    } finally {
+      if (originalInterval === undefined) {
+        Deno.env.delete("MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS");
+      } else {
+        Deno.env.set(
+          "MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS",
+          originalInterval,
+        );
+      }
+    }
   });
 
   test("試合終了後にMatch-v5が取得できたとき、終了通知と戦績通知を送る", async () => {
@@ -219,5 +236,113 @@ describe("match_tracking.ts", () => {
     assertSpyCall(getMatchStub, 0, { args: ["asia", "JP1_12345"] });
     assertEquals(updateStub.calls.at(-1)?.args[2].lastState, "IDLE");
     assertEquals(updateStub.calls.at(-1)?.args[2].currentGameId, null);
+  });
+
+  test("結果取得待ちが一定時間を超えたとき、Match-v5を再試行せずIDLEへ戻す", async () => {
+    const { client, sendSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "FETCHING_RESULT",
+            currentGameId: "12345",
+            currentMatchId: "JP1_12345",
+            gameStartedAt: new Date(Date.now() - 4 * 60 * 60 * 1000),
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(getMatchStub, 0);
+    assertSpyCalls(sendSpy, 1);
+    assertEquals(updateStub.calls[0].args[2].lastState, "IDLE");
+    assertEquals(updateStub.calls[0].args[2].currentGameId, null);
+    assertEquals(updateStub.calls[0].args[2].currentMatchId, null);
+    assertEquals(updateStub.calls[0].args[2].gameStartedAt, null);
+  });
+
+  test("IDLEかつ試合中ではない監視対象では、DB状態更新をスキップする", async () => {
+    const { client, sendSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher()],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(null),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(activeGameStub, 1);
+    assertSpyCalls(sendSpy, 0);
+    assertSpyCalls(updateStub, 0);
+  });
+
+  test("通知送信に失敗しても、試合開始の状態更新は継続する", async () => {
+    const { client } = clientWithSend(() =>
+      Promise.reject(new Error("Missing permissions"))
+    );
+    using _loggerStub = stub(botLogger, "error", () => {});
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () => Promise.resolve({ success: true as const, watchers: [watcher()] }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(activeGame()),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertEquals(updateStub.calls[0].args[2].lastState, "IN_GAME");
+    assertEquals(updateStub.calls[0].args[2].currentGameId, "12345");
   });
 });

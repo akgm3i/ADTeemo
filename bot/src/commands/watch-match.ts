@@ -42,8 +42,7 @@ export async function execute(interaction: CommandInteraction) {
 
   if (!result.success) {
     await interaction.editReply({
-      content:
-        `${target} のRiot ID連携が見つからないため、試合監視を開始できませんでした。先に /set-riot-id を実行してください。`,
+      content: `${target} の試合監視を開始できませんでした: ${result.error}`,
     });
     return;
   }

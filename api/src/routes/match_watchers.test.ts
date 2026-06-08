@@ -4,7 +4,7 @@ import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, stub } from "@std/testing/mock";
 import app from "../app.ts";
 import { dbActions } from "../db/actions.ts";
-import { RecordNotFoundError } from "../errors.ts";
+import { MatchWatcherLimitError, RecordNotFoundError } from "../errors.ts";
 
 describe("routes/match_watchers.ts", () => {
   const client = testClient(app);
@@ -38,6 +38,21 @@ describe("routes/match_watchers.ts", () => {
     const res = await client["match-watchers"].$post({ json: watcher });
 
     assertEquals(res.status, 404);
+  });
+
+  test("有効な監視対象数が上限に達していると、409を返す", async () => {
+    using _upsertStub = stub(
+      dbActions,
+      "upsertMatchWatcher",
+      () =>
+        Promise.reject(
+          new MatchWatcherLimitError("Enabled match watchers limit exceeded"),
+        ),
+    );
+
+    const res = await client["match-watchers"].$post({ json: watcher });
+
+    assertEquals(res.status, 409);
   });
 
   test("有効な監視設定一覧を返す", async () => {

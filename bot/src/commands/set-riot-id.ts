@@ -29,7 +29,9 @@ const platformChoices: RiotPlatform[] = [
 function regionForPlatform(platform: RiotPlatform): RiotRegion {
   if (["na1", "br1", "la1", "la2"].includes(platform)) return "americas";
   if (["euw1", "eun1", "tr1", "ru"].includes(platform)) return "europe";
-  if (["ph2", "sg2", "th2", "tw2", "vn2"].includes(platform)) return "sea";
+  if (["oc1", "ph2", "sg2", "th2", "tw2", "vn2"].includes(platform)) {
+    return "sea";
+  }
   return "asia";
 }
 

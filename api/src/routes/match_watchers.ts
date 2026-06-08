@@ -3,7 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { dbActions } from "../db/actions.ts";
 import { matchWatcherStates } from "../db/schema.ts";
-import { RecordNotFoundError } from "../errors.ts";
+import { MatchWatcherLimitError, RecordNotFoundError } from "../errors.ts";
 
 const createMatchWatcherSchema = z.object({
   guildId: z.string(),
@@ -30,6 +30,9 @@ export const matchWatchersRoutes = new Hono()
     } catch (e) {
       if (e instanceof RecordNotFoundError) {
         return c.json({ error: e.message }, 404);
+      }
+      if (e instanceof MatchWatcherLimitError) {
+        return c.json({ error: e.message }, 409);
       }
       throw e;
     }

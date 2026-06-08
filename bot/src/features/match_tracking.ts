@@ -6,6 +6,7 @@ import { botLogger } from "../logger.ts";
 
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
 const DEFAULT_IN_GAME_NOTIFY_INTERVAL_MS = 300_000;
+const DEFAULT_RESULT_FETCH_TIMEOUT_MS = 3 * 60 * 60 * 1000;
 
 type ActiveGame = NonNullable<
   Awaited<ReturnType<typeof riotApi.getActiveGameByPuuid>>
@@ -41,6 +42,18 @@ function shouldNotifyInGame(
   return now.getTime() - watcher.lastInGameNotifiedAt.getTime() >= intervalMs;
 }
 
+function hasResultFetchTimedOut(
+  watcher: MatchWatcher,
+  timeoutMs = numberEnv(
+    "MATCH_WATCH_RESULT_FETCH_TIMEOUT_MS",
+    DEFAULT_RESULT_FETCH_TIMEOUT_MS,
+  ),
+  now = new Date(),
+) {
+  if (!watcher.gameStartedAt) return false;
+  return now.getTime() - watcher.gameStartedAt.getTime() >= timeoutMs;
+}
+
 function formatActiveGameMessage(
   watcher: MatchWatcher,
   account: RiotAccount,
@@ -72,6 +85,18 @@ function formatFinishDetectedMessage(watcher: MatchWatcher, matchId: string) {
     `<@${watcher.targetDiscordId}> の試合が終了しました。`,
     `Match ID: ${matchId}`,
     "戦績が反映され次第、結果を通知します。",
+  ].join("\n");
+}
+
+function formatResultFetchTimeoutMessage(
+  watcher: MatchWatcher,
+  matchId: string,
+) {
+  return [
+    "### 試合結果の取得を停止しました",
+    `<@${watcher.targetDiscordId}> の試合結果を一定時間内に取得できませんでした。`,
+    `Match ID: ${matchId}`,
+    "継続監視は続行し、次の試合開始を検知します。",
   ].join("\n");
 }
 
@@ -109,15 +134,22 @@ async function sendToWatcherChannel(
   watcher: MatchWatcher,
   content: string,
 ) {
-  const channel = await client.channels.fetch(watcher.channelId);
-  if (!channel || !("send" in channel)) {
-    botLogger.warn("match_tracking.channel_not_found", {
+  try {
+    const channel = await client.channels.fetch(watcher.channelId);
+    if (!channel || !("send" in channel)) {
+      botLogger.warn("match_tracking.channel_not_found", {
+        guildId: watcher.guildId,
+        channelId: watcher.channelId,
+      });
+      return;
+    }
+    await channel.send(content);
+  } catch (error) {
+    botLogger.error("match_tracking.send_message_failed", {
       guildId: watcher.guildId,
       channelId: watcher.channelId,
-    });
-    return;
+    }, error);
   }
-  await channel.send(content);
 }
 
 async function setWatcherState(
@@ -182,6 +214,28 @@ async function processWatcher(client: Client, watcher: MatchWatcher) {
   const account = accountResult.account;
 
   if (watcher.lastState === "FETCHING_RESULT" && watcher.currentMatchId) {
+    if (hasResultFetchTimedOut(watcher)) {
+      botLogger.warn("match_tracking.fetch_result_timeout", {
+        guildId: watcher.guildId,
+        targetDiscordId: watcher.targetDiscordId,
+        matchId: watcher.currentMatchId,
+      });
+      await sendToWatcherChannel(
+        client,
+        watcher,
+        formatResultFetchTimeoutMessage(watcher, watcher.currentMatchId),
+      );
+      await setWatcherState(watcher, {
+        lastState: "IDLE",
+        currentGameId: null,
+        currentMatchId: null,
+        gameStartedAt: null,
+        lastCheckedAt: new Date(),
+        lastInGameNotifiedAt: null,
+      });
+      return;
+    }
+
     await tryFetchAndNotifyResult(
       client,
       watcher,
@@ -204,6 +258,10 @@ async function processWatcher(client: Client, watcher: MatchWatcher) {
         formatFinishDetectedMessage(watcher, matchId),
       );
       await tryFetchAndNotifyResult(client, watcher, account, matchId);
+      return;
+    }
+
+    if (watcher.lastState === "IDLE" && watcher.currentGameId === null) {
       return;
     }
 
@@ -341,5 +399,6 @@ export const matchTracker = {
   processMatchWatchers,
   startMatchTrackingWorker,
   stopMatchTrackingWorker,
+  hasResultFetchTimedOut,
   shouldNotifyInGame,
 };
