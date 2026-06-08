@@ -1,6 +1,6 @@
 import { testClient } from "@hono/hono/testing";
 import { describe, test } from "@std/testing/bdd";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertFalse } from "@std/assert";
 import { assertSpyCall, stub } from "@std/testing/mock";
 import app from "../app.ts";
 import { dbActions } from "../db/actions.ts";
@@ -35,7 +35,7 @@ describe("routes/auth.ts", () => {
 
         // Assert
         assert(res.ok);
-        const body = await res.json();
+        const body = await res.json() as Record<string, unknown>;
         assertEquals(
           body.url,
           `https://mock.auth.url/authorize?state=${FIXED_UUID}`,
@@ -118,7 +118,11 @@ describe("routes/auth.ts", () => {
           "getAuthState",
           () => Promise.resolve(undefined),
         );
-        const mockFormatMessage = stub(messageHandler, "formatMessage");
+        using mockFormatMessage = stub(
+          messageHandler,
+          "formatMessage",
+          () => "Invalid state.",
+        );
         const client = testClient(app);
 
         // Act
@@ -128,9 +132,52 @@ describe("routes/auth.ts", () => {
 
         // Assert
         assertEquals(res.status, 400);
+        const body = await res.json() as Record<string, unknown>;
+        assertEquals(body, { error: "Invalid state." });
+        assertFalse("success" in body);
         assertSpyCall(getAuthStateStub, 0, { args: ["invalid-state"] });
         assertSpyCall(mockFormatMessage, 0, {
           args: [messageKeys.riotAccount.link.error.invalidState],
+        });
+      });
+
+      test("RSOトークン交換に失敗した場合、500とエラーメッセージを返しsuccessフラグは含めない", async () => {
+        // Arrange
+        const state = "valid-state-123";
+        using _getAuthStateStub = stub(
+          dbActions,
+          "getAuthState",
+          () =>
+            Promise.resolve({
+              discordId: "discord-id-456",
+              state,
+              createdAt: new Date(),
+            }),
+        );
+        using _exchangeCodeForTokensStub = stub(
+          rso,
+          "exchangeCodeForTokens",
+          () => Promise.reject(new Error("RSO error")),
+        );
+        using formatMessageStub = stub(
+          messageHandler,
+          "formatMessage",
+          () => "Internal server error.",
+        );
+        const client = testClient(app);
+
+        // Act
+        const res = await client.auth.rso.callback.$get({
+          query: { code: "valid-code", state },
+        });
+
+        // Assert
+        assertEquals(res.status, 500);
+        const body = await res.json() as Record<string, unknown>;
+        assertEquals(body, { error: "Internal server error." });
+        assertFalse("success" in body);
+        assertSpyCall(formatMessageStub, 0, {
+          args: [messageKeys.common.error.internalServerError],
         });
       });
     });

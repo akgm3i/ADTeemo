@@ -47,7 +47,6 @@ export const authRoutes = new Hono()
           await dbActions.deleteAuthState(state);
         }
         return c.json({
-          success: false,
           error: messageHandler.formatMessage(
             messageKeys.riotAccount.link.error.invalidState,
           ),
@@ -102,7 +101,6 @@ export const authRoutes = new Hono()
         console.error("Error during RSO callback:", error);
         return c.json(
           {
-            success: false,
             error: messageHandler.formatMessage(
               messageKeys.common.error.internalServerError,
             ),
