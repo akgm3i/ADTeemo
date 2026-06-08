@@ -9,6 +9,7 @@
     "lint": "deno lint",
     "check": "deno check api/src/app.ts bot/src/main.ts messages/src/main.ts lib/logger/mod.ts",
     "test:all": "deno test --allow-env --allow-read --allow-sys --allow-ffi --env-file=.env.example --coverage -q",
+    "test:riot-live": "RIOT_LIVE_TEST=1 deno test --allow-env --allow-net --env-file=.env api/src/riot_api.live.test.ts",
     "test:allcov": "deno task test:all",
     "quality": { "dependencies": ["fmt:check", "lint", "check", "test:all"] },
     "check:messages": "deno run --allow-read messages/src/check-messages.ts",

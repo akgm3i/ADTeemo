@@ -28,6 +28,7 @@ docker compose --profile dev run --rm dev deno task test:all
 | API client      | Bot の API 境界                             | `bot/src/api_client.test.ts`       | Hono RPC client または client factory を stub する方針へ移行 |
 | DB action       | Drizzle query / transaction                 | 将来 `api/src/db/*.test.ts`        | 一時SQLite DBで隔離                                          |
 | Integration     | Bot / API / DB の連携                       | 将来 `tests/integration/`          | Discord / Riot など外部サービスは mock                       |
+| Live external   | 実際の Riot API 疎通                        | `api/src/*.live.test.ts`           | 明示 opt-in。通常の `test:all` では skip                     |
 | Message catalog | 多言語メッセージ整合性                      | `messages/src/*.test.ts`           | 一時ディレクトリや環境変数を stub                            |
 
 ## 3. Deno とテストライブラリ
@@ -250,6 +251,33 @@ Bot command のユニットテストは、Discord interaction の入力解釈、
 - `apiClient` の内部実装である `fetch` を command test から stub しません。
 - `messageHandler.formatMessage` は必要に応じて stub し、どの message key を使ったかを検証します。
 - guild 専用コマンドは DM 実行時のエラーも検証します。
+
+## 12. Riot API Live Tests
+
+通常の `deno task test:all` は外部サービスへ接続しない安定したテストとして維持します。実際の Riot API を使う確認は、明示的に次を実行します。
+
+```bash
+RIOT_API_KEY="RGAPI-..." \
+RIOT_LIVE_TEST_RIOT_ID="GameName#TagLine" \
+RIOT_LIVE_TEST_PLATFORM="jp1" \
+RIOT_LIVE_TEST_REGION="asia" \
+deno task test:riot-live
+```
+
+Match-v5 まで確認する場合は、直近の Match ID も渡します。
+
+```bash
+RIOT_LIVE_TEST_MATCH_ID="JP1_123456789" deno task test:riot-live
+```
+
+Riot API キーは Riot Developer Portal にログインすると Development API Key として発行されます。Development API Key は一時的なキーで、Riot 公式ドキュメント上も 24 時間ごとに無効化されるため、live test 失敗時はまずキー期限を確認してください。Personal / Production Key が必要な運用に移る場合は、Developer Portal でプロダクト登録を行います。
+
+live test の注意点:
+
+- `RIOT_API_KEY` は `.env.example` や Git 管理ファイルに保存しません。
+- live test は 401/403、429、Riot API 側障害、対象ユーザーが試合中でない状態に影響されます。
+- Spectator-v5 は対象が試合中でない場合 404 相当として `null` を正常扱いします。
+- Match-v5 は終了直後に反映遅延があるため、指定 Match ID が取得できない場合は時間を置いて再実行します。
 
 例:
 
