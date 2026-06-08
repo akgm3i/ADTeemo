@@ -1,30 +1,66 @@
-# docs/TASKS.md — ADTeemo Roadmap Checklist
+# TASKS.md — ADTeemo Roadmap Checklist
 
-このファイルは Codex が進捗管理しやすいよう、実装順に並べたチェックリストです。完了したタスクは `[x]` に更新してください。
+このファイルは ADTeemo の未実装・改善作業を追跡する正規のチェックリストです。完了したタスクは `[x]` に更新してください。
+
+## 1. 完了済みの基盤修正
 
 1. [x] `bot/src/commands/create-custom-game.ts`: `deferReply` 後に `reply` を再度呼び出しているパスを修正し、常に `editReply`/`followUp` を用いる。
-2. [x] `api/src/routes/users.ts` + `api/src/db/actions.ts`: Riot ID 連携時にユーザーを確実に永続化するため `upsertUser` を組み込み、未登録でも 204 を返さないようにする。
+2. [x] `api/src/routes/users.ts` + `api/src/db/actions.ts`: Riot ID 連携時にユーザーを確実に永続化するため、未登録ユーザーでも連携できるようにする。
 3. [x] ロガーを導入し、API・Bot の主要エントリポイントからそれぞれ構造化ログを出力する（例: `api/src/app.ts`, `bot/src/main.ts`）。
-4. [ ] CI 要件定義を実施し、GitHub Actions で実行すべき検証（lint/fmt/check/test・デプロイ連携など）とトリガー条件を整理する。
-5. [ ] GitHub Actions を設定し、`deno lint`/`deno fmt --check`/`deno check`/テストを実行する CI ワークフロー（例: `.github/workflows/ci.yml`）を追加する。
-6. [x] `api/src/db/schema.ts` 等を拡張し、`custom_game_events` などに `guild_id` を追加。ユーザーと Riot ID の関連はギルド間で共通しているので、正規化する。
-7. [ ] ギルド固有設定テーブル（募集チャンネル、VC、ロールID など）と対応する API を設計・実装し、Bot 側で参照できるようにする。
-8. [ ] `api/src/db/actions.ts`/`custom_game_events` に募集メッセージのチャンネルIDを保存し、`bot/src/commands/split-teams.ts` から利用する。
-9. [ ] `bot/src/features/role-management.ts`: Bot がギルド参加時に必要ロールを自動作成または検出し、ID を保存するロジックを追加する。
-10. [ ] `bot/src/messages.ts` 経由で投稿する募集メッセージをロールIDメンションに対応させる（`@Custom` の文字列依存を解消）。
-11. [ ] `api/src/routes/matches.ts` などに試合レコード作成 API を追加し、`/record-match` 実行時に `matches` と `matchParticipants` が正しく紐付くようにする。
-12. [ ] `/start-matching` コマンド（Bot 側）を実装し、参加者不足・過多の通知、参加確定、開始状態遷移を行う。
-13. [ ] `/split-teams` 実行時に Red/Blue VC が無い場合、自動作成する。自動作成前に管理者へ確認するフローも実装する。
-14. [ ] `/my-stats`・`/next-game`・`/rematch` など SPEC 記載の追加コマンドを実装する。
-15. [ ] Riot API 連携でゲーム開始検知・戦績取得・内部レート更新を自動化する（`bot/src/features/match_tracking.ts` など）。
-16. [ ] Discord/Riot API 呼び出しに対するリクエストキューや指数バックオフ等のレート制限対策を導入する。
-17. [ ] `bot/src/api_client.test.ts` ほかのユニットテストで、`globalThis.fetch` のスタブをやめ `client.users["link-by-riot-id"].$patch` など直接依存をスタブする（方法1）。
-18. [ ] チーム分け時の戦力均等化ロジックと内部レート計算式を仕様に合わせて高度化する。
-19. [ ] Web サイトの要件定義を実施し、主要ユースケース・API 連携要件を整理する。
-20. [ ] 上記要件に基づき Web UI（管理者・参加者向け）を実装する。
-21. [x] API 応答に含まれている `success` フラグを整理し、HTTP ステータスコードだけで成否を判定できるよう統一する方針を設計・実装する。
-22. [ ] `/record-match` コマンドの戦績入力鵜を簡易化する。Message ComponentsやModal Componentsを使用する。
-23. [ ] `/start-event` を作成し、特定のイベントを開始するコマンドを実装する。 `/start-matching`, `/split-teams` などをMessage Component上のボタンなどで実行できるようにする。
-24. [x] messagesでどの言語、スタイルを使用するか環境変数から設定できるようにする。
-25. [ ] `/split-teams` で今日開始のイベントを取得するのではなく、作成されているイベントの中からどれを指定するか選べるようにする。
-26. [ ] コマンド全体の構造を見直し、サブコマンドも検討する。
+4. [x] `api/src/db/schema.ts` 等を拡張し、ギルド別ユーザープロファイルと `custom_game_events.guild_id` を導入する。
+5. [x] messages で使用する言語・テーマを環境変数から設定できるようにする。
+6. [x] Bot がギルド参加時または `/setup-roles` 実行時に必要ロールを検出・作成できるようにする。
+7. [x] API レスポンスボディから既知の `success` フラグを削除し、`auth.ts` のエラー応答もHTTPステータスと `{ error }` に統一する。
+
+## 2. 開発体験・CI・テスト基盤
+
+8. [x] `AGENTS.md` / `SPEC.md` / `TASKS.md` / `TESTING_STYLE.md` を現行方針に合わせて刷新し、進捗管理先を `TASKS.md` に統一する。
+9. [x] `deno.json` に `fmt:check` / `lint` / `check` / `test:all` / `quality` タスクを追加し、`test:all` が `.env.example` と coverage を既定で使うようにする。
+10. [ ] CI 要件定義を実施し、GitHub Actions で実行すべき検証（fmt check / lint / check / test / deploy 連携など）とトリガー条件を整理する。
+11. [ ] GitHub Actions を設定し、`deno task quality` を実行する CI ワークフロー（例: `.github/workflows/ci.yml`）を追加する。
+12. [ ] Docker 内テストの標準コマンドを検証し、必要に応じて `docker compose --profile dev run --rm dev deno task test:all` をCIまたはREADMEに組み込む。
+13. [ ] `api/src/db/index.ts` の module-level `db` singleton を段階的に解消し、`createDb(url)` と `createApp({ dbActions })` を導入してDB action testsを一時SQLiteファイルで隔離できるようにする。
+14. [ ] DB factory 導入後、`deno task test:all` の `--allow-sys` / `--allow-ffi` 権限を縮小できるか確認する。
+15. [ ] `bot/src/api_client.test.ts` ほかのユニットテストで、`globalThis.fetch` のスタブを段階的にやめ、Hono RPC client または client factory の直接依存をスタブする。
+
+## 3. API・DB設計
+
+16. [ ] `users.riotId` が Riot PUUID を保存している現状を整理し、カラム名またはモデル名を `riotPuuid` 等に改める方針を決める。
+17. [ ] Riot アカウント情報を `users` から専用テーブルへ正規化し、DiscordユーザーとRiotアカウントの関連を明確にする。
+18. [ ] `matches` はグローバル戦績として維持しつつ、開催元の `guild_id` または `custom_game_event_id` を参照できるようにする。
+19. [ ] ギルド固有設定テーブル（募集チャンネル、Lobby/Red/Blue VC、ロールID、イベント操作権限など）を設計・実装する。
+20. [ ] ギルド設定を取得・更新する API を追加し、Bot 側から参照できるようにする。
+21. [ ] DBスキーマ変更に対応する Drizzle migration を生成・適用できる状態にする。
+22. [ ] `api/src/routes/matches.ts` などに試合レコード作成 API を追加し、`/record-match` 実行時に `matches` と `matchParticipants` が正しく紐付くようにする。
+23. [ ] API エラー形式を `{ error: string }` 基本形、必要時 `{ code, error, details }` に統一し、全ルートのテストで `success` が含まれないことを必要箇所で検証する。
+
+## 4. ギルド設定・ロール管理
+
+24. [ ] 自動作成または検出した Discord ロールIDをギルド設定として永続化する。
+25. [ ] `/setup-roles` をギルド設定の再同期コマンドとして扱い、既存ロールのID更新と不足ロール作成を同時に行えるようにする。
+26. [ ] `bot/src/messages.ts` 経由で投稿する募集メッセージをロールIDメンションに対応させ、`@Custom` の文字列依存を解消する。
+27. [ ] `bot/src/features/role-management.ts` のテストを、ID永続化・再同期・権限不足まで含めて拡張する。
+
+## 5. カスタムゲームイベント運営
+
+28. [ ] `custom_game_events` に募集メッセージのチャンネルIDを保存し、`bot/src/commands/split-teams.ts` から利用する。
+29. [ ] `/split-teams` で今日開始のイベントを取得するのではなく、作成済みイベントの中から対象を指定・選択できるようにする。
+30. [ ] `/start-matching` コマンド（Bot 側）を実装し、参加者不足・過多の通知、参加確定、開始状態遷移を行う。
+31. [ ] `/start-event` を作成し、特定イベントを開始するコマンドを実装する。
+32. [ ] `/start-matching`、`/split-teams`、キャンセル、再マッチングなどを Message Components 上のボタンから段階的に実行できるようにする。
+33. [ ] `/split-teams` 実行時に Red/Blue VC が無い場合、自動作成する。自動作成前に管理者へ確認するフローも実装する。
+34. [ ] コマンド全体の構造を見直し、サブコマンド化またはイベント中心フローへの段階移行を設計する。
+
+## 6. 戦績・レート・Riot API連携
+
+35. [ ] `/record-match` コマンドの戦績入力を簡易化する。Message Components や Modal Components を使用する。
+36. [ ] Riot API 連携でゲーム開始検知・戦績取得・内部レート更新を自動化する（`bot/src/features/match_tracking.ts` など）。
+37. [ ] 内部レートを全ギルド共有のプレイヤー評価として保存するスキーマと更新ロジックを設計する。
+38. [ ] チーム分け時の戦力均等化ロジックと内部レート計算式を仕様に合わせて高度化する。
+39. [ ] Discord/Riot API 呼び出しに対するリクエストキューや指数バックオフ等のレート制限対策を導入する。
+40. [ ] `/my-stats`・`/next-game`・`/rematch` など SPEC 記載の追加コマンドを実装する。
+
+## 7. Web UI
+
+41. [ ] Web サイトの要件定義を実施し、主要ユースケース・API 連携要件を整理する。
+42. [ ] 上記要件に基づき Web UI（管理者・参加者向け）を実装する。

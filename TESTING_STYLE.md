@@ -1,355 +1,349 @@
 # テストコード スタイルガイド
 
-このドキュメントは、このプロジェクトにおけるテストコードの一貫性を保ち、可読性とメンテナンス性を向上させることを目的としたスタイルガイドです。
+このドキュメントは ADTeemo のテスト方針を定義します。Deno 2.5 以上、Hono RPC、Drizzle ORM、discord.js を前提にします。
 
-# Part 1: テスト戦略
+## 1. 基本方針
 
-## 1.1. 基本方針
+テストは「仕様を固定するための実行可能なドキュメント」として扱います。新機能・バグ修正では、先に期待する振る舞いを日本語のテスト名で表現し、そのテストを満たす形で実装します。
 
-本プロジェクトのテストは、以下の2種類に大別されます。
+標準の検証コマンドは次の通りです。
 
-1. **ユニットテスト (Unit Tests)**: モジュール単体の機能を検証する。
-2. **統合テスト (Integration Tests)**: 複数のコンポーネントを連携させ、実際のユーザー操作に近いシナリオを検証する。
-
-## 1.2. ユニットテスト (Unit Tests)
-
-- **目的**: モジュール単体（通常は1ファイル）の機能と、そのインターフェース（入力と出力）が仕様通りに動作することを保証します。
-
-- **原則**: テスト対象モジュールが依存する**他のモジュールや外部APIとの境界は、すべてモック**します。これには以下が含まれます。
-  - 同じサービス内の他のモジュール（ヘルパー関数、サービスクラスなど）
-  - データベース (DB)
-  - 他のサービス (例: Botから見たAPIサーバー)
-  - 外部APIとの通信（例: `fetch`の呼び出し）
-
-- **配置**: 各サービスディレクトリ（`api/`, `bot/`など）の内部に、テスト対象ファイルと同じ階層に `*.test.ts` として配置します。
-
-### モック対象の境界: 直接の依存関係のみを対象とする
-
-ユニットテストの重要な目的は、テスト対象モジュール（SUT: System Under Test）のロジックを、その依存から隔離して検証することです。これを実現するため、モック（スタブ）はSUTが**直接**やり取りする依存関係（Collaborators）のインターフェースに対してのみ行います。
-
-依存関係の、さらにその先の依存関係（間接的な依存関係）をモックすることは、テストを脆く（Brittle）するため避けるべきです。
-
-#### 具体例: `health`コマンドのテスト
-
-`health`コマンドは、内部で`apiClient`を使ってAPIと通信します。
-
+```bash
+deno task test:all
 ```
+
+`test:all` は `.env.example` を読み込み、coverage を出力します。Docker 内で同じ検証を行う場合は次を使います。
+
+```bash
+docker compose --profile dev run --rm dev deno task test:all
+```
+
+## 2. テスト分類
+
+| 分類            | 対象                                        | 配置                               | 主な依存の扱い                                               |
+| --------------- | ------------------------------------------- | ---------------------------------- | ------------------------------------------------------------ |
+| Unit            | 純粋関数、helper、formatter、ロール管理など | 対象ファイルと同階層の `*.test.ts` | 直接依存のみ stub / spy                                      |
+| Hono route      | API route handler                           | `api/src/routes/*.test.ts`         | DB action、Riot API、RSO などを stub                         |
+| Bot command     | slash command handler                       | `bot/src/commands/*.test.ts`       | `apiClient`、messages、helper を stub                        |
+| API client      | Bot の API 境界                             | `bot/src/api_client.test.ts`       | Hono RPC client または client factory を stub する方針へ移行 |
+| DB action       | Drizzle query / transaction                 | 将来 `api/src/db/*.test.ts`        | 一時SQLite DBで隔離                                          |
+| Integration     | Bot / API / DB の連携                       | 将来 `tests/integration/`          | Discord / Riot など外部サービスは mock                       |
+| Message catalog | 多言語メッセージ整合性                      | `messages/src/*.test.ts`           | 一時ディレクトリや環境変数を stub                            |
+
+## 3. Deno とテストライブラリ
+
+- BDD構造は `jsr:@std/testing/bdd` の `describe` と `test` を使います。
+- アサーションは `@std/assert` を使います。
+- stub / spy は `@std/testing/mock` を使い、必ず `using` で自動復元します。
+- テスト名は日本語で「状況、操作、期待結果」が分かる形にします。
+- `Arrange` / `Act` / `Assert` の3段階をコメントで分けます。
+- 動的な値（`crypto.randomUUID()`、現在時刻など）をテスト対象が直接呼ぶ場合は、その直接呼び出しを stub して固定します。
+
+例:
+
+```typescript
+describe("GET /rso/login-url", () => {
+  describe("正常系", () => {
+    test("有効なdiscordIdが提供されたとき、認証用のstateを保存し、認証URLを返す", async () => {
+      // Arrange
+      const fixedUuid = "a0a0a0a0-a0a0-a0a0-a0a0-a0a0a0a0a0a0";
+      using _uuidStub = stub(crypto, "randomUUID", () => fixedUuid);
+
+      // Act
+      // ...
+
+      // Assert
+      // ...
+    });
+  });
+});
+```
+
+## 4. テスト構造と命名
+
+### `describe`
+
+`describe` はテスト対象のコンテキストを定義します。APIのエンドポイント、Bot command名、helper名、特定シナリオ名などを置きます。
+
+### `test`
+
+`test` はコンテキスト内の振る舞いを記述します。テスト名は「（条件）のとき、（操作）を行うと、（結果）となる」という形を基本にします。
+
+例:
+
+```typescript
+test("Riotアカウントが見つからない場合、Riot ID連携を実行すると、404とエラーメッセージを返す", async () => {
+  // ...
+});
+```
+
+### 正常系と異常系
+
+`describe("正常系", ...)` と `describe("異常系", ...)` でグループ化し、読む側が期待動作と失敗時動作をすぐ追えるようにします。異常系では特に次を検証します。
+
+- 不正な入力: 必須オプション欠如、無効な選択肢、長すぎる文字列など。
+- 依存関係のエラー: API、DB、Discord、Riot、RSOがエラーを返すケース。
+- 権限不足: Botやユーザーに必要権限がないケース。
+- 状態不整合: 存在しないイベント、重複実行、期限切れstateなど。
+
+## 5. モック対象の境界
+
+ユニットテストでは、テスト対象モジュール（SUT: System Under Test）が直接やり取りする依存関係だけを stub / spy します。間接依存の実装詳細を stub すると、SUTの振る舞いが変わっていないリファクタリングでもテストが壊れます。
+
+例: `health` command の依存関係
+
+```text
 [ health.ts ] ---> [ apiClient.ts ] --(fetch)--> [ API ]
 ```
 
-##### 悪い例（避けるべきプラクティス）
-
-テスト対象(`health.ts`)の間接的な依存先である`fetch`をモックする。
+command test で stub するべきなのは `apiClient.checkHealth` です。`apiClient` の内部実装である `globalThis.fetch` は command test から stub しません。
 
 ```typescript
-// 悪い例: health.test.ts
-import { stub } from "@std/testing/mock";
-import { execute } from "./health.ts";
-
-// ...
-// apiClientの内部実装であるfetchをスタブしている
-using fetchStub = stub(globalThis, "fetch", () => Promise.resolve(/* ... */));
-await execute(interaction);
-```
-
-**なぜ悪いのか？**: このテストは、`apiClient`が内部で`fetch`を使っているという**実装の詳細**に依存しています。もし`apiClient`がリファクタリングされ、`fetch`の代わりに別のHTTPクライアントを使うようになった場合、`health.ts`のコードは一切変更がないにも関わらず、このテストは失敗してしまいます。
-
-##### 良い例（推奨されるプラクティス）
-
-テスト対象(`health.ts`)の直接の依存先である`apiClient`のメソッドをモックする。
-
-```typescript
-// 良い例: health.test.ts
-import { stub } from "@std/testing/mock";
-import { execute } from "./health.ts";
-import { apiClient } from "../api_client.ts"; // 直接の依存先をインポート
-
-// ...
-// health.tsの直接の依存先であるapiClient.checkHealthをスタブしている
 using checkHealthStub = stub(
   apiClient,
   "checkHealth",
-  () => Promise.resolve({ success: true, message: "ok" }),
+  () => Promise.resolve({ success: true as const, message: "ok" }),
 );
+
 await execute(interaction);
+
+assertSpyCall(checkHealthStub, 0);
 ```
 
-**なぜ良いのか？**: このテストは`apiClient`の公開インターフェース（`checkHealth`メソッドの仕様）にのみ依存します。`apiClient`の内部実装がどう変わろうと、`checkHealth`メソッドの仕様が守られている限り、このテストは安定してパスし続けます。これにより、リファクタリングへの耐性が高く、メンテナンスしやすいテストが実現できます。
+`apiClient` 自体をテストする場合は、`apiClient` から見た直接依存を stub します。現状の一部テストは `globalThis.fetch` に依存していますが、今後は Hono RPC client または client factory を直接 stub できる形へ移行します。
 
-### 具体例1: APIのルートハンドラ
+## 6. テストダブルとアサーション
 
-APIルートハンドラのユニットテストです。責務は「リクエストを解釈し、DB操作モジュールを呼び出し、レスポンスを構築する」ことです。DB操作はモックし、ハンドラ自身のロジックに集中して検証します。
+- `stub`: 関数の実装を置き換え、DB・外部API・直接依存の戻り値を制御します。
+- `spy`: 元の実装を維持したまま、呼び出しを監視します。
+- `using`: stub / spy のライフサイクルをテストケース内に限定し、復元漏れを防ぎます。
+- `assertSpyCalls`: 期待する呼び出し回数を検証します。
+- `assertSpyCall`: 呼び出し時の引数を検証します。
+
+呼び出し回数の検証は、副作用の重複や意図しない依存呼び出しを検出するために重要です。
 
 ```typescript
-// api/src/routes/users.test.ts
-import { z } from "zod";
+using setMainRoleStub = stub(
+  apiClient,
+  "setMainRole",
+  () => Promise.resolve({ success: true as const }),
+);
 
-describe("POST /users", () => {
-  describe("正常系", () => {
-    test("有効なユーザー名が指定されたとき、dbActions.createUserを呼び出し、201 Createdと作成されたユーザー情報を返す", async () => {
-      // Arrange
-      using createUserStub = stub(
-        dbActions,
-        "createUser",
-        (name) =>
-          Promise.resolve({ id: "user-abc-123", name, createdAt: new Date() }),
-      );
-      const userResponseSchema = z.object({ name: z.string() });
+await execute(interaction);
 
-      // Act
-      const res = await client.users.$post({ json: { name: "Teemo" } });
-
-      // Assert
-      assert(res.status === 201);
-      const { name } = userResponseSchema.parse(await res.json());
-      assertEquals(name, "Teemo");
-      assertSpyCalls(createUserStub, 1);
-      assertSpyCall(createUserStub, 0, { args: ["Teemo"] });
-    });
-  });
+assertSpyCalls(setMainRoleStub, 1);
+assertSpyCall(setMainRoleStub, 0, {
+  args: ["user-123", "mock-guild-id", "Jungle"],
 });
 ```
 
-ここで成否判定はHTTPステータスのみで行い、レスポンスボディは`zod`のスキーマで検証しています。API側で`success`フラグを返さない方針でも、型安全にアサーションできる点を示しています。
+## 7. テストユーティリティ
 
-### 具体例2: Botのコマンドハンドラ
+Interaction、Guild、Message、DB seed などの繰り返しセットアップは helper や builder にまとめます。
 
-コマンドハンドラのユニットテストです。依存する`apiClient`や他の内部モジュールをモックし、コマンドハンドラ自身のロジック（入力の解釈、依存先の呼び出し）を検証します。
+- Bot command の interaction 生成は `bot/src/test_utils.ts` の builder を優先します。
+- helper はテストを読みやすくするために使い、検証したい振る舞いを隠しすぎないようにします。
+- utility の配置は利用範囲に合わせます。Bot専用なら `bot/src/`、API専用なら `api/src/`、横断的なら将来 `tests/` 配下を検討します。
 
-```typescript
-// bot/src/commands/set-main-role.test.ts
-describe("/set-main-role command", () => {
-  describe("正常系", () => {
-    test("有効なロール名が指定されたとき、apiClientとmessagesを呼び出し、成功メッセージで応答する", async () => {
-      // Arrange
-      using setMainRoleStub = stub(
-        apiClient,
-        "setMainRole",
-        () => Promise.resolve({ success: true, error: null }),
-      );
-      using successMessageStub = stub(
-        messages,
-        "success",
-        () => "メインロールをJungleに設定しました。",
-      );
+## 8. 意味のあるアサーション
 
-      const interaction = new MockInteractionBuilder("set-main-role")
-        .withUser({ id: "user-123" })
-        .withStringOption("role", "Jungle")
-        .build();
-      using editReplySpy = spy(interaction, "editReply");
+アサーションは、テスト対象コードの振る舞いを検証するものでなければなりません。単に stub の戻り値がそのまま返ったことだけを見るのではなく、SUTが依存を正しく呼び、レスポンスや副作用を正しい形に組み立てたことを確認します。
 
-      // Act
-      await execute(interaction);
-
-      // Assert
-      assertSpyCalls(setMainRoleStub, 1);
-      assertSpyCall(setMainRoleStub, 0, {
-        args: ["user-123", "mock-guild-id", "Jungle"],
-      });
-      assertSpyCalls(successMessageStub, 1);
-      assertSpyCalls(editReplySpy, 1);
-      assertSpyCall(editReplySpy, 0, {
-        args: ["メインロールをJungleに設定しました。"],
-      });
-    });
-  });
-});
-```
-
-### 具体例3: BotのAPIクライアント
-
-`apiClient`モジュールのユニットテストです。依存する`fetch`をモックし、`apiClient`の責務である「正しいHTTPリクエストを組み立てて送信すること」を検証します。
+動的な値を含む場合でも、曖昧な `startsWith` だけに頼らず、テスト内で固定または取得した動的値を使って完全な期待値を組み立てます。
 
 ```typescript
-// bot/src/api_client.test.ts
-describe("apiClient.setMainRole", () => {
-  describe("正常系", () => {
-    test("ユーザーIDとロールが与えられたとき、適切なPUTリクエストをfetchで送信する", async () => {
-      // Arrange
-      using fetchStub = stub(
-        globalThis,
-        "fetch",
-        () => Promise.resolve(new Response(null, { status: 204 })),
-      );
-
-      // Act
-      const result = await apiClient.setMainRole(
-        "user-123",
-        "guild-456",
-        "Jungle",
-      );
-
-      // Assert
-      assertSpyCalls(fetchStub, 1);
-      assertSpyCall(fetchStub, 0, {
-        args: [
-          "https://api.example.com/users/user-123/role",
-          {
-            method: "PUT",
-            body: JSON.stringify({ guildId: "guild-456", role: "Jungle" }),
-          },
-        ],
-      });
-      assertEquals(result.success, true);
-    });
-  });
-});
-```
-
-## 1.3. 統合テスト (Integration Tests)
-
-- **目的**: 複数のコンポーネント（`bot`, `api`, `db`）を実際に連携させ、ユーザーの操作から始まる一連のシナリオが正しく動作することを保証します。
-
-- **原則**:
-  - **APIのテスト**: `testClient` を使用してAPIリクエストを送信し、レスポンスの内容や、その結果としてデータベースの状態が正しく変更されたかを検証します。
-  - **Botのテスト**: Discordの `interaction` を模倣してコマンドを実行し、Botからの応答メッセージや、API連携を通じてデータベースの状態が正しく変更されたかを検証します。
-  - Riot APIやDiscord APIのような、プロジェクト管理外の外部ドメインのサービスは、引き続きモックを使用します。
-
-- **配置**: プロジェクトのルートに `tests/integration/` ディレクトリを作成し、その中に配置します。
-
-### 具体例
-
-Botのコマンド実行から、APIサーバーを経由し、最終的にデータベースのレコードが正しく更新されるか、という一連の流れを検証します。
-
-```typescript
-// tests/integration/bot/create_game_scenario.test.ts
-describe("シナリオ: カスタムゲーム作成", () => {
-  describe("正常系", () => {
-    // Suite Setup: このテストスイートの実行前に、テスト用のAPIサーバーとDBをセットアップする
-    test("ユーザーがゲーム作成コマンドを実行したとき、APIを通じてDBにイベントが記録される", async () => {
-      // Arrange
-      const interaction = new MockInteractionBuilder("create-custom-game")
-        .withStringOption("title", "今夜のカスタム").build();
-
-      // Act
-      await createCustomGame.execute(interaction);
-
-      // Assert
-      const eventInDb = await testDb.query.events.findFirst();
-      assertExists(eventInDb);
-      assertEquals(eventInDb.name, "今夜のカスタム");
-    });
-  });
-});
-```
-
-# Part 2: テスト記述の共通規約
-
-## 2.1. テストの構造と命名
-
-### `describe`: コンテキストの定義
-
-`describe`ブロックは、テスト対象のコンテキスト（状況や環境）を定義します。APIのエンドポイント名、コンポーネント名、特定のシナリオ名などが該当します。
-
-### `test`: 振る舞いの記述
-
-`test`ブロックは、`describe`で定義されたコンテキスト内でのシステムの**振る舞い**を記述します。テストケース名は**「（条件）のとき、（操作）を行うと、（結果）となる」** という形式を基本とします。
-
-### 正常系と異常系のグループ化
-
-`describe`をネストさせて`describe("正常系", ...)`と`describe("異常系", ...)`のようにグループ化し、テストの可読性を高めることを強く推奨します。
-
-システムの堅牢性を保証するため、特に異常系のテストを網羅することが重要です。異常系のテストでは、主に以下のような観点を検証します。
-
-- **不正な入力**: ユーザーからの入力値が仕様（型、フォーマット、範囲）を満たさないケース。
-  - 例: 必須オプションの欠如、無効な選択肢の指定、長すぎる文字列など。
-- **依存関係のエラー**: 依存するモジュールや外部APIがエラーを返すケース。
-  - 例: APIクライアントが5xx/4xxエラーを返す、DB操作で制約違反が発生する、ネットワーク接続に失敗するなど。
-- **権限不足**: 操作を実行するために必要な権限をユーザーやBotが持っていないケース。
-  - 例: 特定のロールを持たないユーザーによるコマンド実行、Discord APIの権限不足など。
-- **状態の不整合**: システムが期待される前提状態にないケース。
-  - 例: 未作成のオブジェクトを操作しようとする、処理が重複して実行されるなど。
-
-## 2.2. テストダブル (モック、スタブ、スパイ)
-
-ユニットテストでは、`@std/testing/mock`の機能を利用してテストダブルを作成し、依存関係を隔離します。
-
-- **`stub`**: 関数の**実装を完全に置き換える**ために使用します。データベースアクセスや外部API呼び出しを偽の動作に差し替え、結果をコントロールしたい場合に最適です。
-
-- **`spy`**: **元の実装を維持したまま**、関数の呼び出しを監視（スパイ）するために使用します。
-
-- **クリーンアップ**: `using` 構文を使用し、テストダブルのライフサイクルをテストケース内に限定します。これにより、`restore()` の呼び出し忘れを確実に防ぎます。
-
-- **アサーション**: `assertSpyCall`で呼び出し時の引数などを検証するだけでなく、`assertSpyCalls`で**期待される呼び出し回数**も検証することが、意図しない副作用を防ぐ上で重要です。
-
-## 2.3. テストユーティリティ
-
-テストのセットアップ（例: `Interaction`オブジェクトの生成）をDRY（Don't Repeat Yourself）に保つため、繰り返し利用するヘルパー関数やモックビルダーは、`test_utils.ts`のようなファイルにまとめることを推奨します。ユーティリティのスコープに応じて、適切なディレクトリ（例: `bot/src/`や`api/src/`）に配置してください。
-
-## 2.4. テストケースの構造 (Arrange-Act-Assert パターン)
-
-各テストケース (`test` ブロック) は、可読性を高めるために **Arrange-Act-Assert (AAA)** パターンに従って構造化することを強く推奨します。
-
-- **`// Arrange` (準備):** テスト対象の実行に必要な前提条件（データ、スタブ、モックなど）をすべて準備します。
-- **`// Act` (実行):** テスト対象のコード（関数やメソッド）を呼び出します。
-- **`// Assert` (検証):** 実行結果が期待通りであったかをアサーション関数を使って検証します。
-
-各ブロック間には空行を入れ、`// Arrange`等のコメントで視覚的な区切りを明確にします。
-
-## 2.5. 意味のあるアサーションの原則
-
-テストにおけるアサーションは、テスト対象コードのロジックや振る舞いを検証するものでなければなりません。
-
-### スタブの戻り値の伝搬を検証する場合
-
-スタブした関数の戻り値が、最終的なレスポンスに正しく含まれているかを検証することは、境界間の連携をテストする上で有効です。
-
-ただし、その検証は可能な限り厳密に行うべきです。
-
-```typescript
-// Arrange
+const fixedUuid = "a0a0a0a0-a0a0-a0a0-a0a0-a0a0a0a0a0a0";
+using _uuidStub = stub(crypto, "randomUUID", () => fixedUuid);
 using getAuthorizationUrlStub = stub(
   rso,
   "getAuthorizationUrl",
   (state: string) => `https://mock.auth.url/authorize?state=${state}`,
 );
-// ...
 
-// Act
-const res = await client.auth.rso["login-url"].$get(...);
+const res = await client.auth.rso["login-url"].$get({
+  query: { discordId: "discord-123" },
+});
 const body = await res.json();
 
-// Assert
-// 呼び出し回数を検証する
-assertSpyCalls(getAuthorizationUrlStub, 1);
-
-// レスポンスボディに含まれるURLの「静的な部分」が完全一致することを検証する
-const state = getAuthorizationUrlStub.calls[0].args[0];
-assertEquals(body.url, `https://mock.auth.url/authorize?state=${state}`);
+assertEquals(
+  body.url,
+  `https://mock.auth.url/authorize?state=${fixedUuid}`,
+);
+assertSpyCall(getAuthorizationUrlStub, 0, { args: [fixedUuid] });
 ```
 
-`startsWith`のような曖昧な比較ではなく、動的な部分（この例では`state`）を含めた完全なURLで比較することで、「余計な文字列が付与されていないか」「URLの形式が意図せず変わっていないか」といった点まで含めて厳密に検証できます。
+## 9. 予測不可能な値の扱い
 
-## 2.6. 予測不可能な値の扱い
+テスト対象が直接 `crypto.randomUUID()` や現在時刻を呼ぶ場合、その直接呼び出しを stub して固定します。これにより、テストが実行時刻や乱数に依存しなくなります。
 
-テストは常に予測可能であるべきです。テスト対象のコード内で`new Date()`や`crypto.randomUUID()`のような実行するたびに結果が変わる関数が使われている場合、その扱いには注意が必要です。
+一方、テスト対象が呼ぶ外部モジュールの内部で動的関数が使われている場合、その内部実装をテスト側から stub してはいけません。その場合は外部モジュールの公開メソッド自体を stub し、戻り値として動的値を含む結果を定義します。
 
-### 原則: テスト対象が「直接」呼び出す動的関数はスタブ化する
+## 10. Hono Route Tests
 
-テスト対象のコードが、その内部で**直接** `crypto.randomUUID()` や `new Date()` を呼び出している場合、それらの関数はスタブ化して値を固定するのが最も推奨されるベストプラクティスです。
-
-今回の`auth.ts`の例では、ルートハンドラ内で直接`crypto.randomUUID()`を呼び出しているため、このパターンに該当します。
+Route test は `testClient(app)` または `app.request()` を使います。Hono RPC の型推論を安定させるため、ハンドラ側ではステータスを明示します。
 
 ```typescript
-// 良い例: crypto.randomUUID()を直接スタブ化する
-// Arrange
-const FIXED_UUID = "fixed-uuid-for-test";
-using _uuidStub = stub(crypto, "randomUUID", () => FIXED_UUID);
-using createAuthStateStub = stub(dbActions, "createAuthState");
-using getAuthorizationUrlStub = stub(rso, "getAuthorizationUrl");
-
-// Act
-await client.auth.rso["login-url"].$get(...);
-
-// Assert
-// 各モジュールが、固定化されたUUIDで呼び出されたことを個別に検証する
-assertSpyCall(createAuthStateStub, 0, { args: [FIXED_UUID, "discord-123"] });
-assertSpyCall(getAuthorizationUrlStub, 0, { args: [FIXED_UUID] });
+return c.json({ events }, 200);
+return c.json({ error: "Event not found" }, 404);
+return c.body(null, 204);
 ```
 
-### 禁止事項: 外部モジュールの実装詳細へのスタブ化
+APIレスポンスボディに `success` は含めません。成否はHTTPステータスが唯一のソースです。
 
-テスト対象が呼び出す**外部モジュール**（例: `someApiSdk`）が、その**内部で** `crypto.randomUUID()` を使用している場合、テストコードから`crypto.randomUUID()`をスタブ化してはいけません。これは「直接の依存関係のみをモックする」という大原則に反し、外部モジュールの実装詳細に依存した脆いテストになるためです。
+- 成功してデータを返す: `200` + 必要最小限のJSON
+- 作成: `201`
+- 成功して本文不要: `204`
+- 非同期受付: `202`
+- 入力不正: `400` または `422`
+- 対象なし: `404`
+- 競合: `409`
+- サーバー内部失敗: `500`
 
-その場合は、外部モジュール（`someApiSdk`）のメソッド自体をスタブ化し、動的な値を含んだ最終的な戻り値をテスト側で定義してください。
+エラーボディの基本形:
+
+```json
+{ "error": "Event not found" }
+```
+
+必要な場合のみ次の形へ拡張します。
+
+```json
+{ "code": "EVENT_NOT_FOUND", "error": "Event not found", "details": {} }
+```
+
+例: Riot ID 連携 route
+
+```typescript
+test("Riotアカウントが見つからない場合、404とエラーメッセージを返す", async () => {
+  // Arrange
+  using _riotStub = stub(
+    riotApi,
+    "getAccountByRiotId",
+    () => Promise.resolve(null),
+  );
+  const client = testClient(app);
+
+  // Act
+  const res = await client.users["link-by-riot-id"].$patch({
+    json: {
+      discordId: "discord-123",
+      gameName: "Unknown",
+      tagLine: "JP1",
+    },
+  });
+
+  // Assert
+  assertEquals(res.status, 404);
+  const body = await res.json();
+  assertEquals(typeof body.error, "string");
+  assertFalse("success" in body);
+});
+```
+
+## 11. Bot Command Tests
+
+Bot command のユニットテストは、Discord interaction の入力解釈、直接依存の呼び出し、ユーザーへの応答を検証します。
+
+原則:
+
+- command handler から見た直接依存だけを stub します。
+- `apiClient` の内部実装である `fetch` を command test から stub しません。
+- `messageHandler.formatMessage` は必要に応じて stub し、どの message key を使ったかを検証します。
+- guild 専用コマンドは DM 実行時のエラーも検証します。
+
+例:
+
+```typescript
+test("API呼び出しが成功した時にメインロールを設定すると、成功メッセージで応答する", async () => {
+  // Arrange
+  using setMainRoleStub = stub(
+    apiClient,
+    "setMainRole",
+    () => Promise.resolve({ success: true as const }),
+  );
+  const interaction = new MockInteractionBuilder("set-main-role")
+    .withUser({ id: "user-123" })
+    .withStringOption("role", "Jungle")
+    .build();
+
+  // Act
+  await execute(interaction);
+
+  // Assert
+  assertSpyCall(setMainRoleStub, 0, {
+    args: ["user-123", "mock-guild-id", "Jungle"],
+  });
+});
+```
+
+Bot 内部の `apiClient` や command 戻り値として `success` を持つ `Result` 型を使うことは許可します。これは UI 層の分岐を扱いやすくするための内部表現であり、HTTP API レスポンス契約とは別物です。
+
+## 12. API Client Tests
+
+`bot/src/api_client.ts` は Bot と Hono RPC API の境界です。現状の一部テストは `globalThis.fetch` を stub していますが、これは Hono client の内部実装に依存しやすいため段階的に廃止します。
+
+今後の方針:
+
+- `hcWithType(API_URL)` を直接 module top-level で固定しすぎない。
+- client factory を導入し、API client test では Hono RPC client のメソッドを直接 stub できるようにする。
+- HTTPステータスの扱い、JSON body の parse、Bot内部Resultへの変換を `apiClient` の責務として検証する。
+
+許容される内部Result例:
+
+```typescript
+type ApiClientResult<T> =
+  | ({ success: true } & T)
+  | { success: false; error: string };
+```
+
+ただし、APIサーバーから返るJSONに `success` がある前提のテストを書いてはいけません。
+
+## 13. DB Action Tests
+
+現在の `api/src/db/index.ts` は module-level の `db` singleton を export しています。この構造はユニットテストでは DB action を stub しやすい一方、DB action 自体の統合テストを隔離しにくいです。
+
+今後の設計:
+
+- `createDb(url)` を導入し、テストごとに一時SQLiteファイルまたは一時ディレクトリを使う。
+- `createApp({ dbActions })` を導入し、route test はDB実体ではなく注入された action を使う。
+- DB action tests は migration または schema push 相当の初期化を行い、テスト後に一時DBを破棄する。
+- foreign key、unique制約、transaction、cascade delete はDB action testsで検証する。
+
+DB action 以外の route test では、DB実体に触れず `dbActions` を stub してください。
+
+## 14. Integration Tests
+
+統合テストは、Bot command から API と DB を通じて状態が変わる重要シナリオに限定します。配置は将来 `tests/integration/` を使います。
+
+優先シナリオ:
+
+- Riot ID 連携
+- カスタムゲーム作成と募集メッセージ保存
+- イベント選択、参加確定、チーム分け
+- 戦績記録と内部レート更新
+
+Discord API と Riot API はプロジェクト外部のサービスなので、統合テストでも mock / fake を使います。
+
+## 15. Message Catalog Tests
+
+`messages` workspace は、全言語・全テーマの key 整合性を検証します。
+
+- source of truth は既定テーマの日本語メッセージです。
+- 不足キーはテストまたは `check:messages` で検出します。
+- テーマにキーがない場合は既定テーマへ fallback する挙動を維持します。
+- message key の追加・削除時は `messages/ja_JP/system.json`、`messages/ja_JP/teemo.json`、`messages/en_US/system.json` を同時に確認します。
+
+## 16. Coverage と品質
+
+coverage は品質確認の補助指標です。数値だけを目的化せず、仕様上重要な分岐、失敗時のユーザー応答、DB制約、外部API失敗時の扱いを優先してテストします。
+
+変更後の標準確認:
+
+```bash
+deno task fmt:check
+deno task lint
+deno task check
+deno task test:all
+```
+
+`deno task quality` は上記を一括で実行します。

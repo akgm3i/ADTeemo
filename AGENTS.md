@@ -2,130 +2,124 @@
 
 ## Project Overview
 
-This project is a Discord bot named "ADTeemo" designed to facilitate the organization of custom games for the popular online game League of Legends. The system is composed of two main components: a Discord bot and a backend API server. The entire system is containerized using Docker.
+ADTeemo は League of Legends のカスタムゲーム運営を支援する Discord Bot です。Discord Bot と Backend API の 2 コンポーネントで構成し、Deno workspace と Docker で開発・実行します。
 
-- **Backend:** Deno, TypeScript
-- **API:** Hono (RPC)
-- **Database:** SQLite (with Drizzle ORM)
+- **Runtime:** Deno 2.5 以上, TypeScript
+- **API:** Hono RPC
+- **Database:** SQLite + Drizzle ORM
 - **Discord Bot:** discord.js
+- **Workspaces:** `api`, `bot`, `messages`
 
-The bot helps with everything from recruiting players and balancing teams to tracking game results and managing player ratings.
+詳細な機能要件は [SPEC.md](./SPEC.md)、未実装・改善タスクは [TASKS.md](./TASKS.md)、テスト規約は [TESTING_STYLE.md](./TESTING_STYLE.md) を参照してください。
 
-### Deno v2+ Technology Notes
+## Deno / Dependency Rules
 
-This project uses **Deno v2.5** or a later version. All development must adhere to modern Deno v2+ standards and practices.
+- Deno v2 の仕様に従い、Deno v1 前提の書き方を持ち込まないこと。
+- 新規依存は JSR (`jsr:`) を優先し、必要な場合のみ `npm:` を使うこと。
+- `deno.land/x` は新規追加しないこと。
+- Hono の詳細確認が必要な場合は公式ドキュメントを参照すること。
 
-- **LLM Agent Advisory:** As an LLM agent, you **must not** use information or practices from Deno v1. All proposals and code must be compatible with the latest Deno v2 standards and the conventions established in this project.
-- **Package Registry:** The primary package registry is **JSR (`jsr.io`)**. The legacy `deno.land/x` registry should not be used for adding new dependencies.
-- **Node.js Compatibility:** Deno v2 provides strong compatibility with Node.js and npm packages, which can be leveraged when necessary via `npm:` specifiers.
-- **Testing & Mocks:** Tests are written using the standard library (e.g., `jsr:@std/testing/bdd`). For mocking dependencies in unit tests, this project uses the `stub` and `spy` functionalities from `@std/testing/mock`, combined with `using` declarations for automatic cleanup. This approach allows for creating isolated and stable tests by mocking direct dependencies. For detailed guidelines and examples, please refer to the [Testing Style Guide](./TESTING_STYLE.md).
-- **Quality Checks:** Before pushing changes, run `deno check`, `deno lint`, then `deno fmt` to catch type issues, lint violations, and formatting problems in that order.
+## Commands
 
-### Hono Technology Notes
+| Command                      | Purpose                                              |
+| ---------------------------- | ---------------------------------------------------- |
+| `deno task dev:all`          | API と Bot を開発モードで起動                        |
+| `deno task dev:api`          | API のみ開発モードで起動                             |
+| `deno task dev:bot`          | Bot のみ開発モードで起動                             |
+| `deno task fmt:check`        | フォーマット差分を検出                               |
+| `deno task lint`             | lint を実行                                          |
+| `deno task check`            | 主要 entrypoint の型チェックを実行                   |
+| `deno task test:all`         | `.env.example` を読み、coverage 付きで全テストを実行 |
+| `deno task quality`          | fmt check / lint / check / test を一括実行           |
+| `deno task db:push`          | Drizzle schema をDBへ反映                            |
+| `deno task db:generate`      | Drizzle migration を生成                             |
+| `deno task db:migrate`       | Drizzle migration を適用                             |
+| `deno task db:backup`        | 本番DBのバックアップを作成                           |
+| `deno task db:restore-local` | バックアップからローカルDBを復元                     |
+| `deno task deploy-commands`  | Discord slash command を登録                         |
 
-- **LLM Agent Advisory:** For technical details on Hono, please refer to the full documentation with web_fetch tool at https://hono.dev/llms-full.txt.
-
-
-## Building and Running
-
-The project uses Deno's task runner and Docker for development.
-
-### Deno Tasks
-
-You can run various development tasks using `deno task <task_name>`. These can be run directly on your local machine if you have Deno installed, or within the development Docker container.
-
-| Task | Description |
-| --- | --- |
-| `dev:all` | Starts both the API and the bot in development mode. |
-| `dev:api` | Starts the API in development mode. |
-| `dev:bot` | Starts the bot in development mode. |
-| `test:all` | Runs all tests. |
-| `db:push` | Pushes database schema changes. |
-| `db:generate` | Generates migration files using Drizzle Kit. |
-| `db:migrate` | Runs database migrations. |
-| `deploy-commands` | Deploys slash commands to Discord. |
-| `db:backup` | Backs up the production database. |
-| `db:restore-local` | Restores the local database from a backup. |
-
-### Docker (Development)
-
-Docker can be used to run the application in a development environment.
+開発用 Docker コンテナを起動する場合:
 
 ```bash
 docker compose --profile dev up -d --build
 ```
 
-While you can open an interactive shell with `docker compose exec dev bash`, it is often more convenient to run Deno tasks directly:
+起動済みの dev コンテナ内でタスクを実行する場合:
 
 ```bash
 docker compose exec dev deno task dev:all
 ```
 
-## Commit & Interaction Rules
+Docker 内でローカルと同等のテストを実行する場合:
 
-- **Commit Messages:** Use a customized version of [Conventional Commits](https://www.conventionalcommits.org/). All commit messages must be in Japanese. See the custom specification below.
-- **Language:** The conversation with the user must be written in Japanese, and the thought process can be written in English.
-
-### Custom Conventional Commits Specification
-
-Commit messages should describe the context behind the changes, rather than what was changed. Since the code itself shows what was changed, the message should focus on explaining the background and reasons for the change.
-
-#### Format
-
-```
-<type>[optional scope]: <description>
-
-[body]
+```bash
+docker compose --profile dev run --rm dev deno task test:all
 ```
 
-#### Message body requirements
+## Quality Gate
 
-- Provide at least one paragraph that explains the background, problem statement, or decision that motivated the change.
-- Describe the intended impact, expected benefits, and any known risks so the rationale is clear for release notes and reviewers.
-- Only in self-evident cases (e.g., typo fixes) may the body be omitted; in all other cases, include the explanation.
+変更後は原則として以下をこの順に実行します。
 
-#### `type`
+```bash
+deno task fmt:check
+deno task lint
+deno task check
+deno task test:all
+```
 
-| type | Description |
-| :--- | :--- |
-| `feat` | Adding new features |
-| `fix` | Bug fixes |
-| `refactor` | Refactoring (improving code without functional changes) |
-| `perf` | Performance improvements |
-| `style` | Code style changes only (formatting, semicolons, etc.) |
-| `test` | Adding and modifying tests |
-| `docs` | Documentation Changes |
-| `build` | Build system and external dependency changes (Deno, Docker, npm, etc.) |
-| `ci` | CI/CD related changes |
-| `chore` | Miscellaneous changes that don't fit into any of the above categories |
+フォーマット差分がある場合のみ `deno fmt` を実行し、その後に再度 `deno task fmt:check` を確認します。
 
-#### `scope`
-
-- api
-- bot
-- messages
-- db
-- docker
+`test:all` は libsql のネイティブロードのため当面 `--allow-sys` と `--allow-ffi` を必要とします。DB factory 導入後に権限縮小を検討します。
 
 ## Development Conventions
 
-- The project strictly follows a Test-Driven Development (TDD) workflow. All new features or bug fixes must start with writing tests.
-- Work must be captured via proper branch creation and commits; review past work through the commit log.
-- Raise concerns, issues, or improvement ideas to GitHub by opening issues via the `gh` CLI during development.
-- After completing a task, check off the relevant entry in `TASKS.md`, push your branch, and open a pull request on GitHub.
+- 新機能・バグ修正は TDD を基本とします。期待する振る舞いを日本語のテスト名で先に固定してください。
+- テスト名は「状況、操作、期待結果」が分かる形にします。必要なら実装前にテストケースの妥当性をユーザーへ確認してください。
+- テストは `jsr:@std/testing/bdd`, `@std/assert`, `@std/testing/mock` を使い、stub / spy は `using` で自動復元します。
+- API レスポンスの成否は HTTP ステータスを唯一のソースとし、レスポンスボディに `success` を含めません。
+- Bot 内部の `apiClient` や UI 層で `Result` 型として `success` を使うことは許可します。ただし HTTP API 契約とは区別します。
+- DB 設計は、Riot ID・内部レート・戦績をグローバル、Discord ギルド設定・募集イベント・ロールID・VC設定をギルド別として扱います。
+- 既存の実装パターンを優先し、無関係なリファクタリングは避けます。
+- TDD の詳細、テスト分類、mock方針、Integration test方針は [TESTING_STYLE.md](./TESTING_STYLE.md) を参照してください。
 
-### TDD Workflow
+## Git / Collaboration Rules
 
-1.  **Describe Expected Behavior:** Before writing any code, describe the expected behavior in a test. The test name should clearly explain the **context (situation)**, the **action (operation)**, and the **expected result**. For example: `"有効なイベント名、未来の日付と時刻が指定された場合、Discordイベントを作成し、参加者募集メッセージを投稿する"` (Given a valid event name and a future date/time, when the command is executed, it creates a Discord event and posts a recruitment message).
-2.  **Write Assertion and Seek Confirmation:** Implement the assertion for the expected behavior in the test. Present this test case to the user to confirm that the described behavior is correct. **Do not proceed without user agreement.**
-3.  **Implement Failing Test (Red):** Once the user agrees, complete the test implementation. Since the feature's code doesn't exist yet, this test is expected to fail. Run the test to confirm it fails as expected.
-4.  **Implement Feature (Green):** Write the actual application code to make the test pass.
-5.  **Verify:** Run all tests (`deno task test:all`) to ensure the new test passes and that no existing tests have been broken.
-6.  **Format and Lint:** Run `deno fmt` and `deno lint` to ensure code quality and consistency.
+- 会話は日本語で行います。
+- コミットメッセージは日本語の Conventional Commits 形式にします。
+- 作業は適切なブランチとコミットで記録し、過去作業は commit log で確認します。
+- 作業完了時は関連する `TASKS.md` の項目を更新します。
+- ブランチ作成、commit、push、PR 作成が必要な場合はユーザーの明示依頼に従います。
+- 懸念や改善案を GitHub Issue 化する場合は `gh` CLI を使います。
 
-**Note on Testing Hierarchy:** The TDD cycle focuses on writing **Unit Tests**, which are fast and stable. Higher-level **Integration Tests** are added separately for critical user scenarios to ensure overall system integrity by testing the interactions between components like the Bot, the API, and the Database.
+### Commit Message Format
 
-- **Test Style:** Tests are written in Japanese and follow a Behavior-Driven Development (BDD) style, using `describe` and `it` blocks from `jsr:@std/testing/bdd`. For detailed guidelines on test structure, file organization (unit vs. integration), and mocking strategies, please refer to the [Testing Style Guide](./TESTING_STYLE.md).
-- **File Location:** The location of test files depends on their type. Refer to the [Testing Style Guide](./TESTING_STYLE.md) for details.
-- **Project Structure:** The project is divided into `api`, `bot`, and `messages` workspaces. The `messages` workspace stores localized response templates and related tooling.
-- **Specification Document:** The `SPEC.md` file contains the detailed project specification and should be consulted for in-depth understanding. Any pending implementation work required to satisfy the specification is tracked in `TASKS.md`.
+```text
+<type>[optional scope]: <description>
+
+<背景・問題・判断理由・期待される効果・既知のリスク>
+```
+
+`type` は `feat`, `fix`, `refactor`, `perf`, `style`, `test`, `docs`, `build`, `ci`, `chore` を使います。`scope` は必要に応じて `api`, `bot`, `messages`, `db`, `docker` などを使います。
+
+### Commit Types
+
+| Type       | Description                                          |
+| ---------- | ---------------------------------------------------- |
+| `feat`     | 新機能                                               |
+| `fix`      | バグ修正                                             |
+| `refactor` | 振る舞いを変えない設計・実装改善                     |
+| `perf`     | 性能改善                                             |
+| `style`    | フォーマットなど、コードの意味を変えないスタイル変更 |
+| `test`     | テスト追加・修正                                     |
+| `docs`     | ドキュメント変更                                     |
+| `build`    | Deno、Docker、依存関係などビルド関連                 |
+| `ci`       | CI/CD 関連                                           |
+| `chore`    | 上記に分類しにくい雑務                               |
+
+### Commit Scopes
+
+- `api`
+- `bot`
+- `messages`
+- `db`
+- `docker`
