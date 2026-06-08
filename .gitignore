@@ -4,7 +4,6 @@
 
 # Drizzle
 /data/sqlite.db
-/drizzle
 
 # Logs
 logs

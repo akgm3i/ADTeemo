@@ -9,6 +9,11 @@ import {
   type Lane,
   matches,
   matchParticipants,
+  matchWatchers,
+  type MatchWatcherState,
+  riotAccounts,
+  type RiotPlatform,
+  type RiotRegion,
   userGuildProfiles,
   users,
 } from "./schema.ts";
@@ -16,9 +21,11 @@ import { RecordNotFoundError } from "../errors.ts";
 
 const userInsertSchema = createInsertSchema(users);
 const guildInsertSchema = createInsertSchema(guilds);
+const riotAccountInsertSchema = createInsertSchema(riotAccounts);
 const userGuildProfileInsertSchema = createInsertSchema(userGuildProfiles);
 const customGameEventInsertSchema = createInsertSchema(customGameEvents);
 const matchParticipantInsertSchema = createInsertSchema(matchParticipants);
+const matchWatcherInsertSchema = createInsertSchema(matchWatchers);
 
 async function upsertUser(userId: string) {
   const user = { discordId: userId };
@@ -178,6 +185,129 @@ async function linkUserWithRiotId(discordId: string, riotId: string) {
   }).execute();
 }
 
+async function upsertRiotAccount(account: {
+  discordId: string;
+  puuid: string;
+  gameName: string;
+  tagLine: string;
+  platform: RiotPlatform;
+  region: RiotRegion;
+}) {
+  await db.transaction(async (tx) => {
+    const userPayload = userInsertSchema.parse({
+      discordId: account.discordId,
+      riotId: account.puuid,
+    });
+    await tx.insert(users).values(userPayload).onConflictDoUpdate({
+      target: users.discordId,
+      set: { riotId: account.puuid },
+    }).execute();
+
+    const payload = riotAccountInsertSchema.parse(account);
+    await tx.insert(riotAccounts).values(payload).onConflictDoUpdate({
+      target: riotAccounts.discordId,
+      set: {
+        puuid: account.puuid,
+        gameName: account.gameName,
+        tagLine: account.tagLine,
+        platform: account.platform,
+        region: account.region,
+        updatedAt: new Date(),
+      },
+    }).execute();
+  });
+}
+
+async function getRiotAccountByDiscordId(discordId: string) {
+  return await db.query.riotAccounts.findFirst({
+    where: eq(riotAccounts.discordId, discordId),
+  });
+}
+
+async function upsertMatchWatcher(watcher: {
+  guildId: string;
+  targetDiscordId: string;
+  requesterId: string;
+  channelId: string;
+}) {
+  await db.transaction(async (tx) => {
+    await tx.insert(guilds).values({ id: watcher.guildId })
+      .onConflictDoNothing()
+      .execute();
+    await tx.insert(users).values({ discordId: watcher.requesterId })
+      .onConflictDoNothing().execute();
+
+    const targetAccount = await tx.query.riotAccounts.findFirst({
+      where: eq(riotAccounts.discordId, watcher.targetDiscordId),
+    });
+    if (!targetAccount) {
+      throw new RecordNotFoundError(
+        `Riot account for ${watcher.targetDiscordId} not found`,
+      );
+    }
+
+    const payload = matchWatcherInsertSchema.parse({
+      ...watcher,
+      enabled: true,
+      lastState: "IDLE",
+      currentGameId: null,
+      currentMatchId: null,
+      gameStartedAt: null,
+      lastInGameNotifiedAt: null,
+    });
+    await tx.insert(matchWatchers).values(payload).onConflictDoUpdate({
+      target: [matchWatchers.guildId, matchWatchers.targetDiscordId],
+      set: {
+        requesterId: watcher.requesterId,
+        channelId: watcher.channelId,
+        enabled: true,
+        updatedAt: new Date(),
+      },
+    }).execute();
+  });
+}
+
+async function getEnabledMatchWatchers() {
+  return await db.query.matchWatchers.findMany({
+    where: eq(matchWatchers.enabled, true),
+  });
+}
+
+async function updateMatchWatcherState(
+  guildId: string,
+  targetDiscordId: string,
+  state: {
+    lastState: MatchWatcherState;
+    currentGameId?: string | null;
+    currentMatchId?: string | null;
+    gameStartedAt?: Date | null;
+    lastCheckedAt?: Date | null;
+    lastInGameNotifiedAt?: Date | null;
+  },
+) {
+  await db.update(matchWatchers).set({
+    ...state,
+    updatedAt: new Date(),
+  }).where(
+    and(
+      eq(matchWatchers.guildId, guildId),
+      eq(matchWatchers.targetDiscordId, targetDiscordId),
+    ),
+  ).execute();
+}
+
+async function disableMatchWatcher(guildId: string, targetDiscordId: string) {
+  await db.update(matchWatchers).set({
+    enabled: false,
+    updatedAt: new Date(),
+  }).where(
+    and(
+      eq(matchWatchers.guildId, guildId),
+      eq(matchWatchers.targetDiscordId, targetDiscordId),
+    ),
+  ).execute();
+}
+
 async function createAuthState(state: string, discordId: string) {
   await db.insert(authStates).values({ state, discordId }).execute();
 }
@@ -196,5 +326,11 @@ export const dbActions = {
   deleteAuthState,
   updateUserRiotId,
   linkUserWithRiotId,
+  upsertRiotAccount,
+  getRiotAccountByDiscordId,
+  upsertMatchWatcher,
+  getEnabledMatchWatchers,
+  updateMatchWatcherState,
+  disableMatchWatcher,
   createAuthState,
 };
