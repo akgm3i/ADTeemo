@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import type { Client } from "discord.js";
@@ -97,7 +97,8 @@ function match() {
 }
 
 function clientWithSend(
-  send: () => Promise<unknown> = () => Promise.resolve({ id: "message-new" }),
+  send: (options: unknown) => Promise<unknown> = () =>
+    Promise.resolve({ id: "message-new" }),
 ) {
   const message = {
     id: "message-existing",
@@ -301,7 +302,7 @@ describe("match_tracking.ts", () => {
     );
   });
 
-  test("結果取得待ちが一定時間を超えたとき、Match-v5を再試行せずIDLEへ戻す", async () => {
+  test("結果取得待ちが一定時間を超えたとき、対象者とIDLE復帰理由を通知しMatch-v5を再試行しない", async () => {
     const { client, sendSpy } = clientWithSend();
     using _getWatchersStub = stub(
       apiClient,
@@ -337,6 +338,25 @@ describe("match_tracking.ts", () => {
 
     assertSpyCalls(getMatchStub, 0);
     assertSpyCalls(sendSpy, 1);
+    const sentMessage = sendSpy.calls[0].args[0] as {
+      embeds: {
+        data: {
+          title: string;
+          description: string;
+          footer: { text: string };
+        };
+      }[];
+    };
+    const sentEmbed = sentMessage.embeds[0].data;
+    assertEquals(sentEmbed.title, "試合結果の取得を停止しました");
+    assertStringIncludes(sentEmbed.description, "<@target-1>");
+    assertStringIncludes(
+      sentEmbed.description,
+      "一定時間内に取得できませんでした",
+    );
+    assertStringIncludes(sentEmbed.description, "IDLEへ戻し");
+    assertStringIncludes(sentEmbed.description, "継続監視は続行します");
+    assertEquals(sentEmbed.footer.text, "Match JP1_12345");
     assertEquals(updateStub.calls[0].args[2].lastState, "IDLE");
     assertEquals(updateStub.calls[0].args[2].currentGameId, null);
     assertEquals(updateStub.calls[0].args[2].currentMatchId, null);
