@@ -476,6 +476,68 @@ describe("match_tracking.ts", () => {
     assertSpyCalls(updateStub, 0);
   });
 
+  test("同一targetDiscordIdを複数guildで監視しているとき、1回の処理ではRiot取得を共有しつつ各guildの通知と状態更新を継続する", async () => {
+    let sendCount = 0;
+    const { client, sendSpy } = clientWithSend(() => {
+      sendCount += 1;
+      if (sendCount === 1) {
+        return Promise.reject(new Error("Missing permissions"));
+      }
+      return Promise.resolve({ id: `message-new-${sendCount}` });
+    });
+    using _loggerStub = stub(botLogger, "error", () => {});
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher({ guildId: "guild-1", channelId: "channel-1" }),
+            watcher({ guildId: "guild-2", channelId: "channel-2" }),
+          ],
+        }),
+    );
+    using getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(activeGame()),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(getAccountStub, 1);
+    assertSpyCalls(activeGameStub, 1);
+    assertSpyCalls(sendSpy, 2);
+    assertSpyCalls(updateStub, 2);
+    assertEquals(updateStub.calls[0].args[0], "guild-1");
+    assertEquals(updateStub.calls[0].args[1], "target-1");
+    assertEquals(updateStub.calls[0].args[2].lastState, "IN_GAME");
+    assertEquals(updateStub.calls[0].args[2].currentGameId, "12345");
+    assertEquals(
+      updateStub.calls[0].args[2].currentNotificationMessageId,
+      null,
+    );
+    assertEquals(updateStub.calls[1].args[0], "guild-2");
+    assertEquals(updateStub.calls[1].args[1], "target-1");
+    assertEquals(updateStub.calls[1].args[2].lastState, "IN_GAME");
+    assertEquals(updateStub.calls[1].args[2].currentGameId, "12345");
+    assertEquals(
+      updateStub.calls[1].args[2].currentNotificationMessageId,
+      "message-new-2",
+    );
+  });
+
   test("通知送信に失敗しても、試合開始の状態更新は継続する", async () => {
     const { client } = clientWithSend(() =>
       Promise.reject(new Error("Missing permissions"))
