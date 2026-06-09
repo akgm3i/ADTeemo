@@ -1,7 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
-import type { Client } from "discord.js";
+import type { APIEmbedField, Client } from "discord.js";
 import type { MatchWatcher, RiotAccount } from "@adteemo/api/schema";
 import { riotApi } from "@adteemo/api/riot-api";
 import { riotStaticData } from "@adteemo/api/riot-static-data";
@@ -82,6 +82,7 @@ function match() {
       queueId: 420,
       participants: [{
         puuid: "puuid-1",
+        championId: 17,
         championName: "Teemo",
         teamId: 100,
         win: true,
@@ -117,6 +118,26 @@ function clientWithSend(
     },
   } as unknown as Client;
   return { client, sendSpy, editSpy };
+}
+
+function embedFieldValue(
+  embed: { data: { fields?: APIEmbedField[] } },
+  name: string,
+) {
+  return embed.data.fields?.find((field) => field.name === name)?.value;
+}
+
+function firstEditedEmbed(
+  editSpy: ReturnType<typeof clientWithSend>["editSpy"],
+) {
+  const calls = editSpy.calls as unknown as Array<{
+    args: [{ embeds: [{ data: { fields?: APIEmbedField[] } }] }];
+  }>;
+  const options = calls[0]?.args[0];
+  if (!options?.embeds[0]) {
+    throw new Error("edited embed was not found");
+  }
+  return options.embeds[0];
 }
 
 describe("match_tracking.ts", () => {
@@ -299,6 +320,82 @@ describe("match_tracking.ts", () => {
       updateStub.calls.at(-1)?.args[2].currentNotificationMessageId,
       null,
     );
+  });
+
+  test("ja_JPの試合結果ではchampionIdからチャンピオン名を表示する", async () => {
+    const { client, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "FETCHING_RESULT",
+            currentMatchId: "JP1_12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    const resultEmbed = firstEditedEmbed(editSpy);
+    assertEquals(embedFieldValue(resultEmbed, "チャンピオン"), "ティーモ");
+  });
+
+  test("ja_JPの試合結果では代表キューとマップを日本語表示に寄せる", async () => {
+    const { client, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "FETCHING_RESULT",
+            currentMatchId: "JP1_12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    const resultEmbed = firstEditedEmbed(editSpy);
+    assertEquals(embedFieldValue(resultEmbed, "キュー"), "ランクソロ/デュオ");
+    assertEquals(embedFieldValue(resultEmbed, "マップ"), "サモナーズリフト");
+    assertEquals(embedFieldValue(resultEmbed, "モード"), "クラシック");
   });
 
   test("結果取得待ちが一定時間を超えたとき、Match-v5を再試行せずIDLEへ戻す", async () => {

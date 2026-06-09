@@ -69,6 +69,54 @@ describe("riot_api.ts", () => {
     assertSpyCalls(fetchStub, 1);
   });
 
+  test("Match-v5が試合詳細を返すとき、participantのchampionIdをparseする", async () => {
+    Deno.env.set("RIOT_API_KEY", "test-key");
+    using fetchStub = stub(
+      globalThis,
+      "fetch",
+      () =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              metadata: {
+                matchId: "JP1_12345",
+                participants: ["puuid-1"],
+              },
+              info: {
+                gameId: 12345,
+                gameCreation: 1_700_000_000_000,
+                gameDuration: 1800,
+                gameEndTimestamp: 1_700_001_800_000,
+                gameMode: "CLASSIC",
+                gameType: "MATCHED_GAME",
+                mapId: 11,
+                queueId: 420,
+                participants: [{
+                  puuid: "puuid-1",
+                  championId: 17,
+                  championName: "Teemo",
+                  teamId: 100,
+                  win: true,
+                  kills: 10,
+                  deaths: 2,
+                  assists: 8,
+                  totalMinionsKilled: 180,
+                  neutralMinionsKilled: 12,
+                  goldEarned: 12345,
+                }],
+              },
+            }),
+            { status: 200 },
+          ),
+        ),
+    );
+
+    const match = await riotApi.getMatchById("asia", "JP1_12345");
+
+    assertEquals(match?.info.participants[0].championId, 17);
+    assertSpyCalls(fetchStub, 1);
+  });
+
   test("Riot APIが429を返したあと成功するとき、再試行して結果を返す", async () => {
     Deno.env.set("RIOT_API_KEY", "test-key");
     let calls = 0;

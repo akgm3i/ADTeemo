@@ -70,6 +70,46 @@ describe("riot_static_data.ts", () => {
     assertSpyCalls(fetchStub, 1);
   });
 
+  test("ja_JPの代表キューは日本語ユーザー向けの表示名を返す", async () => {
+    using getCacheStub = stub(
+      dbActions,
+      "getRiotStaticDataCache",
+      () => Promise.reject(new Error("cache should not be called")),
+    );
+    using fetchStub = stub(
+      globalThis,
+      "fetch",
+      () => Promise.reject(new Error("fetch should not be called")),
+    );
+
+    const name = await riotStaticData.getQueueNameById(420, "ja_JP");
+
+    assertEquals(name, "ランクソロ/デュオ");
+    assertSpyCalls(getCacheStub, 0);
+    assertSpyCalls(fetchStub, 0);
+  });
+
+  test("ja_JPの代表マップとゲームモードは日本語ユーザー向けの表示名を返す", async () => {
+    using getCacheStub = stub(
+      dbActions,
+      "getRiotStaticDataCache",
+      () => Promise.reject(new Error("cache should not be called")),
+    );
+    using fetchStub = stub(
+      globalThis,
+      "fetch",
+      () => Promise.reject(new Error("fetch should not be called")),
+    );
+
+    const map = await riotStaticData.getMapNameById(11, "ja_JP");
+    const mode = await riotStaticData.getGameModeName("CLASSIC", "ja_JP");
+
+    assertEquals(map, "サモナーズリフト");
+    assertEquals(mode, "クラシック");
+    assertSpyCalls(getCacheStub, 0);
+    assertSpyCalls(fetchStub, 0);
+  });
+
   test("キャッシュ更新に失敗した場合、古いDB値をfallbackとして返す", async () => {
     using _getCacheStub = stub(
       dbActions,

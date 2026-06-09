@@ -38,6 +38,11 @@ function numberEnv(name: string, fallback: number) {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+function messageLocale() {
+  return (Deno.env.get("BOT_MESSAGE_LANG") ?? Deno.env.get("LC_MESSAGES") ??
+    Deno.env.get("LC_ALL") ?? "ja_JP").replace("-", "_").split(".")[0];
+}
+
 function matchIdForGame(account: RiotAccount, gameId: string | number) {
   return `${account.platform.toUpperCase()}_${gameId}`;
 }
@@ -86,13 +91,20 @@ function isResultFetchTimedOut(
   return now.getTime() - startedAt.getTime() >= timeoutMs;
 }
 
-async function championNameById(championId: number | undefined) {
+async function championNameById(
+  championId: number | undefined,
+  fallbackName?: string,
+) {
   if (championId === undefined) {
-    return messageHandler.formatMessage(
+    return fallbackName ?? messageHandler.formatMessage(
       messageKeys.matchTracking.embed.fallback.unknownChampion,
     );
   }
-  return await riotStaticData.getChampionNameById(championId) ??
+  return await riotStaticData.getChampionNameById(
+    championId,
+    messageLocale(),
+  ) ??
+    fallbackName ??
     messageHandler.formatMessage(
       messageKeys.matchTracking.embed.fallback.championId,
       { id: championId },
@@ -105,7 +117,7 @@ async function queueName(queueId: number | undefined) {
       messageKeys.matchTracking.embed.fallback.unknownQueue,
     );
   }
-  return await riotStaticData.getQueueNameById(queueId) ??
+  return await riotStaticData.getQueueNameById(queueId, messageLocale()) ??
     messageHandler.formatMessage(
       messageKeys.matchTracking.embed.fallback.queueId,
       { id: queueId },
@@ -113,7 +125,7 @@ async function queueName(queueId: number | undefined) {
 }
 
 async function mapName(mapId: number) {
-  return await riotStaticData.getMapNameById(mapId) ??
+  return await riotStaticData.getMapNameById(mapId, messageLocale()) ??
     messageHandler.formatMessage(
       messageKeys.matchTracking.embed.fallback.mapId,
       { id: mapId },
@@ -121,7 +133,8 @@ async function mapName(mapId: number) {
 }
 
 async function gameModeName(gameMode: string) {
-  return await riotStaticData.getGameModeName(gameMode) ?? gameMode;
+  return await riotStaticData.getGameModeName(gameMode, messageLocale()) ??
+    gameMode;
 }
 
 function currentStateFromWatcher(watcher: MatchWatcher): WatcherState {
@@ -324,8 +337,13 @@ async function buildMatchResultEmbed(
   }
 
   const cs = participant.totalMinionsKilled + participant.neutralMinionsKilled;
+  const champion = await championNameById(
+    participant.championId,
+    participant.championName,
+  );
   const queue = await queueName(match.info.queueId);
   const map = await mapName(match.info.mapId);
+  const mode = await gameModeName(match.info.gameMode);
   const result = participant.win
     ? messageHandler.formatMessage(messageKeys.matchTracking.embed.result.win)
     : messageHandler.formatMessage(messageKeys.matchTracking.embed.result.loss);
@@ -348,7 +366,7 @@ async function buildMatchResultEmbed(
         name: messageHandler.formatMessage(
           messageKeys.matchTracking.embed.field.champion,
         ),
-        value: participant.championName,
+        value: champion,
         inline: true,
       },
       {
@@ -385,6 +403,13 @@ async function buildMatchResultEmbed(
           messageKeys.matchTracking.embed.field.map,
         ),
         value: map,
+        inline: true,
+      },
+      {
+        name: messageHandler.formatMessage(
+          messageKeys.matchTracking.embed.field.mode,
+        ),
+        value: mode,
         inline: true,
       },
     )

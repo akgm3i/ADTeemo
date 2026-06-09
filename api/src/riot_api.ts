@@ -47,6 +47,7 @@ const matchSchema = z.object({
         riotIdGameName: z.string().optional(),
         riotIdTagline: z.string().optional(),
         summonerName: z.string().optional(),
+        championId: z.number().optional(),
         championName: z.string(),
         teamId: z.number(),
         win: z.boolean(),
