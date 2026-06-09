@@ -100,6 +100,13 @@
     }
   },
   "matchTracking": {
+    "watch": {
+      "success": "Started watching {member}'s LoL matches. Notifications will be posted in this channel.",
+      "error": {
+        "failure": "Could not start watching {member}'s matches: {error}",
+        "riotAccountRequired": "To watch {member}'s matches, that member needs to register their Riot ID first. Ask them to run `/set-riot-id`."
+      }
+    },
     "embed": {
       "active": {
         "startedTitle": "Match start detected",

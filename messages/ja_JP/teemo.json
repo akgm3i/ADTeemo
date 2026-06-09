@@ -107,5 +107,14 @@
     "error": {
       "failure": "うーん、なんだか身体の調子が悪いみたいだ…。 {error}"
     }
+  },
+  "matchTracking": {
+    "watch": {
+      "success": "{member} の試合監視を開始したよ！ このチャンネルで偵察結果を知らせるね。",
+      "error": {
+        "failure": "{member} の試合監視を開始できなかったよ…。 {error}",
+        "riotAccountRequired": "{member} の試合を監視するには、まずRiot IDの登録が必要だよ。`/set-riot-id` で登録してもらってね。"
+      }
+    }
   }
 }
