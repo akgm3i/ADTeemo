@@ -34,7 +34,7 @@ function watcher(overrides: Partial<MatchWatcher> = {}): MatchWatcher {
   };
 }
 
-function account(): RiotAccount {
+function account(overrides: Partial<RiotAccount> = {}): RiotAccount {
   const now = new Date("2026-01-01T00:00:00.000Z");
   return {
     discordId: "target-1",
@@ -45,6 +45,7 @@ function account(): RiotAccount {
     region: "asia",
     createdAt: now,
     updatedAt: now,
+    ...overrides,
   };
 }
 
@@ -474,6 +475,167 @@ describe("match_tracking.ts", () => {
     assertSpyCalls(activeGameStub, 1);
     assertSpyCalls(sendSpy, 0);
     assertSpyCalls(updateStub, 0);
+  });
+
+  test("複数の監視対象が返されたとき、全員分の状態確認と通知と状態更新を行う", async () => {
+    const { client, sendSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher(),
+            watcher({
+              targetDiscordId: "target-2",
+              requesterId: "requester-2",
+            }),
+          ],
+        }),
+    );
+    using getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      (discordId) =>
+        Promise.resolve({
+          success: true as const,
+          account: account({
+            discordId,
+            puuid: discordId === "target-2" ? "puuid-2" : "puuid-1",
+            gameName: discordId === "target-2" ? "Tristana" : "Teemo",
+          }),
+        }),
+    );
+    using activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      (_platform, puuid) =>
+        Promise.resolve(activeGame(puuid === "puuid-2" ? 67890 : 12345)),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(getAccountStub, 2);
+    assertSpyCall(getAccountStub, 0, { args: ["target-1"] });
+    assertSpyCall(getAccountStub, 1, { args: ["target-2"] });
+    assertSpyCalls(activeGameStub, 2);
+    assertSpyCall(activeGameStub, 0, { args: ["jp1", "puuid-1"] });
+    assertSpyCall(activeGameStub, 1, { args: ["jp1", "puuid-2"] });
+    assertSpyCalls(sendSpy, 2);
+    assertSpyCalls(updateStub, 2);
+    assertEquals(updateStub.calls[0].args[1], "target-1");
+    assertEquals(updateStub.calls[0].args[2].currentGameId, "12345");
+    assertEquals(updateStub.calls[1].args[1], "target-2");
+    assertEquals(updateStub.calls[1].args[2].currentGameId, "67890");
+  });
+
+  test("一部の監視対象でRiotアカウント取得に失敗しても、後続の監視対象を処理する", async () => {
+    const { client, sendSpy } = clientWithSend();
+    using _loggerStub = stub(botLogger, "error", () => {});
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher(),
+            watcher({ targetDiscordId: "target-2" }),
+          ],
+        }),
+    );
+    using getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      (discordId) => {
+        if (discordId === "target-1") {
+          throw new Error("Riot account fetch failed");
+        }
+        return Promise.resolve({
+          success: true as const,
+          account: account({ discordId, puuid: "puuid-2" }),
+        });
+      },
+    );
+    using activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(activeGame(67890)),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(getAccountStub, 2);
+    assertSpyCalls(activeGameStub, 1);
+    assertSpyCall(activeGameStub, 0, { args: ["jp1", "puuid-2"] });
+    assertSpyCalls(sendSpy, 1);
+    assertSpyCalls(updateStub, 1);
+    assertEquals(updateStub.calls[0].args[1], "target-2");
+    assertEquals(updateStub.calls[0].args[2].currentGameId, "67890");
+  });
+
+  test("一部の監視対象でRiot API処理に失敗しても、後続の監視対象を処理する", async () => {
+    const { client, sendSpy } = clientWithSend();
+    using _loggerStub = stub(botLogger, "error", () => {});
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher(),
+            watcher({ targetDiscordId: "target-2" }),
+          ],
+        }),
+    );
+    using getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      (discordId) =>
+        Promise.resolve({
+          success: true as const,
+          account: account({
+            discordId,
+            puuid: discordId === "target-2" ? "puuid-2" : "puuid-1",
+          }),
+        }),
+    );
+    using activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      (_platform, puuid) => {
+        if (puuid === "puuid-1") {
+          throw new Error("Riot API failed");
+        }
+        return Promise.resolve(activeGame(67890));
+      },
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(getAccountStub, 2);
+    assertSpyCalls(activeGameStub, 2);
+    assertSpyCalls(sendSpy, 1);
+    assertSpyCalls(updateStub, 1);
+    assertEquals(updateStub.calls[0].args[1], "target-2");
+    assertEquals(updateStub.calls[0].args[2].currentGameId, "67890");
   });
 
   test("通知送信に失敗しても、試合開始の状態更新は継続する", async () => {
