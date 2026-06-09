@@ -18,7 +18,10 @@ describe("Command: set-riot-id", () => {
       );
 
       const options = json.options ?? [];
-      assertEquals(options.map((option) => option.name), ["riot-id"]);
+      assertEquals(options.map((option) => option.name), [
+        "riot-id",
+        "platform",
+      ]);
       const riotIdOption = options[0];
       assertEquals(
         riotIdOption?.description,
@@ -50,11 +53,33 @@ describe("Command: set-riot-id", () => {
     // Assert
     const [gameName, tagLine] = riotId.split("#");
     assertSpyCall(linkAccountByRiotIdStub, 0, {
-      args: [mockUserId, gameName, tagLine],
+      args: [mockUserId, gameName, tagLine, "jp1", "asia"],
     });
     assertSpyCall(editReplySpy, 0);
     assertSpyCall(formatMessageSpy, 0, {
       args: [messageKeys.riotAccount.link.success.title],
+    });
+  });
+
+  test("OCEプラットフォームが指定された場合、Regional Routingをseaとして登録する", async () => {
+    const mockUserId = "user-123";
+    const riotId = "TestSummoner#OCE";
+    const mockInteraction = new MockInteractionBuilder("set-riot-id")
+      .withUser({ id: mockUserId })
+      .withStringOption("riot-id", riotId)
+      .withStringOption("platform", "oc1")
+      .build();
+    using linkAccountByRiotIdStub = stub(
+      apiClient,
+      "linkAccountByRiotId",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await execute(mockInteraction as unknown as CommandInteraction);
+
+    const [gameName, tagLine] = riotId.split("#");
+    assertSpyCall(linkAccountByRiotIdStub, 0, {
+      args: [mockUserId, gameName, tagLine, "oc1", "sea"],
     });
   });
 
@@ -81,7 +106,7 @@ describe("Command: set-riot-id", () => {
     // Assert
     const [gameName, tagLine] = riotId.split("#");
     assertSpyCall(linkAccountByRiotIdStub, 0, {
-      args: [mockUserId, gameName, tagLine],
+      args: [mockUserId, gameName, tagLine, "jp1", "asia"],
     });
     assertSpyCall(editReplySpy, 0);
     assertSpyCall(formatMessageSpy, 0, {

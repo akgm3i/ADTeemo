@@ -70,6 +70,61 @@ describe("apiClient", () => {
     });
   });
 
+  describe("getEnabledMatchWatchers", () => {
+    test("監視設定の日付フィールドをDateまたはnullへ変換する", async () => {
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () =>
+          Promise.resolve(
+            new Response(
+              JSON.stringify({
+                watchers: [{
+                  guildId: "guild-1",
+                  targetDiscordId: "target-1",
+                  requesterId: "requester-1",
+                  channelId: "channel-1",
+                  enabled: true,
+                  lastState: "IN_GAME",
+                  currentGameId: "12345",
+                  currentMatchId: null,
+                  currentNotificationMessageId: "message-1",
+                  pendingResultMatchId: "JP1_12344",
+                  pendingResultNotificationMessageId: "message-0",
+                  pendingResultStartedAt: "2026-01-01T00:00:00.000Z",
+                  gameStartedAt: "2026-01-01T00:01:00.000Z",
+                  lastCheckedAt: null,
+                  lastInGameNotifiedAt: "2026-01-01T00:02:00.000Z",
+                  createdAt: "2026-01-01T00:00:00.000Z",
+                  updatedAt: "2026-01-01T00:03:00.000Z",
+                }],
+              }),
+              { status: 200 },
+            ),
+          ),
+      );
+
+      const result = await apiClient.getEnabledMatchWatchers();
+
+      assertEquals(result.success, true);
+      if (!result.success) return;
+      assertEquals(
+        result.watchers[0].pendingResultStartedAt,
+        new Date(
+          "2026-01-01T00:00:00.000Z",
+        ),
+      );
+      assertEquals(
+        result.watchers[0].gameStartedAt,
+        new Date(
+          "2026-01-01T00:01:00.000Z",
+        ),
+      );
+      assertEquals(result.watchers[0].lastCheckedAt, null);
+      assertSpyCalls(fetchStub, 1);
+    });
+  });
+
   describe("setMainRole", () => {
     const userId = "test-user";
     const guildId = "test-guild";

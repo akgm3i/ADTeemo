@@ -77,5 +77,74 @@
     "error": {
       "failure": "Failed to check the bot's health. {error}"
     }
+  },
+  "matchManagement": {
+    "recordMatch": {
+      "start": "Starting match record entry...",
+      "promptKDA": "Enter **{username}**'s KDA in `K/D/A` format.",
+      "promptCS": "Enter **{username}**'s CS as a number.",
+      "promptGold": "Enter **{username}**'s gold earned as a number.",
+      "invalidFormatKDA": "Invalid format. Use slash-separated kills/deaths/assists, such as `10/2/8`.",
+      "invalidFormatNumber": "Please enter a number.",
+      "nextPlayer": "Next player: **{username}**",
+      "summaryTitle": "Match Summary",
+      "summaryDescription": "Register the following match stats?",
+      "summaryFieldPlayer": "Player",
+      "summaryFieldStats": "KDA / CS / Gold",
+      "confirmButton": "Register",
+      "cancelButton": "Cancel",
+      "success": "Match stats registered.",
+      "failure": "Failed to register match stats. {error}",
+      "cancelled": "Match stats registration was cancelled.",
+      "timeout": "Timed out. Match stats registration was cancelled."
+    }
+  },
+  "matchTracking": {
+    "embed": {
+      "active": {
+        "startedTitle": "Match start detected",
+        "progressTitle": "Match status updated",
+        "description": "{member} is in a match."
+      },
+      "resultPending": {
+        "title": "Match end detected",
+        "description": "{member}'s match has ended. This post will be updated when match results are available."
+      },
+      "resultTimeout": {
+        "title": "Stopped fetching match result",
+        "description": "Could not fetch {member}'s match result within the timeout. Continuous monitoring will continue."
+      },
+      "result": {
+        "title": "Match Result: {result}",
+        "description": "{member}'s match stats.",
+        "participantMissingTitle": "Match result fetched",
+        "participantMissingDescription": "Could not find participant data for {member}.",
+        "win": "Win",
+        "loss": "Loss"
+      },
+      "field": {
+        "champion": "Champion",
+        "queue": "Queue",
+        "map": "Map",
+        "mode": "Mode",
+        "elapsed": "Elapsed",
+        "kda": "KDA",
+        "cs": "CS",
+        "gold": "Gold"
+      },
+      "fallback": {
+        "unknownChampion": "Unknown champion",
+        "championId": "Champion #{id}",
+        "unknownQueue": "Unknown queue",
+        "queueId": "Queue {id}",
+        "mapId": "Map {id}",
+        "elapsedMinutes": "About {minutes} min"
+      },
+      "footer": {
+        "game": "{platform} Game {gameId} / {riotId}",
+        "match": "Match {matchId}",
+        "matchWithRiotId": "Match {matchId} / {riotId}"
+      }
+    }
   }
 }

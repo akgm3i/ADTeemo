@@ -100,6 +100,54 @@
       "timeout": "時間切れのため、戦績の登録をキャンセルしました。"
     }
   },
+  "matchTracking": {
+    "embed": {
+      "active": {
+        "startedTitle": "試合開始を検知しました",
+        "progressTitle": "試合状況を更新しました",
+        "description": "{member} が試合中です。"
+      },
+      "resultPending": {
+        "title": "試合終了を検知しました",
+        "description": "{member} の試合が終了しました。戦績が反映され次第、この投稿を更新します。"
+      },
+      "resultTimeout": {
+        "title": "試合結果の取得を停止しました",
+        "description": "{member} の試合結果を一定時間内に取得できませんでした。継続監視は続行します。"
+      },
+      "result": {
+        "title": "試合結果: {result}",
+        "description": "{member} の戦績です。",
+        "participantMissingTitle": "試合結果を取得しました",
+        "participantMissingDescription": "{member} の参加者データが見つかりませんでした。",
+        "win": "勝利",
+        "loss": "敗北"
+      },
+      "field": {
+        "champion": "チャンピオン",
+        "queue": "キュー",
+        "map": "マップ",
+        "mode": "モード",
+        "elapsed": "経過時間",
+        "kda": "KDA",
+        "cs": "CS",
+        "gold": "Gold"
+      },
+      "fallback": {
+        "unknownChampion": "チャンピオン不明",
+        "championId": "チャンピオン #{id}",
+        "unknownQueue": "キュー不明",
+        "queueId": "キュー {id}",
+        "mapId": "マップ {id}",
+        "elapsedMinutes": "約{minutes}分"
+      },
+      "footer": {
+        "game": "{platform} Game {gameId} / {riotId}",
+        "match": "Match {matchId}",
+        "matchWithRiotId": "Match {matchId} / {riotId}"
+      }
+    }
+  },
   "riotAccount": {
     "set": {
       "error": {

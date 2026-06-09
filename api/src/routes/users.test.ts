@@ -12,13 +12,12 @@ import type { Lane } from "../db/schema.ts";
 describe("routes/users.ts", () => {
   const client = testClient(app);
   const errorResponseSchema = z.object({ error: z.string() });
+  const discordId = "test-discord-id";
+  const gameName = "TestUser";
+  const tagLine = "JP1";
+  const puuid = "test-puuid";
 
   describe("POST /users/link-by-riot-id", () => {
-    const discordId = "test-discord-id";
-    const gameName = "TestUser";
-    const tagLine = "JP1";
-    const puuid = "test-puuid";
-
     describe("正常系", () => {
       test(
         "未登録のDiscord IDでRiot ID連携を実行するとリンク用アクションを呼び出し、204 No Contentを返す",
@@ -29,9 +28,9 @@ describe("routes/users.ts", () => {
             "getAccountByRiotId",
             () => Promise.resolve({ puuid, gameName, tagLine }),
           );
-          using linkUserWithRiotIdStub = stub(
+          using upsertRiotAccountStub = stub(
             dbActions,
-            "linkUserWithRiotId",
+            "upsertRiotAccount",
             () => Promise.resolve(),
           );
 
@@ -43,37 +42,61 @@ describe("routes/users.ts", () => {
           // Assert
           assert(res.status === 204);
           assertEquals(await res.text(), "");
-          assertSpyCall(getAccountStub, 0, { args: [gameName, tagLine] });
-          assertSpyCall(linkUserWithRiotIdStub, 0, {
-            args: [discordId, puuid],
+          assertSpyCall(getAccountStub, 0, {
+            args: ["asia", gameName, tagLine],
+          });
+          assertSpyCall(upsertRiotAccountStub, 0, {
+            args: [{
+              discordId,
+              puuid,
+              gameName,
+              tagLine,
+              platform: "jp1",
+              region: "asia",
+            }],
           });
         },
       );
 
-      test("Riotアカウントが見つかりリンク処理が成功した場合、204 No Contentを返す", async () => {
+      test("platformとregionを指定してRiot ID連携すると、指定regionでAccount-v1を呼び出して保存する", async () => {
         // Arrange
         using getAccountStub = stub(
           riotApi,
           "getAccountByRiotId",
           () => Promise.resolve({ puuid, gameName, tagLine }),
         );
-        using linkUserWithRiotIdStub = stub(
+        using upsertRiotAccountStub = stub(
           dbActions,
-          "linkUserWithRiotId",
+          "upsertRiotAccount",
           () => Promise.resolve(),
         );
 
         // Act
         const res = await client.users["link-by-riot-id"].$patch({
-          json: { discordId, gameName, tagLine },
+          json: {
+            discordId,
+            gameName,
+            tagLine,
+            platform: "euw1",
+            region: "europe",
+          },
         });
 
         // Assert
         assert(res.status === 204);
         assertEquals(await res.text(), "");
-        assertSpyCall(getAccountStub, 0, { args: [gameName, tagLine] });
-        assertSpyCall(linkUserWithRiotIdStub, 0, {
-          args: [discordId, puuid],
+        assertSpyCall(getAccountStub, 0, {
+          args: ["europe", gameName, tagLine],
+        });
+        assertSpyCall(upsertRiotAccountStub, 0, {
+          args: [{
+            discordId,
+            puuid,
+            gameName,
+            tagLine,
+            platform: "euw1",
+            region: "europe",
+          }],
         });
       });
     });
@@ -86,9 +109,9 @@ describe("routes/users.ts", () => {
           "getAccountByRiotId",
           () => Promise.resolve(null),
         );
-        using linkUserWithRiotIdSpy = stub(
+        using upsertRiotAccountSpy = stub(
           dbActions,
-          "linkUserWithRiotId",
+          "upsertRiotAccount",
         );
         using mockFormatMessage = stub(
           messageHandler,
@@ -108,10 +131,55 @@ describe("routes/users.ts", () => {
         assertSpyCall(mockFormatMessage, 0, {
           args: [messageKeys.riotAccount.set.error.summonerNotFound],
         });
-        assertSpyCall(getAccountStub, 0, { args: [gameName, tagLine] });
+        assertSpyCall(getAccountStub, 0, {
+          args: ["asia", gameName, tagLine],
+        });
         assertEquals(error, "error message");
-        assertEquals(linkUserWithRiotIdSpy.calls.length, 0);
+        assertEquals(upsertRiotAccountSpy.calls.length, 0);
       });
+    });
+  });
+
+  describe("GET /users/:userId/riot-account", () => {
+    test("Riotアカウントが存在するとき、アカウント情報を返す", async () => {
+      const account = {
+        discordId,
+        puuid,
+        gameName,
+        tagLine,
+        platform: "jp1" as const,
+        region: "asia" as const,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      using getRiotAccountStub = stub(
+        dbActions,
+        "getRiotAccountByDiscordId",
+        () => Promise.resolve(account),
+      );
+
+      const res = await client.users[":userId"]["riot-account"].$get({
+        param: { userId: discordId },
+      });
+
+      assert(res.status === 200);
+      const body = await res.json();
+      assertEquals(body.account.puuid, puuid);
+      assertSpyCall(getRiotAccountStub, 0, { args: [discordId] });
+    });
+
+    test("Riotアカウントが存在しないとき、404を返す", async () => {
+      using _getRiotAccountStub = stub(
+        dbActions,
+        "getRiotAccountByDiscordId",
+        () => Promise.resolve(undefined),
+      );
+
+      const res = await client.users[":userId"]["riot-account"].$get({
+        param: { userId: discordId },
+      });
+
+      assertEquals(res.status, 404);
     });
   });
 

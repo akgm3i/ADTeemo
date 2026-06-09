@@ -26,11 +26,11 @@
 ## 3. API・DB設計
 
 16. [ ] `users.riotId` が Riot PUUID を保存している現状を整理し、カラム名またはモデル名を `riotPuuid` 等に改める方針を決める。
-17. [ ] Riot アカウント情報を `users` から専用テーブルへ正規化し、DiscordユーザーとRiotアカウントの関連を明確にする。
+17. [x] Riot アカウント情報を `users` から専用テーブルへ正規化し、DiscordユーザーとRiotアカウントの関連を明確にする。
 18. [ ] `matches` はグローバル戦績として維持しつつ、開催元の `guild_id` または `custom_game_event_id` を参照できるようにする。
 19. [ ] ギルド固有設定テーブル（募集チャンネル、Lobby/Red/Blue VC、ロールID、イベント操作権限など）を設計・実装する。
 20. [ ] ギルド設定を取得・更新する API を追加し、Bot 側から参照できるようにする。
-21. [ ] DBスキーマ変更に対応する Drizzle migration を生成・適用できる状態にする。
+21. [x] DBスキーマ変更に対応する Drizzle migration を生成・適用できる状態にする。
 22. [ ] `api/src/routes/matches.ts` などに試合レコード作成 API を追加し、`/record-match` 実行時に `matches` と `matchParticipants` が正しく紐付くようにする。
 23. [ ] API エラー形式を `{ error: string }` 基本形、必要時 `{ code, error, details }` に統一し、全ルートのテストで `success` が含まれないことを必要箇所で検証する。
 
@@ -55,6 +55,21 @@
 
 35. [ ] `/record-match` コマンドの戦績入力を簡易化する。Message Components や Modal Components を使用する。
 36. [ ] Riot API 連携でゲーム開始検知・戦績取得・内部レート更新を自動化する（`bot/src/features/match_tracking.ts` など）。
+    - [x] `riot_accounts` を追加し、PUUID、Riot ID、platform、region をユーザー別に保存する。
+    - [x] `match_watchers` を追加し、ギルド単位で指定メンバーの継続監視状態と通知チャンネルを保存する。
+    - [x] `/watch-match @member` と `/unwatch-match @member` を実装する。
+    - [x] Riot Spectator-v5 で試合開始・試合中概要・終了を検知し、Discord に通知する。
+    - [x] Riot Match-v5 で終了後の勝敗、KDA、CS、Gold を取得し、通知する。
+    - [x] Spectator-v5 / Match-v5 の 404、429、5xx を考慮したリトライと backoff を実装する。
+    - [x] Match-v5 に戦績が生成されない場合に備え、結果取得待ちのタイムアウトと IDLE 復帰を実装する。
+    - [x] Discord 通知失敗時も監視状態更新を継続し、完全に IDLE な対象の不要な DB 更新を抑止する。
+    - [x] Riot API 制限を考慮し、ギルドごとの有効監視対象数上限を実装する。
+    - [x] Riot API 呼び出しを共有キュー化し、429 と rate limit headers を後続呼び出しに反映する。
+    - [x] 試合監視通知を1試合1投稿の Embed 更新にし、試合中に gameId が変わるケースへ対応する。
+    - [x] 試合監視通知の表示文言を messages 管理へ移し、Riot 公式 static data の名称をDBキャッシュする。
+    - [x] `deno task test:riot-live` を追加し、実 Riot API で Account-v1 / Spectator-v5 / Match-v5 の疎通確認を行う。
+    - [x] Discord ギルド上で `/set-riot-id`、`/watch-match`、`/unwatch-match` の応答と監視状態更新を確認する。
+    - [ ] Match-v5 で取得した戦績を既存 `matches` / `match_participants` に保存し、内部レート更新へ接続する。
 37. [ ] 内部レートを全ギルド共有のプレイヤー評価として保存するスキーマと更新ロジックを設計する。
 38. [ ] チーム分け時の戦力均等化ロジックと内部レート計算式を仕様に合わせて高度化する。
 39. [ ] Discord/Riot API 呼び出しに対するリクエストキューや指数バックオフ等のレート制限対策を導入する。

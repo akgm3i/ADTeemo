@@ -3,6 +3,7 @@ import { createMiddleware } from "@hono/hono/factory";
 import { usersRoutes } from "./routes/users.ts";
 import { eventsRoutes } from "./routes/events.ts";
 import { matchesRoutes } from "./routes/matches.ts";
+import { matchWatchersRoutes } from "./routes/match_watchers.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { apiLogger } from "./logger.ts";
 
@@ -52,6 +53,7 @@ const app = new Hono()
   .route("/users", usersRoutes)
   .route("/events", eventsRoutes)
   .route("/matches", matchesRoutes)
+  .route("/match-watchers", matchWatchersRoutes)
   .route("/auth", authRoutes);
 
 export default app satisfies Deno.ServeDefaultExport;

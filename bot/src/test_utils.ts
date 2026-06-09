@@ -37,6 +37,7 @@ interface MockInteractionState {
   guildId: Snowflake | null;
   stringOptions: Map<string, string | null>;
   channelOptions: Map<string, DeepPartial<Channel> | null>;
+  userOptions: Map<string, DeepPartial<User> | null>;
   isChatInputCommand: () => boolean;
 }
 
@@ -60,6 +61,7 @@ export class MockInteractionBuilder {
       guildId: "mock-guild-id",
       stringOptions: new Map(),
       channelOptions: new Map(),
+      userOptions: new Map(),
       isChatInputCommand: () => true,
     };
   }
@@ -96,6 +98,11 @@ export class MockInteractionBuilder {
     return this;
   }
 
+  withUserOption(name: string, value: DeepPartial<User> | null) {
+    this.state.userOptions.set(name, value);
+    return this;
+  }
+
   setIsChatInputCommand(is: boolean) {
     this.state.isChatInputCommand = () => is;
     return this;
@@ -106,6 +113,7 @@ export class MockInteractionBuilder {
       ...this.state,
       isButton: () => false,
       isStringSelectMenu: () => false,
+      inGuild: () => this.state.guildId !== null,
       deferReply: () => Promise.resolve({} as Message),
       editReply: () => Promise.resolve({} as Message),
       reply: (_options: InteractionReplyOptions) =>
@@ -115,6 +123,7 @@ export class MockInteractionBuilder {
         getString: (name: string) => this.state.stringOptions.get(name) ?? null,
         getChannel: (name: string) =>
           this.state.channelOptions.get(name) ?? null,
+        getUser: (name: string) => this.state.userOptions.get(name) ?? null,
       } as unknown as CommandInteractionOptionResolver,
     };
 
