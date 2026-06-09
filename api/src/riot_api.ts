@@ -370,9 +370,13 @@ async function fetchRiotJson(
   });
 }
 
-async function getAccountByRiotId(gameName: string, tagLine: string) {
+async function getAccountByRiotId(
+  region: RiotRegion,
+  gameName: string,
+  tagLine: string,
+) {
   const url = new URL(
-    `https://asia.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${
+    `https://${region}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${
       encodeURIComponent(gameName)
     }/${encodeURIComponent(tagLine)}`,
   );

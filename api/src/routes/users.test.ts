@@ -42,7 +42,9 @@ describe("routes/users.ts", () => {
           // Assert
           assert(res.status === 204);
           assertEquals(await res.text(), "");
-          assertSpyCall(getAccountStub, 0, { args: [gameName, tagLine] });
+          assertSpyCall(getAccountStub, 0, {
+            args: ["asia", gameName, tagLine],
+          });
           assertSpyCall(upsertRiotAccountStub, 0, {
             args: [{
               discordId,
@@ -56,7 +58,7 @@ describe("routes/users.ts", () => {
         },
       );
 
-      test("Riotアカウントが見つかりリンク処理が成功した場合、204 No Contentを返す", async () => {
+      test("platformとregionを指定してRiot ID連携すると、指定regionでAccount-v1を呼び出して保存する", async () => {
         // Arrange
         using getAccountStub = stub(
           riotApi,
@@ -71,21 +73,29 @@ describe("routes/users.ts", () => {
 
         // Act
         const res = await client.users["link-by-riot-id"].$patch({
-          json: { discordId, gameName, tagLine },
+          json: {
+            discordId,
+            gameName,
+            tagLine,
+            platform: "euw1",
+            region: "europe",
+          },
         });
 
         // Assert
         assert(res.status === 204);
         assertEquals(await res.text(), "");
-        assertSpyCall(getAccountStub, 0, { args: [gameName, tagLine] });
+        assertSpyCall(getAccountStub, 0, {
+          args: ["europe", gameName, tagLine],
+        });
         assertSpyCall(upsertRiotAccountStub, 0, {
           args: [{
             discordId,
             puuid,
             gameName,
             tagLine,
-            platform: "jp1",
-            region: "asia",
+            platform: "euw1",
+            region: "europe",
           }],
         });
       });
@@ -121,7 +131,9 @@ describe("routes/users.ts", () => {
         assertSpyCall(mockFormatMessage, 0, {
           args: [messageKeys.riotAccount.set.error.summonerNotFound],
         });
-        assertSpyCall(getAccountStub, 0, { args: [gameName, tagLine] });
+        assertSpyCall(getAccountStub, 0, {
+          args: ["asia", gameName, tagLine],
+        });
         assertEquals(error, "error message");
         assertEquals(upsertRiotAccountSpy.calls.length, 0);
       });

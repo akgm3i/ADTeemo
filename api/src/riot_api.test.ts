@@ -98,10 +98,38 @@ describe("riot_api.ts", () => {
       },
     );
 
-    const account = await riotApi.getAccountByRiotId("Teemo", "JP1");
+    const account = await riotApi.getAccountByRiotId("asia", "Teemo", "JP1");
 
     assertEquals(account?.puuid, "puuid-1");
     assertSpyCalls(fetchStub, 2);
+  });
+
+  test("Account-v1を呼び出すとき、指定したRegional RoutingをURLに使う", async () => {
+    Deno.env.set("RIOT_API_KEY", "test-key");
+    using fetchStub = stub(
+      globalThis,
+      "fetch",
+      () =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              puuid: "puuid-1",
+              gameName: "Teemo",
+              tagLine: "EUW",
+            }),
+            { status: 200 },
+          ),
+        ),
+    );
+
+    await riotApi.getAccountByRiotId("europe", "Teemo", "EUW");
+    const url = fetchStub.calls[0].args[0] as URL;
+
+    assertEquals(url.hostname, "europe.api.riotgames.com");
+    assertEquals(
+      url.pathname,
+      "/riot/account/v1/accounts/by-riot-id/Teemo/EUW",
+    );
   });
 
   test("Riot APIが429を返すとき、Retry-Afterをrate limit bucketへ反映する", async () => {
@@ -136,7 +164,7 @@ describe("riot_api.ts", () => {
       },
     );
 
-    const account = await riotApi.getAccountByRiotId("Teemo", "JP1");
+    const account = await riotApi.getAccountByRiotId("asia", "Teemo", "JP1");
     const snapshot = riotApi.__testing.rateLimiterSnapshot();
 
     assertEquals(account?.puuid, "puuid-1");
@@ -170,7 +198,7 @@ describe("riot_api.ts", () => {
         ),
     );
 
-    await riotApi.getAccountByRiotId("Teemo", "JP1");
+    await riotApi.getAccountByRiotId("asia", "Teemo", "JP1");
     const snapshot = riotApi.__testing.rateLimiterSnapshot();
 
     assertEquals(
@@ -208,7 +236,7 @@ describe("riot_api.ts", () => {
       },
     );
 
-    const account = await riotApi.getAccountByRiotId("Teemo", "JP1");
+    const account = await riotApi.getAccountByRiotId("asia", "Teemo", "JP1");
 
     assertEquals(account?.gameName, "Teemo");
     assertSpyCalls(fetchStub, 2);

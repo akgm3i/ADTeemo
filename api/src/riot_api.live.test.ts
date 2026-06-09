@@ -26,7 +26,13 @@ Deno.test({
   ignore: !liveEnabled,
   async fn() {
     const { gameName, tagLine } = riotIdParts();
-    const account = await riotApi.getAccountByRiotId(gameName, tagLine);
+    const region =
+      (Deno.env.get("RIOT_LIVE_TEST_REGION") ?? "asia") as RiotRegion;
+    const account = await riotApi.getAccountByRiotId(
+      region,
+      gameName,
+      tagLine,
+    );
 
     assert(account, "Riot account must exist");
     assert(account.puuid.length > 0);
@@ -40,7 +46,13 @@ Deno.test({
   ignore: !liveEnabled,
   async fn() {
     const { gameName, tagLine } = riotIdParts();
-    const account = await riotApi.getAccountByRiotId(gameName, tagLine);
+    const region =
+      (Deno.env.get("RIOT_LIVE_TEST_REGION") ?? "asia") as RiotRegion;
+    const account = await riotApi.getAccountByRiotId(
+      region,
+      gameName,
+      tagLine,
+    );
     assert(account, "Riot account must exist");
 
     const platform =

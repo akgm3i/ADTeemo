@@ -47,8 +47,14 @@ export const usersRoutes = new Hono()
       const { discordId, gameName, tagLine, platform, region } = c.req.valid(
         "json",
       );
+      const resolvedPlatform = platform ?? defaultPlatform();
+      const resolvedRegion = region ?? defaultRegion();
 
-      const account = await riotApi.getAccountByRiotId(gameName, tagLine);
+      const account = await riotApi.getAccountByRiotId(
+        resolvedRegion,
+        gameName,
+        tagLine,
+      );
 
       if (!account) {
         return c.json({
@@ -63,8 +69,8 @@ export const usersRoutes = new Hono()
         puuid: account.puuid,
         gameName: account.gameName,
         tagLine: account.tagLine,
-        platform: platform ?? defaultPlatform(),
-        region: region ?? defaultRegion(),
+        platform: resolvedPlatform,
+        region: resolvedRegion,
       });
 
       return c.body(null, 204);
