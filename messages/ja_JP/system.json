@@ -131,6 +131,8 @@
         "elapsed": "経過時間",
         "kda": "KDA",
         "cs": "CS",
+        "csPerMinute": "CS/min",
+        "killParticipation": "キル関与率",
         "gold": "Gold"
       },
       "fallback": {
