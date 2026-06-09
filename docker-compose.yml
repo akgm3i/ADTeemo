@@ -14,11 +14,22 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - prod-db-data:/app/api/data
+      - prod-db-data:/app/data
     env_file:
       - .env
     environment:
-      DATABASE_URL: file:./data/sqlite.db
+      DATABASE_URL: file:/app/data/sqlite.db
+    healthcheck:
+      test:
+        - CMD
+        - deno
+        - run
+        - --allow-net=localhost:8000
+        - /app/docker/healthcheck.ts
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
 
   bot:
     profiles:
@@ -28,11 +39,15 @@ services:
       dockerfile: ./docker/Dockerfile.prod
       target: bot
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    volumes:
+      - prod-db-data:/app/data
     env_file:
       - .env
     environment:
       API_URL: http://api:8000
+      DATABASE_URL: file:/app/data/sqlite.db
 
   # --- Development service (activate with --profile dev) ---
   dev:

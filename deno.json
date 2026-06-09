@@ -4,7 +4,7 @@
     "dev:all": { "dependencies": ["dev:api", "dev:bot"] },
     "dev:api": "deno task --cwd=api dev",
     "dev:bot": "deno task --cwd=bot dev",
-    "dev:deploy-commands": "deno run --allow-net --allow-read --allow-env --allow-ffi --env=.env.dev bot/src/deploy-commands.ts",
+    "dev:deploy-commands": "deno run --allow-net --allow-read --allow-env --allow-sys --allow-ffi --env=.env.dev bot/src/deploy-commands.ts",
     "fmt:check": "deno fmt --check",
     "lint": "deno lint",
     "check": "deno check api/src/app.ts bot/src/main.ts messages/src/main.ts lib/logger/mod.ts",
@@ -13,7 +13,7 @@
     "test:allcov": "deno task test:all",
     "quality": { "dependencies": ["fmt:check", "lint", "check", "test:all"] },
     "check:messages": "deno run --allow-read messages/src/check-messages.ts",
-    "deploy-commands": "deno run --allow-net --allow-read --allow-env --allow-ffi --env=.env bot/src/deploy-commands.ts",
+    "deploy-commands": "deno run --allow-net --allow-read --allow-env --allow-sys --allow-ffi --env=.env bot/src/deploy-commands.ts",
     "db:push": "deno run --allow-env --allow-read --allow-sys --allow-run --allow-ffi --node-modules-dir npm:drizzle-kit push",
     "db:generate": "deno run --allow-env --allow-read --allow-sys --allow-run --allow-ffi --allow-write --node-modules-dir npm:drizzle-kit generate",
     "db:migrate": "deno run --allow-env --allow-read --allow-sys --allow-run --allow-ffi --allow-write --node-modules-dir npm:drizzle-kit migrate"
