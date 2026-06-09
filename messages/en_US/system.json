@@ -67,7 +67,8 @@
   },
   "common": {
     "error": {
-      "command": "There was an error while executing this command!"
+      "command": "There was an error while executing this command!",
+      "internalServerError": "An internal server error occurred."
     },
     "info": {
       "guildOnlyCommand": "This command can only be used in a server."
@@ -144,6 +145,26 @@
         "game": "{platform} Game {gameId} / {riotId}",
         "match": "Match {matchId}",
         "matchWithRiotId": "Match {matchId} / {riotId}"
+      }
+    }
+  },
+  "riotAccount": {
+    "set": {
+      "error": {
+        "summonerNotFound": "Summoner not found. Please check the summoner name.",
+        "invalidFormat": "Invalid Riot ID format. Please use the format \"SummonerName#Tagline\"."
+      }
+    },
+    "link": {
+      "instructions": "To link your Riot Games account, open the link below and complete authentication.\n\n{url}",
+      "success": {
+        "title": "✅ Authentication complete!",
+        "body": "You can close this page and return to Discord."
+      },
+      "error": {
+        "generic": "An error occurred: {error}",
+        "urlNotFound": "Could not retrieve the URL.",
+        "invalidState": "The authentication session is invalid or expired. Please run the command again."
       }
     }
   }
