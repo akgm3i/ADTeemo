@@ -67,6 +67,10 @@ describe("routes/match_watchers.ts", () => {
           lastState: "IDLE" as const,
           currentGameId: null,
           currentMatchId: null,
+          currentNotificationMessageId: null,
+          pendingResultMatchId: null,
+          pendingResultNotificationMessageId: null,
+          pendingResultStartedAt: null,
           gameStartedAt: null,
           lastCheckedAt: null,
           lastInGameNotifiedAt: null,
@@ -92,6 +96,10 @@ describe("routes/match_watchers.ts", () => {
     const state = {
       lastState: "IN_GAME" as const,
       currentGameId: "12345",
+      currentNotificationMessageId: "message-1",
+      pendingResultMatchId: "JP1_12344",
+      pendingResultNotificationMessageId: "message-0",
+      pendingResultStartedAt: new Date("2026-01-01T00:00:00.000Z"),
       lastCheckedAt: new Date("2026-01-01T00:00:00.000Z"),
     };
 

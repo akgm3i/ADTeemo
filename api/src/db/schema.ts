@@ -74,6 +74,15 @@ export const riotAccounts = sqliteTable("riot_accounts", {
   ),
 });
 
+export const riotStaticDataCache = sqliteTable("riot_static_data_cache", {
+  key: text("key").primaryKey(),
+  version: text("version").notNull(),
+  value: text("value").notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull().$defaultFn(
+    () => new Date(),
+  ),
+});
+
 export const userGuildProfiles = sqliteTable("user_guild_profiles", {
   userId: text("user_id").notNull().references(() => users.discordId, {
     onDelete: "cascade",
@@ -157,6 +166,14 @@ export const matchWatchers = sqliteTable("match_watchers", {
   ),
   currentGameId: text("current_game_id"),
   currentMatchId: text("current_match_id"),
+  currentNotificationMessageId: text("current_notification_message_id"),
+  pendingResultMatchId: text("pending_result_match_id"),
+  pendingResultNotificationMessageId: text(
+    "pending_result_notification_message_id",
+  ),
+  pendingResultStartedAt: integer("pending_result_started_at", {
+    mode: "timestamp",
+  }),
   gameStartedAt: integer("game_started_at", { mode: "timestamp" }),
   lastCheckedAt: integer("last_checked_at", { mode: "timestamp" }),
   lastInGameNotifiedAt: integer("last_in_game_notified_at", {
@@ -174,6 +191,7 @@ export const matchWatchers = sqliteTable("match_watchers", {
 
 export type Event = InferSelectModel<typeof customGameEvents>;
 export type RiotAccount = InferSelectModel<typeof riotAccounts>;
+export type RiotStaticDataCache = InferSelectModel<typeof riotStaticDataCache>;
 export type MatchWatcher = InferSelectModel<typeof matchWatchers>;
 
 // --- RELATIONS ---

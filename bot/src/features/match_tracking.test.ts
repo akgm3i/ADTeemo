@@ -4,9 +4,11 @@ import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import type { Client } from "discord.js";
 import type { MatchWatcher, RiotAccount } from "@adteemo/api/schema";
 import { riotApi } from "@adteemo/api/riot-api";
+import { riotStaticData } from "@adteemo/api/riot-static-data";
 import { apiClient } from "../api_client.ts";
 import { botLogger } from "../logger.ts";
 import { matchTracker } from "./match_tracking.ts";
+import { afterEach, beforeEach } from "@std/testing/bdd";
 
 function watcher(overrides: Partial<MatchWatcher> = {}): MatchWatcher {
   const now = new Date("2026-01-01T00:00:00.000Z");
@@ -19,6 +21,10 @@ function watcher(overrides: Partial<MatchWatcher> = {}): MatchWatcher {
     lastState: "IDLE",
     currentGameId: null,
     currentMatchId: null,
+    currentNotificationMessageId: null,
+    pendingResultMatchId: null,
+    pendingResultNotificationMessageId: null,
+    pendingResultStartedAt: null,
     gameStartedAt: null,
     lastCheckedAt: null,
     lastInGameNotifiedAt: null,
@@ -91,21 +97,62 @@ function match() {
 }
 
 function clientWithSend(
-  send: () => Promise<unknown> = () => Promise.resolve(),
+  send: () => Promise<unknown> = () => Promise.resolve({ id: "message-new" }),
 ) {
+  const message = {
+    id: "message-existing",
+    edit: () => Promise.resolve(),
+  };
   const channel = {
     send,
+    messages: {
+      fetch: () => Promise.resolve(message),
+    },
   };
   const sendSpy = spy(channel, "send");
+  const editSpy = spy(message, "edit");
   const client = {
     channels: {
       fetch: () => Promise.resolve(channel),
     },
   } as unknown as Client;
-  return { client, sendSpy };
+  return { client, sendSpy, editSpy };
 }
 
 describe("match_tracking.ts", () => {
+  const staticDataStubs: { restore(): void }[] = [];
+
+  beforeEach(() => {
+    staticDataStubs.push(
+      stub(
+        riotStaticData,
+        "getChampionNameById",
+        () => Promise.resolve("ティーモ"),
+      ),
+      stub(
+        riotStaticData,
+        "getQueueNameById",
+        () => Promise.resolve("ランクソロ/デュオ"),
+      ),
+      stub(
+        riotStaticData,
+        "getMapNameById",
+        () => Promise.resolve("サモナーズリフト"),
+      ),
+      stub(
+        riotStaticData,
+        "getGameModeName",
+        () => Promise.resolve("クラシック"),
+      ),
+    );
+  });
+
+  afterEach(() => {
+    for (const staticDataStub of staticDataStubs.splice(0)) {
+      staticDataStub.restore();
+    }
+  });
+
   test("idleの監視対象が試合中になったとき、開始通知を送りIN_GAMEへ更新する", async () => {
     const { client, sendSpy } = clientWithSend();
     using getWatchersStub = stub(
@@ -140,15 +187,19 @@ describe("match_tracking.ts", () => {
     assertEquals(updateStub.calls[0].args[2].lastState, "IN_GAME");
     assertEquals(updateStub.calls[0].args[2].currentGameId, "12345");
     assertEquals(updateStub.calls[0].args[2].currentMatchId, null);
+    assertEquals(
+      updateStub.calls[0].args[2].currentNotificationMessageId,
+      "message-new",
+    );
   });
 
-  test("試合中通知間隔を過ぎたとき、概要更新を送る", async () => {
+  test("試合中通知間隔を過ぎたとき、既存投稿を編集する", async () => {
     const originalInterval = Deno.env.get(
       "MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS",
     );
     Deno.env.set("MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS", "1");
     try {
-      const { client, sendSpy } = clientWithSend();
+      const { client, sendSpy, editSpy } = clientWithSend();
       using _getWatchersStub = stub(
         apiClient,
         "getEnabledMatchWatchers",
@@ -158,6 +209,7 @@ describe("match_tracking.ts", () => {
             watchers: [watcher({
               lastState: "IN_GAME",
               currentGameId: "12345",
+              currentNotificationMessageId: "message-existing",
               lastInGameNotifiedAt: new Date(Date.now() - 10_000),
             })],
           }),
@@ -180,9 +232,14 @@ describe("match_tracking.ts", () => {
 
       await matchTracker.processMatchWatchers(client);
 
-      assertSpyCalls(sendSpy, 1);
+      assertSpyCalls(sendSpy, 0);
+      assertSpyCalls(editSpy, 1);
       assertEquals(updateStub.calls[0].args[2].lastState, "IN_GAME");
       assertEquals(updateStub.calls[0].args[2].currentGameId, "12345");
+      assertEquals(
+        updateStub.calls[0].args[2].currentNotificationMessageId,
+        "message-existing",
+      );
     } finally {
       if (originalInterval === undefined) {
         Deno.env.delete("MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS");
@@ -196,7 +253,7 @@ describe("match_tracking.ts", () => {
   });
 
   test("試合終了後にMatch-v5が取得できたとき、終了通知と戦績通知を送る", async () => {
-    const { client, sendSpy } = clientWithSend();
+    const { client, sendSpy, editSpy } = clientWithSend();
     using _getWatchersStub = stub(
       apiClient,
       "getEnabledMatchWatchers",
@@ -206,6 +263,7 @@ describe("match_tracking.ts", () => {
           watchers: [watcher({
             lastState: "IN_GAME",
             currentGameId: "12345",
+            currentNotificationMessageId: "message-existing",
           })],
         }),
     );
@@ -232,10 +290,15 @@ describe("match_tracking.ts", () => {
 
     await matchTracker.processMatchWatchers(client);
 
-    assertSpyCalls(sendSpy, 2);
+    assertSpyCalls(sendSpy, 0);
+    assertSpyCalls(editSpy, 2);
     assertSpyCall(getMatchStub, 0, { args: ["asia", "JP1_12345"] });
     assertEquals(updateStub.calls.at(-1)?.args[2].lastState, "IDLE");
     assertEquals(updateStub.calls.at(-1)?.args[2].currentGameId, null);
+    assertEquals(
+      updateStub.calls.at(-1)?.args[2].currentNotificationMessageId,
+      null,
+    );
   });
 
   test("結果取得待ちが一定時間を超えたとき、Match-v5を再試行せずIDLEへ戻す", async () => {
@@ -278,6 +341,105 @@ describe("match_tracking.ts", () => {
     assertEquals(updateStub.calls[0].args[2].currentGameId, null);
     assertEquals(updateStub.calls[0].args[2].currentMatchId, null);
     assertEquals(updateStub.calls[0].args[2].gameStartedAt, null);
+    assertEquals(updateStub.calls[0].args[2].pendingResultMatchId, null);
+  });
+
+  test("試合中のままgameIdが変わったとき、旧試合を結果取得待ちにして新試合開始を投稿する", async () => {
+    const { client, sendSpy, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "IN_GAME",
+            currentGameId: "12345",
+            currentNotificationMessageId: "message-existing",
+            gameStartedAt: new Date(Date.now() - 120_000),
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(activeGame(67890)),
+    );
+    using getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(null),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(editSpy, 1);
+    assertSpyCalls(sendSpy, 1);
+    assertSpyCall(getMatchStub, 0, { args: ["asia", "JP1_12345"] });
+    assertEquals(updateStub.calls[0].args[2].currentGameId, "67890");
+    assertEquals(updateStub.calls[0].args[2].pendingResultMatchId, "JP1_12345");
+    assertEquals(
+      updateStub.calls[0].args[2].currentNotificationMessageId,
+      "message-new",
+    );
+  });
+
+  test("pending resultがある状態でも現在の試合監視を継続する", async () => {
+    const { client, sendSpy, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "IN_GAME",
+            currentGameId: "67890",
+            currentNotificationMessageId: "message-existing",
+            pendingResultMatchId: "JP1_12345",
+            pendingResultNotificationMessageId: "message-old",
+            pendingResultStartedAt: new Date(Date.now() - 120_000),
+            lastInGameNotifiedAt: new Date(Date.now() - 10 * 60_000),
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(null),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(activeGame(67890)),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCall(getMatchStub, 0, { args: ["asia", "JP1_12345"] });
+    assertSpyCalls(sendSpy, 0);
+    assertSpyCalls(editSpy, 1);
+    assertEquals(updateStub.calls.at(-1)?.args[2].currentGameId, "67890");
   });
 
   test("IDLEかつ試合中ではない監視対象では、DB状態更新をスキップする", async () => {

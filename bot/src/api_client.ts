@@ -42,6 +42,7 @@ function parseMatchWatcher(
       gameStartedAt: string | Date | null;
       lastCheckedAt: string | Date | null;
       lastInGameNotifiedAt: string | Date | null;
+      pendingResultStartedAt: string | Date | null;
     }
     & Omit<
       MatchWatcher,
@@ -50,6 +51,7 @@ function parseMatchWatcher(
       | "gameStartedAt"
       | "lastCheckedAt"
       | "lastInGameNotifiedAt"
+      | "pendingResultStartedAt"
     >,
 ): MatchWatcher {
   return {
@@ -59,6 +61,7 @@ function parseMatchWatcher(
     gameStartedAt: dateOrNull(watcher.gameStartedAt),
     lastCheckedAt: dateOrNull(watcher.lastCheckedAt),
     lastInGameNotifiedAt: dateOrNull(watcher.lastInGameNotifiedAt),
+    pendingResultStartedAt: dateOrNull(watcher.pendingResultStartedAt),
   };
 }
 
@@ -363,6 +366,10 @@ async function updateMatchWatcherState(
     lastState: MatchWatcherState;
     currentGameId?: string | null;
     currentMatchId?: string | null;
+    currentNotificationMessageId?: string | null;
+    pendingResultMatchId?: string | null;
+    pendingResultNotificationMessageId?: string | null;
+    pendingResultStartedAt?: Date | null;
     gameStartedAt?: Date | null;
     lastCheckedAt?: Date | null;
     lastInGameNotifiedAt?: Date | null;

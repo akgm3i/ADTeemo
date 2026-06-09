@@ -27,18 +27,16 @@
 
 ### Deno Tasks
 
-| Task | Description |
-| --- | --- |
-| `dev:all` | APIとBotを開発モードで起動。 |
-| `dev:api` | APIを開発モードで起動。 |
-| `dev:bot` | Botを開発モードで起動。 |
-| `test:all` | すべてのテストを実行。 |
-| `db:push` | データベースのスキーマを更新。 |
-| `db:generate` | Drizzle Kitを使用してマイグレーションファイルを生成。 |
-| `db:migrate` | マイグレーションを実行。 |
-| `deploy-commands` | Discordにスラッシュコマンドを登録。 |
-| `db:backup` | 本番データベースのバックアップを作成。 |
-| `db:restore-local` | バックアップからローカルデータベースを復元。 |
+| Task              | Description                                           |
+| ----------------- | ----------------------------------------------------- |
+| `dev:all`         | APIとBotを開発モードで起動。                          |
+| `dev:api`         | APIを開発モードで起動。                               |
+| `dev:bot`         | Botを開発モードで起動。                               |
+| `test:all`        | すべてのテストを実行。                                |
+| `db:push`         | データベースのスキーマを更新。                        |
+| `db:generate`     | Drizzle Kitを使用してマイグレーションファイルを生成。 |
+| `db:migrate`      | マイグレーションを実行。                              |
+| `deploy-commands` | Discordにスラッシュコマンドを登録。                   |
 
 ## Docker
 
@@ -78,6 +76,7 @@ docker compose --profile dev up -d --build
 
 これにより`dev`サービスが起動する。コンテナは実行状態になるが、Denoアプリケーションは自動的には開始されない。
 Deno taskをDocker composeを通じて実行する。
+
 ```bash
 docker compose exec dev deno task dev:all
 ```

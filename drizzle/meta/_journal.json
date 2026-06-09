@@ -8,6 +8,13 @@
       "when": 1780928139272,
       "tag": "0000_strange_thor",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1780973794498,
+      "tag": "0003_even_leader",
+      "breakpoints": true
     }
   ]
 }

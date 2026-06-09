@@ -14,6 +14,7 @@ import {
   riotAccounts,
   type RiotPlatform,
   type RiotRegion,
+  riotStaticDataCache,
   userGuildProfiles,
   users,
 } from "./schema.ts";
@@ -22,6 +23,7 @@ import { MatchWatcherLimitError, RecordNotFoundError } from "../errors.ts";
 const userInsertSchema = createInsertSchema(users);
 const guildInsertSchema = createInsertSchema(guilds);
 const riotAccountInsertSchema = createInsertSchema(riotAccounts);
+const riotStaticDataCacheInsertSchema = createInsertSchema(riotStaticDataCache);
 const userGuildProfileInsertSchema = createInsertSchema(userGuildProfiles);
 const customGameEventInsertSchema = createInsertSchema(customGameEvents);
 const matchParticipantInsertSchema = createInsertSchema(matchParticipants);
@@ -231,6 +233,28 @@ async function getRiotAccountByDiscordId(discordId: string) {
   });
 }
 
+async function getRiotStaticDataCache(key: string) {
+  return await db.query.riotStaticDataCache.findFirst({
+    where: eq(riotStaticDataCache.key, key),
+  });
+}
+
+async function upsertRiotStaticDataCache(cache: {
+  key: string;
+  version: string;
+  value: string;
+}) {
+  const payload = riotStaticDataCacheInsertSchema.parse(cache);
+  await db.insert(riotStaticDataCache).values(payload).onConflictDoUpdate({
+    target: riotStaticDataCache.key,
+    set: {
+      version: cache.version,
+      value: cache.value,
+      updatedAt: new Date(),
+    },
+  }).execute();
+}
+
 async function upsertMatchWatcher(watcher: {
   guildId: string;
   targetDiscordId: string;
@@ -281,6 +305,10 @@ async function upsertMatchWatcher(watcher: {
       lastState: "IDLE",
       currentGameId: null,
       currentMatchId: null,
+      currentNotificationMessageId: null,
+      pendingResultMatchId: null,
+      pendingResultNotificationMessageId: null,
+      pendingResultStartedAt: null,
       gameStartedAt: null,
       lastInGameNotifiedAt: null,
     });
@@ -309,6 +337,10 @@ async function updateMatchWatcherState(
     lastState: MatchWatcherState;
     currentGameId?: string | null;
     currentMatchId?: string | null;
+    currentNotificationMessageId?: string | null;
+    pendingResultMatchId?: string | null;
+    pendingResultNotificationMessageId?: string | null;
+    pendingResultStartedAt?: Date | null;
     gameStartedAt?: Date | null;
     lastCheckedAt?: Date | null;
     lastInGameNotifiedAt?: Date | null;
@@ -357,6 +389,8 @@ export const dbActions = {
   linkUserWithRiotId,
   upsertRiotAccount,
   getRiotAccountByDiscordId,
+  getRiotStaticDataCache,
+  upsertRiotStaticDataCache,
   upsertMatchWatcher,
   getEnabledMatchWatchers,
   updateMatchWatcherState,

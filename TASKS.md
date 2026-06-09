@@ -64,6 +64,9 @@
     - [x] Match-v5 に戦績が生成されない場合に備え、結果取得待ちのタイムアウトと IDLE 復帰を実装する。
     - [x] Discord 通知失敗時も監視状態更新を継続し、完全に IDLE な対象の不要な DB 更新を抑止する。
     - [x] Riot API 制限を考慮し、ギルドごとの有効監視対象数上限を実装する。
+    - [x] Riot API 呼び出しを共有キュー化し、429 と rate limit headers を後続呼び出しに反映する。
+    - [x] 試合監視通知を1試合1投稿の Embed 更新にし、試合中に gameId が変わるケースへ対応する。
+    - [x] 試合監視通知の表示文言を messages 管理へ移し、Riot 公式 static data の名称をDBキャッシュする。
     - [x] `deno task test:riot-live` を追加し、実 Riot API で Account-v1 / Spectator-v5 / Match-v5 の疎通確認を行う。
     - [x] Discord ギルド上で `/set-riot-id`、`/watch-match`、`/unwatch-match` の応答と監視状態更新を確認する。
     - [ ] Match-v5 で取得した戦績を既存 `matches` / `match_participants` に保存し、内部レート更新へ接続する。
