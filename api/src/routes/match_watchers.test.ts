@@ -87,6 +87,43 @@ describe("routes/match_watchers.ts", () => {
     assertSpyCall(getStub, 0, { args: [] });
   });
 
+  test("ギルドIDを指定して有効な監視設定一覧を取得すると、そのギルドの監視設定だけを返す", async () => {
+    const createdAt = new Date("2026-01-01T00:00:00.000Z");
+    using getStub = stub(
+      dbActions,
+      "getEnabledMatchWatchersByGuild",
+      () =>
+        Promise.resolve([{
+          ...watcher,
+          enabled: true,
+          lastState: "IDLE" as const,
+          currentGameId: null,
+          currentMatchId: null,
+          currentNotificationMessageId: null,
+          pendingResultMatchId: null,
+          pendingResultNotificationMessageId: null,
+          pendingResultStartedAt: null,
+          gameStartedAt: null,
+          lastCheckedAt: null,
+          lastInGameNotifiedAt: null,
+          createdAt,
+          updatedAt: createdAt,
+        }]),
+    );
+
+    const res = await client["match-watchers"].enabled[":guildId"].$get({
+      param: { guildId: watcher.guildId },
+    });
+
+    assert(res.status === 200);
+    const body = await res.json();
+    assertEquals(
+      body.watchers.map((item: { guildId: string }) => item.guildId),
+      [watcher.guildId],
+    );
+    assertSpyCall(getStub, 0, { args: [watcher.guildId] });
+  });
+
   test("監視状態を更新すると、204 No Contentを返す", async () => {
     using updateStub = stub(
       dbActions,

@@ -100,6 +100,14 @@
     }
   },
   "matchTracking": {
+    "watchList": {
+      "header": "Current match watchers:",
+      "empty": "There are no active match watchers in this server.",
+      "omitted": "...and {count} more",
+      "error": {
+        "fetch": "Could not fetch match watchers: {error}"
+      }
+    },
     "embed": {
       "active": {
         "startedTitle": "Match start detected",

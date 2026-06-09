@@ -107,5 +107,15 @@
     "error": {
       "failure": "うーん、なんだか身体の調子が悪いみたいだ…。 {error}"
     }
+  },
+  "matchTracking": {
+    "watchList": {
+      "header": "いま偵察中の隊員たち:",
+      "empty": "この拠点では、いま偵察対象の隊員はいないみたいだ。",
+      "omitted": "...ほか {count} 件、偵察中だよ",
+      "error": {
+        "fetch": "偵察対象の一覧を取りに行けなかったよ…。 {error}"
+      }
+    }
   }
 }
