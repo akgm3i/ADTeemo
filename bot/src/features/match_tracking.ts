@@ -17,6 +17,13 @@ type ActiveGame = NonNullable<
 >;
 type RiotMatch = NonNullable<Awaited<ReturnType<typeof riotApi.getMatchById>>>;
 type WatcherState = Parameters<typeof apiClient.updateMatchWatcherState>[2];
+type ActiveNotificationGroup = {
+  messageId: string | null;
+  targetDiscordIds: Set<string>;
+};
+type MatchWatcherProcessingContext = {
+  activeNotificationGroups: Map<string, ActiveNotificationGroup>;
+};
 type WatcherMessage = {
   id?: string;
   edit?: (options: { embeds: EmbedBuilder[] }) => Promise<unknown>;
@@ -40,6 +47,68 @@ function numberEnv(name: string, fallback: number) {
 
 function matchIdForGame(account: RiotAccount, gameId: string | number) {
   return `${account.platform.toUpperCase()}_${gameId}`;
+}
+
+function activeNotificationGroupKey(
+  watcher: MatchWatcher,
+  gameId: string | number,
+) {
+  return `${watcher.guildId}:${watcher.channelId}:${gameId}`;
+}
+
+function createMatchWatcherProcessingContext(
+  watchers: MatchWatcher[],
+): MatchWatcherProcessingContext {
+  const activeNotificationGroups = new Map<string, ActiveNotificationGroup>();
+  for (const watcher of watchers) {
+    if (
+      watcher.lastState !== "IN_GAME" || !watcher.currentGameId ||
+      !watcher.currentNotificationMessageId
+    ) {
+      continue;
+    }
+
+    const key = activeNotificationGroupKey(watcher, watcher.currentGameId);
+    const group = activeNotificationGroups.get(key);
+    if (group) {
+      group.targetDiscordIds.add(watcher.targetDiscordId);
+      continue;
+    }
+    activeNotificationGroups.set(key, {
+      messageId: watcher.currentNotificationMessageId,
+      targetDiscordIds: new Set([watcher.targetDiscordId]),
+    });
+  }
+
+  return { activeNotificationGroups };
+}
+
+function getActiveNotificationGroup(
+  context: MatchWatcherProcessingContext,
+  watcher: MatchWatcher,
+  gameId: string | number,
+) {
+  const key = activeNotificationGroupKey(watcher, gameId);
+  const existing = context.activeNotificationGroups.get(key);
+  if (existing) {
+    existing.targetDiscordIds.add(watcher.targetDiscordId);
+    if (
+      !existing.messageId && watcher.currentGameId === String(gameId) &&
+      watcher.currentNotificationMessageId
+    ) {
+      existing.messageId = watcher.currentNotificationMessageId;
+    }
+    return existing;
+  }
+
+  const group = {
+    messageId: watcher.currentGameId === String(gameId)
+      ? watcher.currentNotificationMessageId
+      : null,
+    targetDiscordIds: new Set([watcher.targetDiscordId]),
+  };
+  context.activeNotificationGroups.set(key, group);
+  return group;
 }
 
 function elapsedMinutes(activeGame: ActiveGame, now = Date.now()) {
@@ -164,6 +233,7 @@ async function buildActiveGameEmbed(
   account: RiotAccount,
   activeGame: ActiveGame,
   kind: "started" | "progress",
+  targetDiscordIds: Iterable<string> = [watcher.targetDiscordId],
 ) {
   const participant = activeGame.participants.find((p) =>
     p.puuid === account.puuid
@@ -180,15 +250,19 @@ async function buildActiveGameEmbed(
     : messageHandler.formatMessage(
       messageKeys.matchTracking.embed.active.progressTitle,
     );
+  const targets = [...targetDiscordIds];
+  const description = messageHandler.formatMessage(
+    messageKeys.matchTracking.embed.active.description,
+    {
+      member: targets.map((targetDiscordId) => `<@${targetDiscordId}>`).join(
+        ", ",
+      ),
+    },
+  );
 
   return new EmbedBuilder()
     .setTitle(title)
-    .setDescription(
-      messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.active.description,
-        { member: `<@${watcher.targetDiscordId}>` },
-      ),
-    )
+    .setDescription(description)
     .setColor(kind === "started" ? 0x2ecc71 : 0x3498db)
     .addFields(
       {
@@ -522,7 +596,11 @@ async function tryFetchAndNotifyResult(
   return { status: "cleared" as const, messageId };
 }
 
-async function processWatcher(client: Client, watcher: MatchWatcher) {
+async function processWatcher(
+  client: Client,
+  watcher: MatchWatcher,
+  context: MatchWatcherProcessingContext,
+) {
   const accountResult = await apiClient.getRiotAccount(watcher.targetDiscordId);
   if (!accountResult.success) {
     botLogger.warn("match_tracking.riot_account_not_found", {
@@ -591,6 +669,11 @@ async function processWatcher(client: Client, watcher: MatchWatcher) {
   }
 
   const currentGameId = String(activeGame.gameId);
+  const activeNotificationGroup = getActiveNotificationGroup(
+    context,
+    watcher,
+    currentGameId,
+  );
   if (
     watcher.lastState === "IN_GAME" &&
     watcher.currentGameId &&
@@ -613,9 +696,16 @@ async function processWatcher(client: Client, watcher: MatchWatcher) {
     const newMessageId = await sendOrEditWatcherMessage(
       client,
       watcher,
-      null,
-      await buildActiveGameEmbed(watcher, account, activeGame, "started"),
+      activeNotificationGroup.messageId,
+      await buildActiveGameEmbed(
+        watcher,
+        account,
+        activeGame,
+        "started",
+        activeNotificationGroup.targetDiscordIds,
+      ),
     );
+    activeNotificationGroup.messageId = newMessageId;
     const currentState = {
       lastState: "IN_GAME" as const,
       currentGameId,
@@ -645,9 +735,16 @@ async function processWatcher(client: Client, watcher: MatchWatcher) {
     const messageId = await sendOrEditWatcherMessage(
       client,
       watcher,
-      null,
-      await buildActiveGameEmbed(watcher, account, activeGame, "started"),
+      activeNotificationGroup.messageId,
+      await buildActiveGameEmbed(
+        watcher,
+        account,
+        activeGame,
+        "started",
+        activeNotificationGroup.targetDiscordIds,
+      ),
     );
+    activeNotificationGroup.messageId = messageId;
     await setWatcherState(watcher, {
       lastState: "IN_GAME",
       currentGameId,
@@ -664,9 +761,16 @@ async function processWatcher(client: Client, watcher: MatchWatcher) {
     const messageId = await sendOrEditWatcherMessage(
       client,
       watcher,
-      watcher.currentNotificationMessageId,
-      await buildActiveGameEmbed(watcher, account, activeGame, "progress"),
+      activeNotificationGroup.messageId ?? watcher.currentNotificationMessageId,
+      await buildActiveGameEmbed(
+        watcher,
+        account,
+        activeGame,
+        "progress",
+        activeNotificationGroup.targetDiscordIds,
+      ),
     );
+    activeNotificationGroup.messageId = messageId;
     await setWatcherState(watcher, {
       lastState: "IN_GAME",
       currentGameId,
@@ -695,9 +799,10 @@ async function processMatchWatchers(client: Client) {
 
   warnIfRiotRequestBudgetRisk(result.watchers.length);
 
+  const context = createMatchWatcherProcessingContext(result.watchers);
   for (const watcher of result.watchers) {
     try {
-      await processWatcher(client, watcher);
+      await processWatcher(client, watcher, context);
     } catch (error) {
       botLogger.error("match_tracking.watcher_failed", {
         guildId: watcher.guildId,
