@@ -67,9 +67,11 @@
     - [x] Riot API 呼び出しを共有キュー化し、429 と rate limit headers を後続呼び出しに反映する。
     - [x] 試合監視通知を1試合1投稿の Embed 更新にし、試合中に gameId が変わるケースへ対応する。
     - [x] 試合監視通知の表示文言を messages 管理へ移し、Riot 公式 static data の名称をDBキャッシュする。
+    - [x] #34: デフォルト監視と opt-out の最小仕様、現行仕様との差分、推奨データモデル、次アクションを `docs/default-watch-opt-out.md` に整理する。
     - [x] `deno task test:riot-live` を追加し、実 Riot API で Account-v1 / Spectator-v5 / Match-v5 の疎通確認を行う。
     - [x] Discord ギルド上で `/set-riot-id`、`/watch-match`、`/unwatch-match` の応答と監視状態更新を確認する。
     - [ ] Match-v5 で取得した戦績を既存 `matches` / `match_participants` に保存し、内部レート更新へ接続する。
+    - [ ] #34: デフォルト監視の通知先チャンネル設定、opt-out 永続化、Bot/API コマンド、実効監視対象解決を実装する。
 37. [ ] 内部レートを全ギルド共有のプレイヤー評価として保存するスキーマと更新ロジックを設計する。
 38. [ ] チーム分け時の戦力均等化ロジックと内部レート計算式を仕様に合わせて高度化する。
 39. [ ] Discord/Riot API 呼び出しに対するリクエストキューや指数バックオフ等のレート制限対策を導入する。
