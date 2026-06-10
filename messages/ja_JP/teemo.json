@@ -210,6 +210,15 @@
     }
   },
   "matchTracking": {
+    "watchList": {
+      "header": "いま偵察中の隊員たち:",
+      "empty": "この拠点では、いま偵察対象の隊員はいないみたいだ。",
+      "item": "{position}. <@{targetId}> (偵察先: <#{channelId}>)",
+      "omitted": "...ほか {count} 件、偵察中だよ",
+      "error": {
+        "fetch": "偵察対象の一覧を取りに行けなかったよ…。 {error}"
+      }
+    },
     "watch": {
       "success": "{member} の試合監視を開始したよ！ このチャンネルで偵察結果を知らせるね。",
       "error": {

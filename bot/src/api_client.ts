@@ -363,6 +363,27 @@ async function getEnabledMatchWatchers() {
   }
 }
 
+async function getEnabledMatchWatchersByGuild(guildId: string) {
+  try {
+    const res = await client["match-watchers"].enabled[":guildId"].$get({
+      param: { guildId },
+    });
+
+    if (!res.ok) {
+      throw new Error(`Unexpected response: ${res}`);
+    }
+
+    const body = await res.json();
+    return {
+      success: true as const,
+      watchers: body.watchers.map(parseMatchWatcher),
+    };
+  } catch (error) {
+    console.error("Failed to communicate with API", error);
+    return { success: false as const, error: "Failed to communicate with API" };
+  }
+}
+
 async function updateMatchWatcherState(
   guildId: string,
   targetDiscordId: string,
@@ -411,5 +432,6 @@ export const apiClient = {
   watchMatch,
   unwatchMatch,
   getEnabledMatchWatchers,
+  getEnabledMatchWatchersByGuild,
   updateMatchWatcherState,
 };

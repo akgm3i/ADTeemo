@@ -330,6 +330,15 @@ async function getEnabledMatchWatchers() {
   });
 }
 
+async function getEnabledMatchWatchersByGuild(guildId: string) {
+  return await db.query.matchWatchers.findMany({
+    where: and(
+      eq(matchWatchers.guildId, guildId),
+      eq(matchWatchers.enabled, true),
+    ),
+  });
+}
+
 async function updateMatchWatcherState(
   guildId: string,
   targetDiscordId: string,
@@ -393,6 +402,7 @@ export const dbActions = {
   upsertRiotStaticDataCache,
   upsertMatchWatcher,
   getEnabledMatchWatchers,
+  getEnabledMatchWatchersByGuild,
   updateMatchWatcherState,
   disableMatchWatcher,
   createAuthState,

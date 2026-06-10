@@ -101,6 +101,15 @@
     }
   },
   "matchTracking": {
+    "watchList": {
+      "header": "現在の試合監視対象:",
+      "empty": "現在このサーバーで有効な試合監視対象はありません。",
+      "item": "{position}. <@{targetId}> (通知: <#{channelId}>)",
+      "omitted": "...ほか {count} 件",
+      "error": {
+        "fetch": "試合監視対象一覧を取得できませんでした: {error}"
+      }
+    },
     "watch": {
       "success": "{member} の試合監視を開始しました。このチャンネルに通知します。",
       "error": {
