@@ -4,11 +4,10 @@ import { get, getAllKeys } from "./object-path.ts";
 const CWD = Deno.cwd();
 const MESSAGES_DIR = path.join(CWD, "messages");
 
-const SOURCE_FILE = path.join(MESSAGES_DIR, "ja", "system.json");
+const SOURCE_FILE = path.join(MESSAGES_DIR, "ja_JP", "system.json");
 const TARGET_FILES = [
-  path.join(MESSAGES_DIR, "ja", "teemo.json"),
-  path.join(MESSAGES_DIR, "en", "system.json"),
-  path.join(MESSAGES_DIR, "en", "teemo.json"),
+  path.join(MESSAGES_DIR, "ja_JP", "teemo.json"),
+  path.join(MESSAGES_DIR, "en_US", "system.json"),
 ];
 
 function loadJson(filePath: string): Record<string, unknown> | null {

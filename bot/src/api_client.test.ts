@@ -125,6 +125,86 @@ describe("apiClient", () => {
     });
   });
 
+  describe("getEnabledMatchWatchersByGuild", () => {
+    test("ギルドIDを指定して監視設定を取得すると、日付フィールドをDateまたはnullへ変換する", async () => {
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () =>
+          Promise.resolve(
+            new Response(
+              JSON.stringify({
+                watchers: [{
+                  guildId: "guild-1",
+                  targetDiscordId: "target-1",
+                  requesterId: "requester-1",
+                  channelId: "channel-1",
+                  enabled: true,
+                  lastState: "IDLE",
+                  currentGameId: null,
+                  currentMatchId: null,
+                  currentNotificationMessageId: null,
+                  pendingResultMatchId: null,
+                  pendingResultNotificationMessageId: null,
+                  pendingResultStartedAt: null,
+                  gameStartedAt: null,
+                  lastCheckedAt: "2026-01-01T00:02:00.000Z",
+                  lastInGameNotifiedAt: null,
+                  createdAt: "2026-01-01T00:00:00.000Z",
+                  updatedAt: "2026-01-01T00:03:00.000Z",
+                }],
+              }),
+              { status: 200 },
+            ),
+          ),
+      );
+
+      const result = await apiClient.getEnabledMatchWatchersByGuild("guild-1");
+
+      assertEquals(result.success, true);
+      if (!result.success) return;
+      assertEquals(result.watchers[0].guildId, "guild-1");
+      assertEquals(
+        result.watchers[0].lastCheckedAt,
+        new Date("2026-01-01T00:02:00.000Z"),
+      );
+      assertEquals(result.watchers[0].gameStartedAt, null);
+      assertSpyCalls(fetchStub, 1);
+      assertEquals(
+        fetchStub.calls[0].args[0],
+        `${Deno.env.get("API_URL")}/match-watchers/enabled/guild-1`,
+      );
+    });
+  });
+
+  describe("watchMatch", () => {
+    test("監視登録APIが404を返す場合、呼び出し側で未連携を識別できるステータスを返す", async () => {
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () =>
+          Promise.resolve(
+            new Response(
+              JSON.stringify({ error: "Riot account not found" }),
+              { status: 404 },
+            ),
+          ),
+      );
+
+      const result = await apiClient.watchMatch({
+        guildId: "guild-1",
+        targetDiscordId: "target-1",
+        requesterId: "requester-1",
+        channelId: "channel-1",
+      });
+
+      assertEquals(result.success, false);
+      assertEquals(result.error, "Riot account not found");
+      assertEquals("status" in result ? result.status : undefined, 404);
+      assertSpyCalls(fetchStub, 1);
+    });
+  });
+
   describe("setMainRole", () => {
     const userId = "test-user";
     const guildId = "test-guild";
