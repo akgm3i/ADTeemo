@@ -124,6 +124,32 @@ async function gameModeName(gameMode: string) {
   return await riotStaticData.getGameModeName(gameMode) ?? gameMode;
 }
 
+function formatCsPerMinute(cs: number, gameDurationSeconds: number) {
+  if (!Number.isFinite(cs) || !Number.isFinite(gameDurationSeconds)) return "-";
+  if (cs < 0 || gameDurationSeconds <= 0) return "-";
+  return (cs / (gameDurationSeconds / 60)).toFixed(1);
+}
+
+function formatKillParticipation(
+  participantKills: number,
+  participantAssists: number,
+  teamKills: number,
+) {
+  if (
+    !Number.isFinite(participantKills) ||
+    !Number.isFinite(participantAssists) ||
+    !Number.isFinite(teamKills) ||
+    participantKills < 0 ||
+    participantAssists < 0 ||
+    teamKills <= 0
+  ) {
+    return "-";
+  }
+  return `${
+    (((participantKills + participantAssists) / teamKills) * 100).toFixed(1)
+  }%`;
+}
+
 function currentStateFromWatcher(watcher: MatchWatcher): WatcherState {
   return {
     lastState: watcher.lastState === "FETCHING_RESULT"
@@ -324,6 +350,15 @@ async function buildMatchResultEmbed(
   }
 
   const cs = participant.totalMinionsKilled + participant.neutralMinionsKilled;
+  const teamKills = match.info.participants
+    .filter((candidate) => candidate.teamId === participant.teamId)
+    .reduce((sum, candidate) => sum + candidate.kills, 0);
+  const csPerMinute = formatCsPerMinute(cs, match.info.gameDuration);
+  const killParticipation = formatKillParticipation(
+    participant.kills,
+    participant.assists,
+    teamKills,
+  );
   const queue = await queueName(match.info.queueId);
   const map = await mapName(match.info.mapId);
   const result = participant.win
@@ -364,6 +399,20 @@ async function buildMatchResultEmbed(
           messageKeys.matchTracking.embed.field.cs,
         ),
         value: String(cs),
+        inline: true,
+      },
+      {
+        name: messageHandler.formatMessage(
+          messageKeys.matchTracking.embed.field.csPerMinute,
+        ),
+        value: csPerMinute,
+        inline: true,
+      },
+      {
+        name: messageHandler.formatMessage(
+          messageKeys.matchTracking.embed.field.killParticipation,
+        ),
+        value: killParticipation,
         inline: true,
       },
       {
