@@ -37,6 +37,17 @@
         "selectMessage": "どの任務を中止するんだい？"
       }
     },
+    "split": {
+      "success": "### チーム分け完了！\n\n隊員を作戦会議室に案内したよ！\n\n**Team 1 (Red Team)**\n{teamA}\n**Team 2 (Blue Team)**\n{teamB}",
+      "error": {
+        "noEventFound": "今日始まる君の任務が見つからないぞ。",
+        "noRecruitmentMessage": "募集の合図が見つからないみたいだ。",
+        "noRecruitmentChannel": "募集地点が見つからないぞ。",
+        "invalidPlayerCount": "隊員は10人必要だよ（今は {count}人）。",
+        "invalidRoleCount": "持ち場「{role}」の隊員が2人じゃないみたいだ。",
+        "noVoiceChannels": "Red TeamかBlue Teamの作戦会議室が見つからないぞ。"
+      }
+    },
     "startMatching": {
       "success": "よし、メンバーは揃ったね！ それじゃ、僕が最高のチームに分けてあげる！ ウフフ…",
       "error": {
@@ -61,6 +72,95 @@
   "stats": {
     "myStats": {
       "message": "### {userName} の偵察日誌\n\n- **偵察隊レート**: {rating}\n- **任務記録**: {wins}勝 {losses}敗 (達成率: {winRate}%)\n- **平均KDA**: {kda}\n- **得意な持ち場**: {role}"
+    }
+  },
+  "matchManagement": {
+    "recordMatch": {
+      "start": "戦績の聞き取りを始めるよ！",
+      "promptKDA": "**{username}** のKDAを `K/D/A` で教えてくれる？",
+      "promptCS": "**{username}** のCSを数字で教えてね。",
+      "promptGold": "**{username}** の獲得ゴールドを数字で頼むよ。",
+      "invalidFormatKDA": "`10/2/8` みたいに、キル/デス/アシストを `/` で区切ってね。",
+      "invalidFormatNumber": "数字で入力してくれるかい？",
+      "nextPlayer": "次の隊員: **{username}**",
+      "summaryTitle": "偵察日誌サマリー",
+      "summaryDescription": "この内容で戦績を記録するよ。いいかな？",
+      "summaryFieldPlayer": "隊員",
+      "summaryFieldStats": "KDA / CS / Gold",
+      "confirmButton": "記録する",
+      "cancelButton": "やめる",
+      "success": "戦績を偵察日誌に記録したよ！",
+      "failure": "戦績を書きこめなかったみたいだ。 {error}",
+      "cancelled": "戦績の記録は中止だね。",
+      "timeout": "時間切れだ。戦績の記録は中止するよ。"
+    }
+  },
+  "matchTracking": {
+    "embed": {
+      "active": {
+        "startedTitle": "任務開始を確認！",
+        "progressTitle": "試合状況を偵察中",
+        "description": "{member} が任務中だ。追って報告する。"
+      },
+      "resultPending": {
+        "title": "任務完了を確認！",
+        "description": "{member} の試合終了を確認。戦績が届き次第、偵察日誌を更新する。"
+      },
+      "resultTimeout": {
+        "title": "戦績報告は継続調査",
+        "description": "{member} の戦績は時間内に確認できなかった。監視は続行、次の動きがあれば追って報告する。"
+      },
+      "result": {
+        "title": "任務完了報告: {result}",
+        "description": "{member} の戦績を偵察日誌に記録した。",
+        "participantMissingTitle": "試合結果を確認",
+        "participantMissingDescription": "{member} の参加データが見つからない。追跡記録に残しておく。",
+        "win": "勝利",
+        "loss": "敗北"
+      },
+      "field": {
+        "champion": "チャンピオン",
+        "queue": "キュー",
+        "map": "マップ",
+        "mode": "モード",
+        "elapsed": "経過時間",
+        "kda": "KDA",
+        "cs": "CS",
+        "gold": "Gold"
+      },
+      "fallback": {
+        "unknownChampion": "知らないチャンピオン",
+        "championId": "チャンピオン #{id}",
+        "unknownQueue": "知らないキュー",
+        "queueId": "キュー {id}",
+        "mapId": "マップ {id}",
+        "elapsedMinutes": "約{minutes}分"
+      },
+      "footer": {
+        "game": "{platform} Game {gameId} / {riotId}",
+        "match": "Match {matchId}",
+        "matchWithRiotId": "Match {matchId} / {riotId}"
+      }
+    }
+  },
+  "riotAccount": {
+    "set": {
+      "error": {
+        "summonerNotFound": "そのサモナーは見つからない。名前をもう一度確認してくれるかい？",
+        "invalidFormat": "Riot IDは「サモナー名#タグライン」の形で頼むよ。"
+      }
+    },
+    "link": {
+      "instructions": "Riot Gamesアカウントとつなぐには、次のリンクで認証を完了してくれ。\n\n{url}",
+      "success": {
+        "title": "認証完了！",
+        "body": "このページを閉じて、Discordに戻ってきてくれ。"
+      },
+      "error": {
+        "generic": "おっと、問題が起きたみたいだ: {error}",
+        "urlNotFound": "認証リンクのURLが見つからないぞ。",
+        "invalidState": "認証の合図が古いか無効だ。もう一度コマンドを使ってくれ。"
+      }
     }
   },
   "rematch": {
@@ -97,7 +197,8 @@
   },
   "common": {
     "error": {
-      "command": "おっと！何かが爆発したみたいだ！"
+      "command": "おっと！何かが爆発したみたいだ！",
+      "internalServerError": "内部でキノコが爆発したみたいだ。"
     },
     "info": {
       "guildOnlyCommand": "おっと、この命令はここじゃ使えないみたいだ。拠点の中で試してくれるかい？"

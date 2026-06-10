@@ -32,6 +32,15 @@ describe("check-messages script", () => {
 
     // Assert
     assertSpyCalls(_exitStub, 0);
+    assertSpyCall(consoleLogSpy, 0, {
+      args: ["Source of truth: messages/ja_JP/system.json"],
+    });
+    assertSpyCall(consoleLogSpy, 1, {
+      args: ["Checking: messages/ja_JP/teemo.json"],
+    });
+    assertSpyCall(consoleLogSpy, 3, {
+      args: ["Checking: messages/en_US/system.json"],
+    });
     const lastLogCall = consoleLogSpy.calls[consoleLogSpy.calls.length - 1];
     assertStringIncludes(
       lastLogCall.args[0] as string,
@@ -82,7 +91,7 @@ describe("check-messages script", () => {
     checkMessagesMain();
 
     // Assert
-    assertSpyCalls(consoleWarnSpy, 2); // ja/teemo, en/teemo
+    assertSpyCalls(consoleWarnSpy, 1); // ja_JP/teemo
     assertSpyCall(consoleWarnSpy, 0, {
       args: ["  - File not found, skipping."],
     });
