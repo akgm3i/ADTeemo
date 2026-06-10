@@ -66,6 +66,17 @@ function activeGame(gameId = 12345) {
   };
 }
 
+function activeGameWithParticipants(puuids: string[], gameId = 12345) {
+  return {
+    ...activeGame(gameId),
+    participants: puuids.map((puuid, index) => ({
+      puuid,
+      championId: 17 + index,
+      teamId: 100,
+    })),
+  };
+}
+
 function match() {
   return {
     metadata: {
@@ -226,7 +237,7 @@ describe("match_tracking.ts", () => {
     using _activeGameStub = stub(
       riotApi,
       "getActiveGameByPuuid",
-      () => Promise.resolve(activeGame()),
+      () => Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
     );
     using updateStub = stub(
       apiClient,
@@ -292,7 +303,7 @@ describe("match_tracking.ts", () => {
     using _activeGameStub = stub(
       riotApi,
       "getActiveGameByPuuid",
-      () => Promise.resolve(activeGame()),
+      () => Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
     );
     using updateStub = stub(
       apiClient,
@@ -359,7 +370,10 @@ describe("match_tracking.ts", () => {
     using _activeGameStub = stub(
       riotApi,
       "getActiveGameByPuuid",
-      () => Promise.resolve(activeGame()),
+      () =>
+        Promise.resolve(
+          activeGameWithParticipants(["puuid-1", "puuid-2", "puuid-3"]),
+        ),
     );
     using updateStub = stub(
       apiClient,
