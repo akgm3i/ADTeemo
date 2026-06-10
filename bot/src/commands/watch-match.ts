@@ -41,7 +41,7 @@ export async function execute(interaction: CommandInteraction) {
   });
 
   if (!result.success) {
-    const content = result.status === 404
+    const content = "status" in result && result.status === 404
       ? messageHandler.formatMessage(
         messageKeys.matchTracking.watch.error.riotAccountRequired,
         { member: String(target) },
