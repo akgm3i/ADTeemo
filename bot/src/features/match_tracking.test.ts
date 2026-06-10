@@ -7,6 +7,7 @@ import { riotApi } from "@adteemo/api/riot-api";
 import { riotStaticData } from "@adteemo/api/riot-static-data";
 import { apiClient } from "../api_client.ts";
 import { botLogger } from "../logger.ts";
+import { messageHandler, messageKeys } from "../messages.ts";
 import { matchTracker } from "./match_tracking.ts";
 import { afterEach, beforeEach } from "@std/testing/bdd";
 
@@ -104,7 +105,8 @@ function match() {
 }
 
 function clientWithSend(
-  send: () => Promise<unknown> = () => Promise.resolve({ id: "message-new" }),
+  send: (options: unknown) => Promise<unknown> = () =>
+    Promise.resolve({ id: "message-new" }),
 ) {
   const message = {
     id: "message-existing",
@@ -437,7 +439,7 @@ describe("match_tracking.ts", () => {
     );
   });
 
-  test("結果取得待ちが一定時間を超えたとき、Match-v5を再試行せずIDLEへ戻す", async () => {
+  test("結果取得待ちが一定時間を超えたとき、対象者とIDLE復帰理由を通知しMatch-v5を再試行しない", async () => {
     const { client, sendSpy } = clientWithSend();
     using _getWatchersStub = stub(
       apiClient,
@@ -473,6 +475,36 @@ describe("match_tracking.ts", () => {
 
     assertSpyCalls(getMatchStub, 0);
     assertSpyCalls(sendSpy, 1);
+    const sentMessage = sendSpy.calls[0].args[0] as {
+      embeds: {
+        data: {
+          title: string;
+          description: string;
+          footer: { text: string };
+        };
+      }[];
+    };
+    const sentEmbed = sentMessage.embeds[0].data;
+    assertEquals(
+      sentEmbed.title,
+      messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.resultTimeout.title,
+      ),
+    );
+    assertEquals(
+      sentEmbed.description,
+      messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.resultTimeout.description,
+        { member: "<@target-1>" },
+      ),
+    );
+    assertEquals(
+      sentEmbed.footer.text,
+      messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.footer.match,
+        { matchId: "JP1_12345" },
+      ),
+    );
     assertEquals(updateStub.calls[0].args[2].lastState, "IDLE");
     assertEquals(updateStub.calls[0].args[2].currentGameId, null);
     assertEquals(updateStub.calls[0].args[2].currentMatchId, null);

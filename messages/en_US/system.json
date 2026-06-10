@@ -129,7 +129,7 @@
       },
       "resultTimeout": {
         "title": "Stopped fetching match result",
-        "description": "Could not fetch {member}'s match result within the timeout. Continuous monitoring will continue."
+        "description": "Could not fetch {member}'s match result within the timeout. The watcher state was returned to IDLE, and continuous monitoring will continue."
       },
       "result": {
         "title": "Match Result: {result}",
