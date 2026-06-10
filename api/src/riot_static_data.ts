@@ -73,21 +73,21 @@ function normalizeLocale(locale?: string) {
 }
 
 function localizedQueueName(queueId: number, locale?: string) {
-  if (locale && normalizeLocale(locale) === "ja_JP") {
+  if (normalizeLocale(locale) === "ja_JP") {
     return jaQueueNames[queueId] ?? null;
   }
   return null;
 }
 
 function localizedMapName(mapId: number, locale?: string) {
-  if (locale && normalizeLocale(locale) === "ja_JP") {
+  if (normalizeLocale(locale) === "ja_JP") {
     return jaMapNames[mapId] ?? null;
   }
   return null;
 }
 
 function localizedGameModeName(gameMode: string, locale?: string) {
-  if (locale && normalizeLocale(locale) === "ja_JP") {
+  if (normalizeLocale(locale) === "ja_JP") {
     return jaGameModeNames[gameMode] ?? null;
   }
   return null;

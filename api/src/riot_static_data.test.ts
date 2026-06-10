@@ -62,7 +62,7 @@ describe("riot_static_data.ts", () => {
         ),
     );
 
-    const name = await riotStaticData.getQueueNameById(420);
+    const name = await riotStaticData.getQueueNameById(420, "en_US");
 
     assertEquals(name, "5v5 Ranked Solo games");
     assertSpyCalls(getCacheStub, 1);
@@ -133,7 +133,7 @@ describe("riot_static_data.ts", () => {
       () => Promise.resolve(new Response(null, { status: 500 })),
     );
 
-    const name = await riotStaticData.getMapNameById(11);
+    const name = await riotStaticData.getMapNameById(11, "en_US");
 
     assertEquals(name, "Summoner's Rift");
     assertSpyCalls(fetchStub, 1);
