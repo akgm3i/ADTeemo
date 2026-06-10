@@ -20,6 +20,7 @@ type WatcherState = Parameters<typeof apiClient.updateMatchWatcherState>[2];
 type ActiveNotificationGroup = {
   messageId: string | null;
   targetDiscordIds: Set<string>;
+  messageOwnersById: Map<string, string>;
 };
 type MatchWatcherProcessingContext = {
   activeNotificationGroups: Map<string, ActiveNotificationGroup>;
@@ -62,25 +63,55 @@ function createMatchWatcherProcessingContext(
   const activeNotificationGroups = new Map<string, ActiveNotificationGroup>();
   for (const watcher of watchers) {
     if (
-      watcher.lastState !== "IN_GAME" || !watcher.currentGameId ||
-      !watcher.currentNotificationMessageId
+      watcher.lastState !== "IN_GAME" || !watcher.currentGameId
     ) {
       continue;
     }
 
     const key = activeNotificationGroupKey(watcher, watcher.currentGameId);
-    const group = activeNotificationGroups.get(key);
-    if (group) {
-      group.targetDiscordIds.add(watcher.targetDiscordId);
+    const existingGroup = activeNotificationGroups.get(key);
+    if (existingGroup) {
+      existingGroup.targetDiscordIds.add(watcher.targetDiscordId);
+      registerActiveNotificationMessage(existingGroup, watcher);
       continue;
     }
-    activeNotificationGroups.set(key, {
+
+    const group: ActiveNotificationGroup = {
       messageId: watcher.currentNotificationMessageId,
       targetDiscordIds: new Set([watcher.targetDiscordId]),
-    });
+      messageOwnersById: new Map<string, string>(),
+    };
+    registerActiveNotificationMessage(group, watcher);
+    activeNotificationGroups.set(key, group);
   }
 
   return { activeNotificationGroups };
+}
+
+function registerActiveNotificationMessage(
+  group: ActiveNotificationGroup,
+  watcher: MatchWatcher,
+  messageId = watcher.currentNotificationMessageId,
+) {
+  if (!messageId) return false;
+  group.messageId ??= messageId;
+  const owner = group.messageOwnersById.get(messageId);
+  if (!owner) {
+    group.messageOwnersById.set(messageId, watcher.targetDiscordId);
+    return true;
+  }
+  return owner === watcher.targetDiscordId;
+}
+
+function resultNotificationMessageId(
+  group: ActiveNotificationGroup | undefined,
+  watcher: MatchWatcher,
+) {
+  const messageId = watcher.currentNotificationMessageId;
+  if (!group || !messageId) return messageId ?? null;
+  return group.messageOwnersById.get(messageId) === watcher.targetDiscordId
+    ? messageId
+    : null;
 }
 
 function getActiveNotificationGroup(
@@ -98,6 +129,9 @@ function getActiveNotificationGroup(
     ) {
       existing.messageId = watcher.currentNotificationMessageId;
     }
+    if (watcher.currentGameId === String(gameId)) {
+      registerActiveNotificationMessage(existing, watcher);
+    }
     return existing;
   }
 
@@ -106,7 +140,11 @@ function getActiveNotificationGroup(
       ? watcher.currentNotificationMessageId
       : null,
     targetDiscordIds: new Set([watcher.targetDiscordId]),
+    messageOwnersById: new Map<string, string>(),
   };
+  if (watcher.currentGameId === String(gameId)) {
+    registerActiveNotificationMessage(group, watcher);
+  }
   context.activeNotificationGroups.set(key, group);
   return group;
 }
@@ -633,11 +671,16 @@ async function processWatcher(
   );
   if (!activeGame) {
     if (watcher.lastState === "IN_GAME" && watcher.currentGameId) {
+      const activeNotificationGroup = getActiveNotificationGroup(
+        context,
+        watcher,
+        watcher.currentGameId,
+      );
       const matchId = matchIdForGame(account, watcher.currentGameId);
       const messageId = await sendOrEditWatcherMessage(
         client,
         watcher,
-        watcher.currentNotificationMessageId,
+        resultNotificationMessageId(activeNotificationGroup, watcher),
         buildResultPendingEmbed(watcher, matchId),
       );
       await tryFetchAndNotifyResult(client, watcher, account, {
@@ -706,11 +749,16 @@ async function processWatcher(
       ),
     );
     activeNotificationGroup.messageId = newMessageId;
+    const storesActiveMessageId = registerActiveNotificationMessage(
+      activeNotificationGroup,
+      watcher,
+      newMessageId,
+    );
     const currentState = {
       lastState: "IN_GAME" as const,
       currentGameId,
       currentMatchId: null,
-      currentNotificationMessageId: newMessageId,
+      currentNotificationMessageId: storesActiveMessageId ? newMessageId : null,
       gameStartedAt: new Date(activeGame.gameStartTime),
       lastInGameNotifiedAt: new Date(),
     };
@@ -745,11 +793,16 @@ async function processWatcher(
       ),
     );
     activeNotificationGroup.messageId = messageId;
+    const storesActiveMessageId = registerActiveNotificationMessage(
+      activeNotificationGroup,
+      watcher,
+      messageId,
+    );
     await setWatcherState(watcher, {
       lastState: "IN_GAME",
       currentGameId,
       currentMatchId: null,
-      currentNotificationMessageId: messageId,
+      currentNotificationMessageId: storesActiveMessageId ? messageId : null,
       gameStartedAt: new Date(activeGame.gameStartTime),
       lastCheckedAt: new Date(),
       lastInGameNotifiedAt: new Date(),
@@ -771,10 +824,15 @@ async function processWatcher(
       ),
     );
     activeNotificationGroup.messageId = messageId;
+    const storesActiveMessageId = registerActiveNotificationMessage(
+      activeNotificationGroup,
+      watcher,
+      messageId,
+    );
     await setWatcherState(watcher, {
       lastState: "IN_GAME",
       currentGameId,
-      currentNotificationMessageId: messageId,
+      currentNotificationMessageId: storesActiveMessageId ? messageId : null,
       lastCheckedAt: new Date(),
       lastInGameNotifiedAt: new Date(),
     });
