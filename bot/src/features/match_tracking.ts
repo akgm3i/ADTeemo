@@ -91,24 +91,37 @@ function isResultFetchTimedOut(
   return now.getTime() - startedAt.getTime() >= timeoutMs;
 }
 
+function fallbackChampionName(
+  championId: number | undefined,
+  fallbackName?: string,
+) {
+  if (fallbackName) return fallbackName;
+  if (championId === undefined) {
+    return messageHandler.formatMessage(
+      messageKeys.matchTracking.embed.fallback.unknownChampion,
+    );
+  }
+  return messageHandler.formatMessage(
+    messageKeys.matchTracking.embed.fallback.championId,
+    { id: championId },
+  );
+}
+
 async function championNameById(
   championId: number | undefined,
   fallbackName?: string,
 ) {
   if (championId === undefined) {
-    return fallbackName ?? messageHandler.formatMessage(
-      messageKeys.matchTracking.embed.fallback.unknownChampion,
-    );
+    return fallbackChampionName(championId, fallbackName);
   }
-  return await riotStaticData.getChampionNameById(
-    championId,
-    messageLocale(),
-  ) ??
-    fallbackName ??
-    messageHandler.formatMessage(
-      messageKeys.matchTracking.embed.fallback.championId,
-      { id: championId },
-    );
+  try {
+    return await riotStaticData.getChampionNameById(
+      championId,
+      messageLocale(),
+    ) ?? fallbackChampionName(championId, fallbackName);
+  } catch {
+    return fallbackChampionName(championId, fallbackName);
+  }
 }
 
 async function queueName(queueId: number | undefined) {

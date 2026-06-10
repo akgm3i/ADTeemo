@@ -359,6 +359,54 @@ describe("match_tracking.ts", () => {
     assertEquals(embedFieldValue(resultEmbed, "チャンピオン"), "ティーモ");
   });
 
+  test("静的データのチャンピオン名取得に失敗したとき、Match-v5の既存名で結果通知を完了する", async () => {
+    const [championNameStub] = staticDataStubs.splice(0, 1);
+    championNameStub.restore();
+    const { client, editSpy } = clientWithSend();
+    using _championNameFailureStub = stub(
+      riotStaticData,
+      "getChampionNameById",
+      () => Promise.reject(new Error("Data Dragon failed")),
+    );
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "FETCHING_RESULT",
+            currentMatchId: "JP1_12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(editSpy, 1);
+    const resultEmbed = firstEditedEmbed(editSpy);
+    assertEquals(embedFieldValue(resultEmbed, "チャンピオン"), "Teemo");
+    assertEquals(updateStub.calls.at(-1)?.args[2].lastState, "IDLE");
+    assertEquals(updateStub.calls.at(-1)?.args[2].currentMatchId, null);
+    assertEquals(updateStub.calls.at(-1)?.args[2].pendingResultMatchId, null);
+  });
+
   test("ja_JPの試合結果では代表キューとマップを日本語表示に寄せる", async () => {
     const { client, editSpy } = clientWithSend();
     using _getWatchersStub = stub(
