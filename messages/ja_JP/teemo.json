@@ -98,22 +98,22 @@
   "matchTracking": {
     "embed": {
       "active": {
-        "startedTitle": "試合開始を発見！",
+        "startedTitle": "試合開始を確認したよ！",
         "progressTitle": "試合状況を偵察中",
         "description": "{member} が任務中だよ。"
       },
       "resultPending": {
-        "title": "試合終了を発見！",
-        "description": "{member} の任務が終わったみたいだ。戦績が届いたら更新するね。"
+        "title": "試合終了を確認したよ！",
+        "description": "{member} の任務完了を確認したよ。戦績が届いたら、この偵察記録を更新するね。"
       },
       "resultTimeout": {
-        "title": "戦績の追跡をいったん停止",
-        "description": "{member} の戦績を時間内に見つけられなかったよ。監視は続けるね。"
+        "title": "戦績報告はいったん保留",
+        "description": "{member} の戦績は時間内に確認できなかったよ。偵察は続けて、次の動きがあればまた報告するね。"
       },
       "result": {
         "title": "任務結果: {result}",
-        "description": "{member} の偵察報告だよ。",
-        "participantMissingTitle": "試合結果を発見！",
+        "description": "{member} の偵察記録をまとめたよ。",
+        "participantMissingTitle": "試合結果を確認したよ！",
         "participantMissingDescription": "{member} の参加データが見つからなかったよ。",
         "win": "勝利",
         "loss": "敗北"
@@ -146,12 +146,12 @@
   "riotAccount": {
     "set": {
       "error": {
-        "summonerNotFound": "そのサモナーは見つからないぞ。名前をもう一度偵察してみて！",
+        "summonerNotFound": "そのサモナーは見つからないぞ。名前をもう一度確認してみて！",
         "invalidFormat": "Riot IDは「サモナー名#タグライン」の形で頼むよ。"
       }
     },
     "link": {
-      "instructions": "Riot Gamesアカウントとつなぐには、この偵察ルートから認証してね。\n\n{url}",
+      "instructions": "Riot Gamesアカウントとつなぐには、このリンクから認証してね。\n\n{url}",
       "success": {
         "title": "✅ 認証完了だ！",
         "body": "このページを閉じて、Discordに戻ってきてね。"
