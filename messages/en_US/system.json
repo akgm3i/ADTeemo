@@ -138,6 +138,8 @@
         "elapsed": "Elapsed",
         "kda": "KDA",
         "cs": "CS",
+        "csPerMinute": "CS/min",
+        "killParticipation": "Kill Participation",
         "gold": "Gold"
       },
       "fallback": {

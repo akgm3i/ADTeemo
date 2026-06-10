@@ -126,6 +126,22 @@ function clientWithSend(
   return { client, sendSpy, editSpy };
 }
 
+function editedEmbedFieldValue(
+  editSpy: { calls: unknown[] },
+  callIndex: number,
+  fieldName: string,
+) {
+  const call = editSpy.calls[callIndex] as unknown as {
+    args: [
+      {
+        embeds: { toJSON(): { fields?: { name: string; value: string }[] } }[];
+      },
+    ];
+  };
+  const resultEmbed = call.args[0].embeds[0].toJSON();
+  return resultEmbed.fields?.find((field) => field.name === fieldName)?.value;
+}
+
 describe("match_tracking.ts", () => {
   const staticDataStubs: { restore(): void }[] = [];
 
@@ -305,6 +321,119 @@ describe("match_tracking.ts", () => {
     assertEquals(
       updateStub.calls.at(-1)?.args[2].currentNotificationMessageId,
       null,
+    );
+  });
+
+  test("試合結果EmbedにMatch-v5から計算できるCS/minとキル関与率を表示する", async () => {
+    const resultMatch = match();
+    resultMatch.info.participants.push({
+      puuid: "puuid-2",
+      championName: "Shen",
+      teamId: 100,
+      win: true,
+      kills: 20,
+      deaths: 4,
+      assists: 6,
+      totalMinionsKilled: 120,
+      neutralMinionsKilled: 0,
+      goldEarned: 10000,
+    });
+    const { client, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "IN_GAME",
+            currentGameId: "12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(null),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(resultMatch),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 1, "CS/min"),
+      "6.4",
+    );
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 1, "キル関与率"),
+      "60.0%",
+    );
+  });
+
+  test("試合結果Embedの追加戦績は試合時間やチームキルが不足してもfallback表示にする", async () => {
+    const resultMatch = match();
+    resultMatch.info.gameDuration = 0;
+    resultMatch.info.participants[0].kills = 0;
+    resultMatch.info.participants[0].assists = 0;
+    const { client, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "IN_GAME",
+            currentGameId: "12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(null),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(resultMatch),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 1, "CS/min"),
+      "-",
+    );
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 1, "キル関与率"),
+      "-",
     );
   });
 
