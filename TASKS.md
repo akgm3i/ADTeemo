@@ -69,8 +69,8 @@
     - [x] 試合監視通知の表示文言を messages 管理へ移し、Riot 公式 static data の名称をDBキャッシュする。
     - [x] `deno task test:riot-live` を追加し、実 Riot API で Account-v1 / Spectator-v5 / Match-v5 の疎通確認を行う。
     - [x] Discord ギルド上で `/set-riot-id`、`/watch-match`、`/unwatch-match` の応答と監視状態更新を確認する。
-    - [x] #35: Discord League of Legends / Riot Games connected accounts から Riot 情報を取得できるかを調査し、Bot token だけでは任意 GuildMember の connected accounts を読めず、ユーザー同意付き Discord OAuth2 `identify connections` と redirect URL 運用が必要であることを `docs/discord-lol-connections.md` に整理する。
-    - [ ] #35: Discord OAuth2 redirect URL 決定後に、Connection Object の `type` / `name` / `id` が Riot ID、PUUID、region、tagline のどこまで信頼できるかを実データで検証し、登録フローへの組み込み可否を判断する。
+    - [x] #35: Discord League of Legends / Riot Games connected accounts から Riot 情報を取得できるかを調査し、Bot token だけでは任意 GuildMember の connected accounts を読めず、ユーザー同意付き Discord OAuth2 `identify connections` と redirect URI 運用が必要であることを `docs/discord-lol-connections.md` に整理する。
+    - [ ] #35: Discord OAuth2 redirect URI 決定後に、Connection Object の `type` / `name` / `id` が Riot ID、PUUID、region、tagline のどこまで信頼できるかを実データで検証し、登録フローへの組み込み可否を判断する。
     - [ ] Match-v5 で取得した戦績を既存 `matches` / `match_participants` に保存し、内部レート更新へ接続する。
 37. [ ] 内部レートを全ギルド共有のプレイヤー評価として保存するスキーマと更新ロジックを設計する。
 38. [ ] チーム分け時の戦力均等化ロジックと内部レート計算式を仕様に合わせて高度化する。
