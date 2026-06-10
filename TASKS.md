@@ -58,6 +58,7 @@
     - [x] `riot_accounts` を追加し、PUUID、Riot ID、platform、region をユーザー別に保存する。
     - [x] `match_watchers` を追加し、ギルド単位で指定メンバーの継続監視状態と通知チャンネルを保存する。
     - [x] `/watch-match @member` と `/unwatch-match @member` を実装する。
+    - [x] `/watch-match @member` で対象メンバーが Riot ID 未登録の場合に専用メッセージを返す。
     - [x] Riot Spectator-v5 で試合開始・試合中概要・終了を検知し、Discord に通知する。
     - [x] Riot Match-v5 で終了後の勝敗、KDA、CS、Gold を取得し、通知する。
     - [x] Spectator-v5 / Match-v5 の 404、429、5xx を考慮したリトライと backoff を実装する。

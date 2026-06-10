@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, stub } from "@std/testing/mock";
 import { CommandInteraction } from "discord.js";
@@ -39,7 +39,7 @@ describe("Command: watch-match", () => {
     });
   });
 
-  test("未連携メンバーを指定すると、監視登録失敗を返す", async () => {
+  test("未連携メンバーを指定すると、Riot ID登録が必要な専用メッセージを返す", async () => {
     const interaction = new MockInteractionBuilder("watch-match")
       .withUser({ id: "requester-1" })
       .withUserOption("member", {
@@ -47,6 +47,11 @@ describe("Command: watch-match", () => {
         toString: () => "<@target-1>",
       })
       .build();
+    using editReplySpy = stub(
+      interaction,
+      "editReply",
+      () => Promise.resolve({} as never),
+    );
     using watchStub = stub(
       apiClient,
       "watchMatch",
@@ -54,11 +59,17 @@ describe("Command: watch-match", () => {
         Promise.resolve({
           success: false as const,
           error: "Riot account not found",
+          status: 404 as const,
         }),
     );
 
     await execute(interaction as unknown as CommandInteraction);
 
     assertSpyCall(watchStub, 0);
+    assertSpyCall(editReplySpy, 0);
+    const replyOptions = editReplySpy.calls[0].args[0] as { content: string };
+    assertStringIncludes(String(replyOptions.content), "<@target-1>");
+    assertStringIncludes(String(replyOptions.content), "Riot ID");
+    assertStringIncludes(String(replyOptions.content), "登録");
   });
 });
