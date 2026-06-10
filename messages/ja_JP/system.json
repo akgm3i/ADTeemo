@@ -110,6 +110,13 @@
         "fetch": "試合監視対象一覧を取得できませんでした: {error}"
       }
     },
+    "watch": {
+      "success": "{member} の試合監視を開始しました。このチャンネルに通知します。",
+      "error": {
+        "failure": "{member} の試合監視を開始できませんでした: {error}",
+        "riotAccountRequired": "{member} の試合監視を開始するには、対象メンバーのRiot ID登録が必要です。`/set-riot-id` で登録してもらってください。"
+      }
+    },
     "embed": {
       "active": {
         "startedTitle": "試合開始を検知しました",
@@ -140,6 +147,8 @@
         "elapsed": "経過時間",
         "kda": "KDA",
         "cs": "CS",
+        "csPerMinute": "CS/min",
+        "killParticipation": "キル関与率",
         "gold": "Gold"
       },
       "fallback": {

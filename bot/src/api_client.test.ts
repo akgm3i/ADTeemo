@@ -177,6 +177,34 @@ describe("apiClient", () => {
     });
   });
 
+  describe("watchMatch", () => {
+    test("監視登録APIが404を返す場合、呼び出し側で未連携を識別できるステータスを返す", async () => {
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () =>
+          Promise.resolve(
+            new Response(
+              JSON.stringify({ error: "Riot account not found" }),
+              { status: 404 },
+            ),
+          ),
+      );
+
+      const result = await apiClient.watchMatch({
+        guildId: "guild-1",
+        targetDiscordId: "target-1",
+        requesterId: "requester-1",
+        channelId: "channel-1",
+      });
+
+      assertEquals(result.success, false);
+      assertEquals(result.error, "Riot account not found");
+      assertEquals("status" in result ? result.status : undefined, 404);
+      assertSpyCalls(fetchStub, 1);
+    });
+  });
+
   describe("setMainRole", () => {
     const userId = "test-user";
     const guildId = "test-guild";

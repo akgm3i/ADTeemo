@@ -41,13 +41,27 @@ export async function execute(interaction: CommandInteraction) {
   });
 
   if (!result.success) {
+    const content = "status" in result && result.status === 404
+      ? messageHandler.formatMessage(
+        messageKeys.matchTracking.watch.error.riotAccountRequired,
+        { member: String(target) },
+      )
+      : messageHandler.formatMessage(
+        messageKeys.matchTracking.watch.error.failure,
+        { member: String(target), error: result.error },
+      );
     await interaction.editReply({
-      content: `${target} の試合監視を開始できませんでした: ${result.error}`,
+      content,
     });
     return;
   }
 
   await interaction.editReply({
-    content: `${target} の試合監視を開始しました。このチャンネルに通知します。`,
+    content: messageHandler.formatMessage(
+      messageKeys.matchTracking.watch.success,
+      {
+        member: String(target),
+      },
+    ),
   });
 }

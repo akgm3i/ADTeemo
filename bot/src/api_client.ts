@@ -309,7 +309,11 @@ async function watchMatch(watcher: {
     if (!res.ok) {
       if (res.status === 404 || res.status === 409) {
         const body = await res.json();
-        return { success: false as const, error: body.error };
+        return {
+          success: false as const,
+          error: body.error,
+          status: res.status,
+        };
       }
       throw new Error(`Unexpected response: ${res}`);
     }
