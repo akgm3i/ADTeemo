@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import type { Client } from "discord.js";
@@ -7,6 +7,7 @@ import { riotApi } from "@adteemo/api/riot-api";
 import { riotStaticData } from "@adteemo/api/riot-static-data";
 import { apiClient } from "../api_client.ts";
 import { botLogger } from "../logger.ts";
+import { messageHandler, messageKeys } from "../messages.ts";
 import { matchTracker } from "./match_tracking.ts";
 import { afterEach, beforeEach } from "@std/testing/bdd";
 
@@ -348,15 +349,26 @@ describe("match_tracking.ts", () => {
       }[];
     };
     const sentEmbed = sentMessage.embeds[0].data;
-    assertEquals(sentEmbed.title, "試合結果の取得を停止しました");
-    assertStringIncludes(sentEmbed.description, "<@target-1>");
-    assertStringIncludes(
-      sentEmbed.description,
-      "一定時間内に取得できませんでした",
+    assertEquals(
+      sentEmbed.title,
+      messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.resultTimeout.title,
+      ),
     );
-    assertStringIncludes(sentEmbed.description, "IDLEへ戻し");
-    assertStringIncludes(sentEmbed.description, "継続監視は続行します");
-    assertEquals(sentEmbed.footer.text, "Match JP1_12345");
+    assertEquals(
+      sentEmbed.description,
+      messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.resultTimeout.description,
+        { member: "<@target-1>" },
+      ),
+    );
+    assertEquals(
+      sentEmbed.footer.text,
+      messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.footer.match,
+        { matchId: "JP1_12345" },
+      ),
+    );
     assertEquals(updateStub.calls[0].args[2].lastState, "IDLE");
     assertEquals(updateStub.calls[0].args[2].currentGameId, null);
     assertEquals(updateStub.calls[0].args[2].currentMatchId, null);
