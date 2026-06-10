@@ -66,6 +66,12 @@ function activeGame(gameId = 12345) {
   };
 }
 
+function activeGameForPuuid(puuid: string, gameId = 12345) {
+  const game = activeGame(gameId);
+  game.participants[0].puuid = puuid;
+  return game;
+}
+
 function match() {
   return {
     metadata: {
@@ -511,7 +517,9 @@ describe("match_tracking.ts", () => {
       riotApi,
       "getActiveGameByPuuid",
       (_platform, puuid) =>
-        Promise.resolve(activeGame(puuid === "puuid-2" ? 67890 : 12345)),
+        Promise.resolve(
+          activeGameForPuuid(puuid, puuid === "puuid-2" ? 67890 : 12345),
+        ),
     );
     using updateStub = stub(
       apiClient,
@@ -555,7 +563,10 @@ describe("match_tracking.ts", () => {
       "getRiotAccount",
       (discordId) => {
         if (discordId === "target-1") {
-          throw new Error("Riot account fetch failed");
+          return Promise.resolve({
+            success: false as const,
+            error: "Riot account fetch failed",
+          });
         }
         return Promise.resolve({
           success: true as const,
@@ -566,7 +577,7 @@ describe("match_tracking.ts", () => {
     using activeGameStub = stub(
       riotApi,
       "getActiveGameByPuuid",
-      () => Promise.resolve(activeGame(67890)),
+      (_platform, puuid) => Promise.resolve(activeGameForPuuid(puuid, 67890)),
     );
     using updateStub = stub(
       apiClient,
@@ -619,7 +630,7 @@ describe("match_tracking.ts", () => {
         if (puuid === "puuid-1") {
           throw new Error("Riot API failed");
         }
-        return Promise.resolve(activeGame(67890));
+        return Promise.resolve(activeGameForPuuid(puuid, 67890));
       },
     );
     using updateStub = stub(
