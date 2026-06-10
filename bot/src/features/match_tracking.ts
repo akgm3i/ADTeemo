@@ -24,6 +24,7 @@ type WatcherState = Parameters<typeof apiClient.updateMatchWatcherState>[2];
 type MatchWatcherProcessingContext = {
   riotAccountsByTargetDiscordId: Map<string, Promise<RiotAccountResult>>;
   activeGamesByRiotAccount: Map<string, Promise<ActiveGameResult>>;
+  matchesByRegionAndMatchId: Map<string, Promise<RiotMatch | null>>;
 };
 type WatcherMessage = {
   id?: string;
@@ -54,10 +55,15 @@ function activeGameCacheKey(account: RiotAccount) {
   return `${account.platform}:${account.puuid}`;
 }
 
+function matchCacheKey(account: RiotAccount, matchId: string) {
+  return `${account.region}:${matchId}`;
+}
+
 function createMatchWatcherProcessingContext(): MatchWatcherProcessingContext {
   return {
     riotAccountsByTargetDiscordId: new Map(),
     activeGamesByRiotAccount: new Map(),
+    matchesByRegionAndMatchId: new Map(),
   };
 }
 
@@ -83,6 +89,20 @@ function getActiveGameForAccount(
 
   const result = riotApi.getActiveGameByPuuid(account.platform, account.puuid);
   context.activeGamesByRiotAccount.set(cacheKey, result);
+  return result;
+}
+
+function getMatchForPendingResult(
+  context: MatchWatcherProcessingContext,
+  account: RiotAccount,
+  matchId: string,
+) {
+  const cacheKey = matchCacheKey(account, matchId);
+  const cached = context.matchesByRegionAndMatchId.get(cacheKey);
+  if (cached) return cached;
+
+  const result = riotApi.getMatchById(account.region, matchId);
+  context.matchesByRegionAndMatchId.set(cacheKey, result);
   return result;
 }
 
@@ -510,6 +530,7 @@ async function tryFetchAndNotifyResult(
   client: Client,
   watcher: MatchWatcher,
   account: RiotAccount,
+  context: MatchWatcherProcessingContext,
   pending: PendingResult,
   currentState: WatcherState = currentStateFromWatcher(watcher),
 ) {
@@ -536,7 +557,11 @@ async function tryFetchAndNotifyResult(
     return { status: "cleared" as const, messageId };
   }
 
-  const match = await riotApi.getMatchById(account.region, pending.matchId);
+  const match = await getMatchForPendingResult(
+    context,
+    account,
+    pending.matchId,
+  );
   if (!match) {
     await setWatcherState(watcher, {
       ...currentState,
@@ -592,6 +617,7 @@ async function processWatcher(
       client,
       watcher,
       account,
+      context,
       pending,
     );
     pendingStatus = result.status;
@@ -610,7 +636,7 @@ async function processWatcher(
         watcher.currentNotificationMessageId,
         buildResultPendingEmbed(watcher, matchId),
       );
-      await tryFetchAndNotifyResult(client, watcher, account, {
+      await tryFetchAndNotifyResult(client, watcher, account, context, {
         matchId,
         messageId,
         startedAt: watcher.gameStartedAt,
@@ -679,7 +705,7 @@ async function processWatcher(
       pendingResultStartedAt: watcher.gameStartedAt,
       lastCheckedAt: new Date(),
     });
-    await tryFetchAndNotifyResult(client, watcher, account, {
+    await tryFetchAndNotifyResult(client, watcher, account, context, {
       matchId: previousMatchId,
       messageId: previousMessageId,
       startedAt: watcher.gameStartedAt,

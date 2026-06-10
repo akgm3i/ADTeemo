@@ -538,6 +538,61 @@ describe("match_tracking.ts", () => {
     );
   });
 
+  test("同一matchIdの結果取得待ちが複数guildにあるとき、1回の処理ではRiot試合取得を共有しつつ各guildの通知と状態更新を継続する", async () => {
+    const { client, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher({
+              guildId: "guild-1",
+              lastState: "FETCHING_RESULT",
+              currentMatchId: "JP1_12345",
+              currentNotificationMessageId: "message-existing-1",
+              gameStartedAt: new Date(Date.now() - 120_000),
+            }),
+            watcher({
+              guildId: "guild-2",
+              channelId: "channel-2",
+              lastState: "FETCHING_RESULT",
+              currentMatchId: "JP1_12345",
+              currentNotificationMessageId: "message-existing-2",
+              gameStartedAt: new Date(Date.now() - 120_000),
+            }),
+          ],
+        }),
+    );
+    using getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using matchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(getAccountStub, 1);
+    assertSpyCalls(matchStub, 1);
+    assertSpyCalls(editSpy, 2);
+    assertSpyCalls(updateStub, 2);
+    assertEquals(updateStub.calls[0].args[0], "guild-1");
+    assertEquals(updateStub.calls[1].args[0], "guild-2");
+    assertEquals(updateStub.calls[0].args[2].pendingResultMatchId, null);
+    assertEquals(updateStub.calls[1].args[2].pendingResultMatchId, null);
+  });
+
   test("通知送信に失敗しても、試合開始の状態更新は継続する", async () => {
     const { client } = clientWithSend(() =>
       Promise.reject(new Error("Missing permissions"))
