@@ -25,7 +25,14 @@ function buildWatchListContent(watchers: MatchWatcher[]) {
   );
   const lines = watchers.map((watcher, index) => {
     const position = index + 1;
-    return `${position}. <@${watcher.targetDiscordId}> (通知: <#${watcher.channelId}>)`;
+    return messageHandler.formatMessage(
+      messageKeys.matchTracking.watchList.item,
+      {
+        position,
+        targetId: watcher.targetDiscordId,
+        channelId: watcher.channelId,
+      },
+    );
   });
   const selected = [header];
 

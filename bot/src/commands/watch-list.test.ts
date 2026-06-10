@@ -8,6 +8,7 @@ import {
 } from "discord.js";
 import { type MatchWatcher } from "@adteemo/api/schema";
 import { apiClient } from "../api_client.ts";
+import { messageHandler, messageKeys } from "../messages.ts";
 import { MockInteractionBuilder } from "../test_utils.ts";
 import { data, execute } from "./watch-list.ts";
 
@@ -74,8 +75,10 @@ describe("Command: watch-list", () => {
 
     const content =
       (editStub.calls[0].args[0] as InteractionEditReplyOptions).content;
-    assert(typeof content === "string");
-    assertStringIncludes(content, "対象");
+    assertEquals(
+      content,
+      messageHandler.formatMessage(messageKeys.matchTracking.watchList.empty),
+    );
   });
 
   test("監視対象が多い場合でも、Discordのcontent制限内に収める", async () => {
@@ -103,6 +106,17 @@ describe("Command: watch-list", () => {
       (editStub.calls[0].args[0] as InteractionEditReplyOptions).content;
     assert(typeof content === "string");
     assert(content.length <= 2000);
-    assert(content.includes("ほか"));
+    assertStringIncludes(
+      content,
+      messageHandler.formatMessage(
+        messageKeys.matchTracking.watchList.item,
+        {
+          position: 1,
+          targetId: "target-1",
+          channelId: "channel-1",
+        },
+      ),
+    );
+    assert(!content.includes("<@target-120>"));
   });
 });

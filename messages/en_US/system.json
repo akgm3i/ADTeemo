@@ -103,6 +103,7 @@
     "watchList": {
       "header": "Current match watchers:",
       "empty": "There are no active match watchers in this server.",
+      "item": "{position}. <@{targetId}> (Notification: <#{channelId}>)",
       "omitted": "...and {count} more",
       "error": {
         "fetch": "Could not fetch match watchers: {error}"
