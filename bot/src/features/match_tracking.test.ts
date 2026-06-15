@@ -503,6 +503,65 @@ describe("match_tracking.ts", () => {
     }
   });
 
+  test("同じ試合の既存監視対象が投稿ID未保存のとき、後続監視対象が確立した共有投稿IDを保存する", async () => {
+    const { client, sendSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher({
+              targetDiscordId: "target-1",
+              lastState: "IN_GAME",
+              currentGameId: "12345",
+              currentNotificationMessageId: null,
+              lastInGameNotifiedAt: new Date(),
+            }),
+            watcher({ targetDiscordId: "target-2" }),
+          ],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      (discordId) =>
+        Promise.resolve({
+          success: true as const,
+          account: account({
+            discordId,
+            puuid: discordId === "target-1" ? "puuid-1" : "puuid-2",
+            gameName: discordId === "target-1" ? "Teemo" : "Tristana",
+          }),
+        }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(sendSpy, 1);
+    const target1MessageSync = updateStub.calls.find((call) =>
+      call.args[1] === "target-1" &&
+      call.args[2].currentNotificationMessageId === "message-new"
+    );
+    assertEquals(target1MessageSync?.args[2].currentGameId, "12345");
+    const target2StartUpdate = updateStub.calls.find((call) =>
+      call.args[1] === "target-2" &&
+      call.args[2].currentNotificationMessageId === "message-new"
+    );
+    assertEquals(target2StartUpdate?.args[2].lastState, "IN_GAME");
+  });
+
   test("共有試合中投稿が削除され新規投稿へ置換されたとき、同じ試合の未通知監視対象にも置換後投稿IDを保存する", async () => {
     const { client, sendSpy, fetchSpy } = clientWithSend(
       undefined,

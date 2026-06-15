@@ -260,7 +260,7 @@ async function updateActiveNotificationGroupMessage(
   rememberActiveNotificationWatcher(group, currentWatcher);
   group.messageId = messageId;
   rememberActiveNotificationMessage(group, currentWatcher, messageId);
-  if (!messageId || !previousMessageId || previousMessageId === messageId) {
+  if (!messageId || previousMessageId === messageId) {
     return;
   }
 

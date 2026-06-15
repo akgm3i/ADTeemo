@@ -69,6 +69,9 @@
     - [x] Riot API 呼び出しを共有キュー化し、429 と rate limit headers を後続呼び出しに反映する。
     - [x] 試合監視通知を1試合1投稿の Embed 更新にし、試合中に gameId が変わるケースへ対応する。
     - [x] 同一 `guildId + channelId + gameId` の複数監視対象を1つの試合中通知へ統合し、対象者一覧を表示する。
+    - [x] 統合された試合中投稿 ID を active watcher 全員へ保持・同期し、投稿削除後の置換、送信失敗後の初回 ID 確立、代表 watcher 無効化後も既存投稿の編集を継続できるようにする。
+    - [x] 同一試合の結果通知は監視対象ごとの個別通知として扱い、共有試合中投稿の上書きを防ぎつつ、統合前の個別投稿 ID が残る移行状態にも対応する。
+    - [x] 統合された試合中通知で複数対象のチャンピオンを対象者ごとに表示し、単一対象の Riot ID を代表値として footer に表示しない。
     - [x] 試合監視通知の表示文言を messages 管理へ移し、Riot 公式 static data の名称をDBキャッシュする。
     - [x] #34: デフォルト監視と opt-out の最小仕様、現行仕様との差分、推奨データモデル、次アクションを `docs/default-watch-opt-out.md` に整理する。
     - [x] `deno task test:riot-live` を追加し、実 Riot API で Account-v1 / Spectator-v5 / Match-v5 の疎通確認を行う。
