@@ -136,22 +136,16 @@ function rememberPendingResultNotificationMessage(
   activeNotificationGroups: Map<string, ActiveNotificationGroup>,
   watcher: MatchWatcher,
 ) {
-  if (
-    !watcher.pendingResultMatchId ||
-    !watcher.pendingResultNotificationMessageId
-  ) {
-    return;
-  }
+  const pending = pendingResultFromWatcher(watcher);
+  if (!pending?.messageId) return;
 
-  const gameId = gameIdFromMatchId(watcher.pendingResultMatchId);
+  const gameId = gameIdFromMatchId(pending.matchId);
   if (!gameId) return;
 
   const key = activeNotificationGroupKey(watcher, gameId);
   const existingGroup = activeNotificationGroups.get(key);
   if (existingGroup) {
-    existingGroup.resultMessageIdsInUse.add(
-      watcher.pendingResultNotificationMessageId,
-    );
+    existingGroup.resultMessageIdsInUse.add(pending.messageId);
     return;
   }
 
@@ -160,9 +154,7 @@ function rememberPendingResultNotificationMessage(
     targetDiscordIds: new Set(),
     activeWatchers: new Map(),
     messageIdTargetDiscordIds: new Map(),
-    resultMessageIdsInUse: new Set([
-      watcher.pendingResultNotificationMessageId,
-    ]),
+    resultMessageIdsInUse: new Set([pending.messageId]),
   });
 }
 
