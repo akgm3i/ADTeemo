@@ -231,6 +231,7 @@ async function updateActiveNotificationGroupMessage(
   messageId: string | null,
 ) {
   const previousMessageId = group.messageId;
+  rememberActiveNotificationWatcher(group, currentWatcher);
   group.messageId = messageId;
   rememberActiveNotificationMessage(group, currentWatcher, messageId);
   if (!messageId || !previousMessageId || previousMessageId === messageId) {

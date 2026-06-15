@@ -584,6 +584,69 @@ describe("match_tracking.ts", () => {
     );
   });
 
+  test("同じtickで複数のIDLE監視対象が同じ試合を開始し共有投稿が置換されたとき、先行監視対象にも置換後投稿IDを保存する", async () => {
+    let sendCount = 0;
+    const { client, sendSpy, fetchSpy } = clientWithSend(
+      () => {
+        sendCount += 1;
+        return Promise.resolve({
+          id: sendCount === 1 ? "message-new" : "message-replacement",
+        });
+      },
+      () => Promise.reject(new Error("message deleted")),
+    );
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher({ targetDiscordId: "target-1" }),
+            watcher({ targetDiscordId: "target-2" }),
+          ],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      (discordId) =>
+        Promise.resolve({
+          success: true as const,
+          account: account({
+            discordId,
+            puuid: discordId === "target-1" ? "puuid-1" : "puuid-2",
+            gameName: discordId === "target-1" ? "Teemo" : "Tristana",
+          }),
+        }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(sendSpy, 2);
+    assertSpyCalls(fetchSpy, 1);
+    const target1ReplacementSync = updateStub.calls.find((call) =>
+      call.args[1] === "target-1" &&
+      call.args[2].currentNotificationMessageId === "message-replacement"
+    );
+    assertEquals(target1ReplacementSync?.args[2].currentGameId, "12345");
+    const target2StartUpdate = updateStub.calls.find((call) =>
+      call.args[1] === "target-2" &&
+      call.args[2].currentNotificationMessageId === "message-replacement"
+    );
+    assertEquals(target2StartUpdate?.args[2].lastState, "IN_GAME");
+  });
+
   test("同じgameIdでもギルドまたはチャンネルが違うとき、開始通知を統合しない", async () => {
     const { client, sendSpy, editSpy } = clientWithSend();
     using _getWatchersStub = stub(
