@@ -1049,6 +1049,97 @@ describe("match_tracking.ts", () => {
     }
   });
 
+  test("共有試合中投稿の通知間隔内で編集を省略するとき、投稿ID未保存またはstaleな監視対象には共有投稿IDを保存する", async () => {
+    const originalInterval = Deno.env.get(
+      "MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS",
+    );
+    Deno.env.set("MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS", "300000");
+    try {
+      const { client, sendSpy, editSpy } = clientWithSend();
+      using _getWatchersStub = stub(
+        apiClient,
+        "getEnabledMatchWatchers",
+        () =>
+          Promise.resolve({
+            success: true as const,
+            watchers: [
+              watcher({
+                targetDiscordId: "target-1",
+                lastState: "IN_GAME",
+                currentGameId: "12345",
+                currentNotificationMessageId: "message-existing",
+                lastInGameNotifiedAt: new Date(),
+              }),
+              watcher({
+                targetDiscordId: "target-2",
+                lastState: "IN_GAME",
+                currentGameId: "12345",
+                currentNotificationMessageId: null,
+                lastInGameNotifiedAt: new Date(Date.now() - 10 * 60_000),
+              }),
+              watcher({
+                targetDiscordId: "target-3",
+                lastState: "IN_GAME",
+                currentGameId: "12345",
+                currentNotificationMessageId: "message-stale",
+                lastInGameNotifiedAt: new Date(Date.now() - 10 * 60_000),
+              }),
+            ],
+          }),
+      );
+      using _getAccountStub = stub(
+        apiClient,
+        "getRiotAccount",
+        (discordId) =>
+          Promise.resolve({
+            success: true as const,
+            account: account({
+              discordId,
+              puuid: `puuid-${discordId.at(-1)}`,
+              gameName: discordId,
+            }),
+          }),
+      );
+      using _activeGameStub = stub(
+        riotApi,
+        "getActiveGameByPuuid",
+        () =>
+          Promise.resolve(
+            activeGameWithParticipants(["puuid-1", "puuid-2", "puuid-3"]),
+          ),
+      );
+      using updateStub = stub(
+        apiClient,
+        "updateMatchWatcherState",
+        () => Promise.resolve({ success: true as const }),
+      );
+
+      await matchTracker.processMatchWatchers(client);
+
+      assertSpyCalls(sendSpy, 0);
+      assertSpyCalls(editSpy, 0);
+      const target2MessageSync = updateStub.calls.find((call) =>
+        call.args[1] === "target-2" &&
+        call.args[2].currentNotificationMessageId === "message-existing"
+      );
+      assertEquals(target2MessageSync?.args[2].currentGameId, "12345");
+      const target3MessageSync = updateStub.calls.find((call) =>
+        call.args[1] === "target-3" &&
+        call.args[2].currentNotificationMessageId === "message-existing"
+      );
+      assertEquals(target3MessageSync?.args[2].currentGameId, "12345");
+    } finally {
+      if (originalInterval === undefined) {
+        Deno.env.delete("MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS");
+      } else {
+        Deno.env.set(
+          "MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS",
+          originalInterval,
+        );
+      }
+    }
+  });
+
   test("試合終了後にMatch-v5が取得できたとき、終了通知と戦績通知を送る", async () => {
     const { client, sendSpy, editSpy } = clientWithSend();
     using _getWatchersStub = stub(

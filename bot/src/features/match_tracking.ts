@@ -309,30 +309,49 @@ async function updateActiveNotificationGroupMessage(
 
   for (const watcher of group.activeWatchers.values()) {
     if (watcher.targetDiscordId === currentWatcher.targetDiscordId) continue;
-    const shouldSyncMessageId = watcher.currentNotificationMessageId !==
-      messageId;
-    const shouldSyncNotifiedAt = notifiedAt &&
-      isAfterDate(notifiedAt, watcher.lastInGameNotifiedAt);
-    if (!shouldSyncMessageId && !shouldSyncNotifiedAt) continue;
-
-    await setWatcherState(watcher, {
-      lastState: "IN_GAME",
-      currentGameId: gameId,
-      currentNotificationMessageId: messageId,
-      lastCheckedAt: new Date(),
-      ...(shouldSyncNotifiedAt ? { lastInGameNotifiedAt: notifiedAt } : {}),
-    });
-    rememberActiveNotificationWatcher(group, {
-      ...watcher,
-      lastState: "IN_GAME",
-      currentGameId: gameId,
-      currentNotificationMessageId: messageId,
-      lastInGameNotifiedAt: shouldSyncNotifiedAt
-        ? notifiedAt
-        : watcher.lastInGameNotifiedAt,
-    });
-    rememberActiveNotificationMessage(group, watcher, messageId);
+    await syncActiveNotificationWatcherState(
+      group,
+      watcher,
+      gameId,
+      messageId,
+      notifiedAt,
+    );
   }
+}
+
+async function syncActiveNotificationWatcherState(
+  group: ActiveNotificationGroup,
+  watcher: MatchWatcher,
+  gameId: string,
+  messageId: string | null,
+  notifiedAt?: Date,
+) {
+  if (!messageId) return false;
+
+  const shouldSyncMessageId = watcher.currentNotificationMessageId !==
+    messageId;
+  const shouldSyncNotifiedAt = notifiedAt &&
+    isAfterDate(notifiedAt, watcher.lastInGameNotifiedAt);
+  if (!shouldSyncMessageId && !shouldSyncNotifiedAt) return false;
+
+  await setWatcherState(watcher, {
+    lastState: "IN_GAME",
+    currentGameId: gameId,
+    currentNotificationMessageId: messageId,
+    lastCheckedAt: new Date(),
+    ...(shouldSyncNotifiedAt ? { lastInGameNotifiedAt: notifiedAt } : {}),
+  });
+  rememberActiveNotificationWatcher(group, {
+    ...watcher,
+    lastState: "IN_GAME",
+    currentGameId: gameId,
+    currentNotificationMessageId: messageId,
+    lastInGameNotifiedAt: shouldSyncNotifiedAt
+      ? notifiedAt
+      : watcher.lastInGameNotifiedAt,
+  });
+  rememberActiveNotificationMessage(group, watcher, messageId);
+  return true;
 }
 
 function getRiotAccountForWatcher(
@@ -1268,6 +1287,16 @@ async function processWatcher(
       lastCheckedAt: new Date(),
       lastInGameNotifiedAt: notifiedAt,
     });
+    return;
+  }
+
+  const didSyncSharedMessageId = await syncActiveNotificationWatcherState(
+    activeNotificationGroup,
+    watcher,
+    currentGameId,
+    activeNotificationGroup.messageId,
+  );
+  if (didSyncSharedMessageId) {
     return;
   }
 
