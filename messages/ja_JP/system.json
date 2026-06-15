@@ -101,6 +101,22 @@
     }
   },
   "matchTracking": {
+    "watchList": {
+      "header": "現在の試合監視対象:",
+      "empty": "現在このサーバーで有効な試合監視対象はありません。",
+      "item": "{position}. <@{targetId}> (通知: <#{channelId}>)",
+      "omitted": "...ほか {count} 件",
+      "error": {
+        "fetch": "試合監視対象一覧を取得できませんでした: {error}"
+      }
+    },
+    "watch": {
+      "success": "{member} の試合監視を開始しました。このチャンネルに通知します。",
+      "error": {
+        "failure": "{member} の試合監視を開始できませんでした: {error}",
+        "riotAccountRequired": "{member} の試合監視を開始するには、対象メンバーのRiot ID登録が必要です。`/set-riot-id` で登録してもらってください。"
+      }
+    },
     "embed": {
       "active": {
         "startedTitle": "試合開始を検知しました",
@@ -113,7 +129,7 @@
       },
       "resultTimeout": {
         "title": "試合結果の取得を停止しました",
-        "description": "{member} の試合結果を一定時間内に取得できませんでした。継続監視は続行します。"
+        "description": "{member} の試合結果を一定時間内に取得できませんでした。監視状態はIDLEへ戻し、継続監視は続行します。"
       },
       "result": {
         "title": "試合結果: {result}",
@@ -131,6 +147,8 @@
         "elapsed": "経過時間",
         "kda": "KDA",
         "cs": "CS",
+        "csPerMinute": "CS/min",
+        "killParticipation": "キル関与率",
         "gold": "Gold"
       },
       "fallback": {

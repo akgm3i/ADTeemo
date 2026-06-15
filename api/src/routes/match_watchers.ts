@@ -45,6 +45,11 @@ export const matchWatchersRoutes = new Hono()
     const watchers = await dbActions.getEnabledMatchWatchers();
     return c.json({ watchers }, 200);
   })
+  .get("/enabled/:guildId", async (c) => {
+    const { guildId } = c.req.param();
+    const watchers = await dbActions.getEnabledMatchWatchersByGuild(guildId);
+    return c.json({ watchers }, 200);
+  })
   .patch(
     "/:guildId/:targetDiscordId/state",
     zValidator("json", updateMatchWatcherStateSchema),
