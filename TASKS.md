@@ -72,6 +72,7 @@
     - [x] #34: デフォルト監視と opt-out の最小仕様、現行仕様との差分、推奨データモデル、次アクションを `docs/default-watch-opt-out.md` に整理する。
     - [x] `deno task test:riot-live` を追加し、実 Riot API で Account-v1 / Spectator-v5 / Match-v5 の疎通確認を行う。
     - [x] Discord ギルド上で `/set-riot-id`、`/watch-match`、`/unwatch-match` の応答と監視状態更新を確認する。
+    - [x] 同一tick内で同一監視対象の Riot account / active game 取得を重複させないようにする。
     - [ ] Match-v5 で取得した戦績を既存 `matches` / `match_participants` に保存し、内部レート更新へ接続する。
     - [ ] #34: デフォルト監視の通知先チャンネル設定、opt-out 永続化、Bot/API コマンド、実効監視対象解決を実装する。
     - [x] `/watch-list` でギルド内の有効な試合監視対象一覧を確認できるようにする。

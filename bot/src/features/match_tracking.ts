@@ -15,8 +15,17 @@ const RIOT_LONG_WINDOW_MS = 10 * 60 * 1000;
 type ActiveGame = NonNullable<
   Awaited<ReturnType<typeof riotApi.getActiveGameByPuuid>>
 >;
+type ActiveGameResult = Awaited<
+  ReturnType<typeof riotApi.getActiveGameByPuuid>
+>;
+type RiotAccountResult = Awaited<ReturnType<typeof apiClient.getRiotAccount>>;
 type RiotMatch = NonNullable<Awaited<ReturnType<typeof riotApi.getMatchById>>>;
 type WatcherState = Parameters<typeof apiClient.updateMatchWatcherState>[2];
+type MatchWatcherProcessingContext = {
+  riotAccountsByTargetDiscordId: Map<string, Promise<RiotAccountResult>>;
+  activeGamesByRiotAccount: Map<string, Promise<ActiveGameResult>>;
+  matchesByRegionAndMatchId: Map<string, Promise<RiotMatch | null>>;
+};
 type WatcherMessage = {
   id?: string;
   edit?: (options: { embeds: EmbedBuilder[] }) => Promise<unknown>;
@@ -40,6 +49,61 @@ function numberEnv(name: string, fallback: number) {
 
 function matchIdForGame(account: RiotAccount, gameId: string | number) {
   return `${account.platform.toUpperCase()}_${gameId}`;
+}
+
+function activeGameCacheKey(account: RiotAccount) {
+  return `${account.platform}:${account.puuid}`;
+}
+
+function matchCacheKey(account: RiotAccount, matchId: string) {
+  return `${account.region}:${matchId}`;
+}
+
+function createMatchWatcherProcessingContext(): MatchWatcherProcessingContext {
+  return {
+    riotAccountsByTargetDiscordId: new Map(),
+    activeGamesByRiotAccount: new Map(),
+    matchesByRegionAndMatchId: new Map(),
+  };
+}
+
+function getRiotAccountForWatcher(
+  context: MatchWatcherProcessingContext,
+  targetDiscordId: string,
+) {
+  const cached = context.riotAccountsByTargetDiscordId.get(targetDiscordId);
+  if (cached) return cached;
+
+  const result = apiClient.getRiotAccount(targetDiscordId);
+  context.riotAccountsByTargetDiscordId.set(targetDiscordId, result);
+  return result;
+}
+
+function getActiveGameForAccount(
+  context: MatchWatcherProcessingContext,
+  account: RiotAccount,
+) {
+  const cacheKey = activeGameCacheKey(account);
+  const cached = context.activeGamesByRiotAccount.get(cacheKey);
+  if (cached) return cached;
+
+  const result = riotApi.getActiveGameByPuuid(account.platform, account.puuid);
+  context.activeGamesByRiotAccount.set(cacheKey, result);
+  return result;
+}
+
+function getMatchForPendingResult(
+  context: MatchWatcherProcessingContext,
+  account: RiotAccount,
+  matchId: string,
+) {
+  const cacheKey = matchCacheKey(account, matchId);
+  const cached = context.matchesByRegionAndMatchId.get(cacheKey);
+  if (cached) return cached;
+
+  const result = riotApi.getMatchById(account.region, matchId);
+  context.matchesByRegionAndMatchId.set(cacheKey, result);
+  return result;
 }
 
 function elapsedMinutes(activeGame: ActiveGame, now = Date.now()) {
@@ -515,6 +579,7 @@ async function tryFetchAndNotifyResult(
   client: Client,
   watcher: MatchWatcher,
   account: RiotAccount,
+  context: MatchWatcherProcessingContext,
   pending: PendingResult,
   currentState: WatcherState = currentStateFromWatcher(watcher),
 ) {
@@ -541,7 +606,11 @@ async function tryFetchAndNotifyResult(
     return { status: "cleared" as const, messageId };
   }
 
-  const match = await riotApi.getMatchById(account.region, pending.matchId);
+  const match = await getMatchForPendingResult(
+    context,
+    account,
+    pending.matchId,
+  );
   if (!match) {
     await setWatcherState(watcher, {
       ...currentState,
@@ -571,8 +640,15 @@ async function tryFetchAndNotifyResult(
   return { status: "cleared" as const, messageId };
 }
 
-async function processWatcher(client: Client, watcher: MatchWatcher) {
-  const accountResult = await apiClient.getRiotAccount(watcher.targetDiscordId);
+async function processWatcher(
+  client: Client,
+  watcher: MatchWatcher,
+  context: MatchWatcherProcessingContext,
+) {
+  const accountResult = await getRiotAccountForWatcher(
+    context,
+    watcher.targetDiscordId,
+  );
   if (!accountResult.success) {
     botLogger.warn("match_tracking.riot_account_not_found", {
       guildId: watcher.guildId,
@@ -590,6 +666,7 @@ async function processWatcher(client: Client, watcher: MatchWatcher) {
       client,
       watcher,
       account,
+      context,
       pending,
     );
     pendingStatus = result.status;
@@ -598,10 +675,7 @@ async function processWatcher(client: Client, watcher: MatchWatcher) {
     }
   }
 
-  const activeGame = await riotApi.getActiveGameByPuuid(
-    account.platform,
-    account.puuid,
-  );
+  const activeGame = await getActiveGameForAccount(context, account);
   if (!activeGame) {
     if (watcher.lastState === "IN_GAME" && watcher.currentGameId) {
       const matchId = matchIdForGame(account, watcher.currentGameId);
@@ -611,7 +685,7 @@ async function processWatcher(client: Client, watcher: MatchWatcher) {
         watcher.currentNotificationMessageId,
         buildResultPendingEmbed(watcher, matchId),
       );
-      await tryFetchAndNotifyResult(client, watcher, account, {
+      await tryFetchAndNotifyResult(client, watcher, account, context, {
         matchId,
         messageId,
         startedAt: watcher.gameStartedAt,
@@ -680,7 +754,7 @@ async function processWatcher(client: Client, watcher: MatchWatcher) {
       pendingResultStartedAt: watcher.gameStartedAt,
       lastCheckedAt: new Date(),
     });
-    await tryFetchAndNotifyResult(client, watcher, account, {
+    await tryFetchAndNotifyResult(client, watcher, account, context, {
       matchId: previousMatchId,
       messageId: previousMessageId,
       startedAt: watcher.gameStartedAt,
@@ -744,9 +818,10 @@ async function processMatchWatchers(client: Client) {
 
   warnIfRiotRequestBudgetRisk(result.watchers.length);
 
+  const context = createMatchWatcherProcessingContext();
   for (const watcher of result.watchers) {
     try {
-      await processWatcher(client, watcher);
+      await processWatcher(client, watcher, context);
     } catch (error) {
       botLogger.error("match_tracking.watcher_failed", {
         guildId: watcher.guildId,
