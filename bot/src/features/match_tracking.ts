@@ -69,6 +69,14 @@ function activeNotificationGroupKey(
   return `${watcher.guildId}:${watcher.channelId}:${gameId}`;
 }
 
+function gameIdFromMatchId(matchId: string) {
+  const separatorIndex = matchId.indexOf("_");
+  if (separatorIndex < 0 || separatorIndex === matchId.length - 1) {
+    return null;
+  }
+  return matchId.slice(separatorIndex + 1);
+}
+
 function activeGameCacheKey(account: RiotAccount) {
   return `${account.platform}:${account.puuid}`;
 }
@@ -82,6 +90,8 @@ function createMatchWatcherProcessingContext(
 ): MatchWatcherProcessingContext {
   const activeNotificationGroups = new Map<string, ActiveNotificationGroup>();
   for (const watcher of watchers) {
+    rememberPendingResultNotificationMessage(activeNotificationGroups, watcher);
+
     if (
       watcher.lastState !== "IN_GAME" || !watcher.currentGameId
     ) {
@@ -111,6 +121,38 @@ function createMatchWatcherProcessingContext(
     activeGamesByRiotAccount: new Map(),
     matchesByRegionAndMatchId: new Map(),
   };
+}
+
+function rememberPendingResultNotificationMessage(
+  activeNotificationGroups: Map<string, ActiveNotificationGroup>,
+  watcher: MatchWatcher,
+) {
+  if (
+    !watcher.pendingResultMatchId ||
+    !watcher.pendingResultNotificationMessageId
+  ) {
+    return;
+  }
+
+  const gameId = gameIdFromMatchId(watcher.pendingResultMatchId);
+  if (!gameId) return;
+
+  const key = activeNotificationGroupKey(watcher, gameId);
+  const existingGroup = activeNotificationGroups.get(key);
+  if (existingGroup) {
+    existingGroup.resultMessageIdsInUse.add(
+      watcher.pendingResultNotificationMessageId,
+    );
+    return;
+  }
+
+  activeNotificationGroups.set(key, {
+    messageId: null,
+    targetDiscordIds: new Set(),
+    resultMessageIdsInUse: new Set([
+      watcher.pendingResultNotificationMessageId,
+    ]),
+  });
 }
 
 function rememberActiveNotificationMessage(

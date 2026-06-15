@@ -657,6 +657,78 @@ describe("match_tracking.ts", () => {
     );
   });
 
+  test("共有投稿IDを使ったpending結果通知が残っているとき、同じ試合の後続結果通知は共有投稿を上書きしない", async () => {
+    const { client, sendSpy, fetchSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher({
+              targetDiscordId: "target-1",
+              lastState: "IDLE",
+              pendingResultMatchId: "JP1_12345",
+              pendingResultNotificationMessageId: "message-existing",
+              pendingResultStartedAt: new Date(Date.now() - 120_000),
+            }),
+            watcher({
+              targetDiscordId: "target-2",
+              currentGameId: "12345",
+              currentNotificationMessageId: "message-existing",
+              lastState: "IN_GAME",
+            }),
+          ],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      (discordId) =>
+        Promise.resolve({
+          success: true as const,
+          account: account({
+            discordId,
+            puuid: discordId === "target-1" ? "puuid-1" : "puuid-2",
+            gameName: discordId === "target-1" ? "Teemo" : "Tristana",
+          }),
+        }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(null),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(null),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(sendSpy, 1);
+    assertEquals(
+      fetchSpy.calls.filter((call) => call.args[0] === "message-existing")
+        .length,
+      0,
+    );
+    const target2Update = updateStub.calls.find((call) =>
+      call.args[1] === "target-2" &&
+      call.args[2].pendingResultMatchId === "JP1_12345"
+    );
+    assertEquals(
+      target2Update?.args[2].pendingResultNotificationMessageId,
+      "message-new",
+    );
+  });
+
   test("ja_JPの試合結果ではchampionIdからチャンピオン名を表示する", async () => {
     const { client, editSpy } = clientWithSend();
     using _getWatchersStub = stub(
