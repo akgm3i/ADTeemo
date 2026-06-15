@@ -36,6 +36,24 @@ const gameModesSchema = z.array(
   }).passthrough(),
 );
 
+const jaQueueNames: Record<number, string> = {
+  400: "ノーマルドラフト",
+  420: "ランクソロ/デュオ",
+  430: "ノーマルブラインド",
+  440: "ランクフレックス",
+  450: "ARAM",
+};
+
+const jaMapNames: Record<number, string> = {
+  11: "サモナーズリフト",
+  12: "ハウリングアビス",
+};
+
+const jaGameModeNames: Record<string, string> = {
+  ARAM: "ARAM",
+  CLASSIC: "クラシック",
+};
+
 function numberEnv(name: string, fallback: number) {
   const value = Number(Deno.env.get(name));
   return Number.isFinite(value) && value > 0 ? value : fallback;
@@ -52,6 +70,27 @@ function normalizeLocale(locale?: string) {
   const raw = locale ?? Deno.env.get("BOT_MESSAGE_LANG") ??
     Deno.env.get("API_MESSAGE_LANG") ?? "ja_JP";
   return raw.replace("-", "_").split(".")[0];
+}
+
+function localizedQueueName(queueId: number, locale?: string) {
+  if (normalizeLocale(locale) === "ja_JP") {
+    return jaQueueNames[queueId] ?? null;
+  }
+  return null;
+}
+
+function localizedMapName(mapId: number, locale?: string) {
+  if (normalizeLocale(locale) === "ja_JP") {
+    return jaMapNames[mapId] ?? null;
+  }
+  return null;
+}
+
+function localizedGameModeName(gameMode: string, locale?: string) {
+  if (normalizeLocale(locale) === "ja_JP") {
+    return jaGameModeNames[gameMode] ?? null;
+  }
+  return null;
 }
 
 function isFresh(updatedAt: Date, now = Date.now()) {
@@ -185,17 +224,26 @@ async function getChampionNameById(championId: number, locale?: string) {
   return names[String(championId)] ?? null;
 }
 
-async function getQueueNameById(queueId: number) {
+async function getQueueNameById(queueId: number, locale?: string) {
+  const localizedName = localizedQueueName(queueId, locale);
+  if (localizedName) return localizedName;
+
   const names = await getQueues();
   return names[String(queueId)] ?? null;
 }
 
-async function getMapNameById(mapId: number) {
+async function getMapNameById(mapId: number, locale?: string) {
+  const localizedName = localizedMapName(mapId, locale);
+  if (localizedName) return localizedName;
+
   const names = await getMaps();
   return names[String(mapId)] ?? null;
 }
 
-async function getGameModeName(gameMode: string) {
+async function getGameModeName(gameMode: string, locale?: string) {
+  const localizedName = localizedGameModeName(gameMode, locale);
+  if (localizedName) return localizedName;
+
   const names = await getGameModes();
   return names[gameMode] ?? null;
 }
