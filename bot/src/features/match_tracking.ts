@@ -170,7 +170,22 @@ function rememberActiveNotificationWatcher(
   group: ActiveNotificationGroup,
   watcher: MatchWatcher,
 ) {
-  group.activeWatchers.set(watcher.targetDiscordId, watcher);
+  const existing = group.activeWatchers.get(watcher.targetDiscordId);
+  if (!existing) {
+    group.activeWatchers.set(watcher.targetDiscordId, watcher);
+    return;
+  }
+
+  group.activeWatchers.set(watcher.targetDiscordId, {
+    ...watcher,
+    currentGameId: watcher.currentGameId ?? existing.currentGameId,
+    currentNotificationMessageId: watcher.currentNotificationMessageId ??
+      existing.currentNotificationMessageId,
+    lastInGameNotifiedAt: newerDate(
+      existing.lastInGameNotifiedAt,
+      watcher.lastInGameNotifiedAt,
+    ),
+  });
 }
 
 function rememberActiveNotificationMessage(
@@ -191,6 +206,33 @@ function activeNotificationMessageOwnerCount(
   messageId: string,
 ) {
   return group.messageIdTargetDiscordIds.get(messageId)?.size ?? 0;
+}
+
+function newerDate(left: Date | null, right: Date | null) {
+  if (!left) return right;
+  if (!right) return left;
+  return left.getTime() >= right.getTime() ? left : right;
+}
+
+function isAfterDate(left: Date, right: Date | null) {
+  return !right || left.getTime() > right.getTime();
+}
+
+function activeNotificationGroupLastInGameNotifiedAt(
+  group: ActiveNotificationGroup,
+) {
+  const messageId = group.messageId;
+  if (!messageId) return null;
+
+  let lastInGameNotifiedAt: Date | null = null;
+  for (const watcher of group.activeWatchers.values()) {
+    if (watcher.currentNotificationMessageId !== messageId) continue;
+    lastInGameNotifiedAt = newerDate(
+      lastInGameNotifiedAt,
+      watcher.lastInGameNotifiedAt,
+    );
+  }
+  return lastInGameNotifiedAt;
 }
 
 function resultNotificationMessageId(
@@ -255,12 +297,17 @@ async function updateActiveNotificationGroupMessage(
   currentWatcher: MatchWatcher,
   gameId: string,
   messageId: string | null,
+  notifiedAt?: Date,
 ) {
   rememberActiveNotificationWatcher(group, {
     ...currentWatcher,
     lastState: "IN_GAME",
     currentGameId: gameId,
     currentNotificationMessageId: messageId,
+    lastInGameNotifiedAt: notifiedAt &&
+        isAfterDate(notifiedAt, currentWatcher.lastInGameNotifiedAt)
+      ? notifiedAt
+      : currentWatcher.lastInGameNotifiedAt,
   });
   group.messageId = messageId;
   rememberActiveNotificationMessage(group, currentWatcher, messageId);
@@ -270,18 +317,27 @@ async function updateActiveNotificationGroupMessage(
 
   for (const watcher of group.activeWatchers.values()) {
     if (watcher.targetDiscordId === currentWatcher.targetDiscordId) continue;
-    if (watcher.currentNotificationMessageId === messageId) continue;
+    const shouldSyncMessageId = watcher.currentNotificationMessageId !==
+      messageId;
+    const shouldSyncNotifiedAt = notifiedAt &&
+      isAfterDate(notifiedAt, watcher.lastInGameNotifiedAt);
+    if (!shouldSyncMessageId && !shouldSyncNotifiedAt) continue;
+
     await setWatcherState(watcher, {
       lastState: "IN_GAME",
       currentGameId: gameId,
       currentNotificationMessageId: messageId,
       lastCheckedAt: new Date(),
+      ...(shouldSyncNotifiedAt ? { lastInGameNotifiedAt: notifiedAt } : {}),
     });
     rememberActiveNotificationWatcher(group, {
       ...watcher,
       lastState: "IN_GAME",
       currentGameId: gameId,
       currentNotificationMessageId: messageId,
+      lastInGameNotifiedAt: shouldSyncNotifiedAt
+        ? notifiedAt
+        : watcher.lastInGameNotifiedAt,
     });
     rememberActiveNotificationMessage(group, watcher, messageId);
   }
@@ -334,6 +390,18 @@ function elapsedMinutes(activeGame: ActiveGame, now = Date.now()) {
   return Math.max(0, Math.floor(elapsedMs / 60_000));
 }
 
+function shouldNotifySince(
+  lastInGameNotifiedAt: Date | null,
+  intervalMs = numberEnv(
+    "MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS",
+    DEFAULT_IN_GAME_NOTIFY_INTERVAL_MS,
+  ),
+  now = new Date(),
+) {
+  if (!lastInGameNotifiedAt) return true;
+  return now.getTime() - lastInGameNotifiedAt.getTime() >= intervalMs;
+}
+
 function shouldNotifyInGame(
   watcher: MatchWatcher,
   intervalMs = numberEnv(
@@ -342,8 +410,24 @@ function shouldNotifyInGame(
   ),
   now = new Date(),
 ) {
-  if (!watcher.lastInGameNotifiedAt) return true;
-  return now.getTime() - watcher.lastInGameNotifiedAt.getTime() >= intervalMs;
+  return shouldNotifySince(watcher.lastInGameNotifiedAt, intervalMs, now);
+}
+
+function shouldNotifyActiveNotificationGroup(
+  group: ActiveNotificationGroup,
+  watcher: MatchWatcher,
+  intervalMs = numberEnv(
+    "MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS",
+    DEFAULT_IN_GAME_NOTIFY_INTERVAL_MS,
+  ),
+  now = new Date(),
+) {
+  return shouldNotifySince(
+    activeNotificationGroupLastInGameNotifiedAt(group) ??
+      watcher.lastInGameNotifiedAt,
+    intervalMs,
+    now,
+  );
 }
 
 function hasResultFetchTimedOut(
@@ -1158,7 +1242,8 @@ async function processWatcher(
     return;
   }
 
-  if (shouldNotifyInGame(watcher)) {
+  if (shouldNotifyActiveNotificationGroup(activeNotificationGroup, watcher)) {
+    const notifiedAt = new Date();
     const messageId = await sendOrEditWatcherMessage(
       client,
       watcher,
@@ -1182,13 +1267,14 @@ async function processWatcher(
       watcher,
       currentGameId,
       messageId,
+      notifiedAt,
     );
     await setWatcherState(watcher, {
       lastState: "IN_GAME",
       currentGameId,
       currentNotificationMessageId: messageId,
       lastCheckedAt: new Date(),
-      lastInGameNotifiedAt: new Date(),
+      lastInGameNotifiedAt: notifiedAt,
     });
     return;
   }
