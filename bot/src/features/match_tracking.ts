@@ -25,6 +25,7 @@ type ActiveNotificationGroup = {
   messageId: string | null;
   targetDiscordIds: Set<string>;
   activeWatchers: Map<string, MatchWatcher>;
+  messageIdTargetDiscordIds: Map<string, Set<string>>;
   resultMessageIdsInUse: Set<string>;
 };
 type MatchWatcherProcessingContext = {
@@ -47,6 +48,10 @@ type PendingResult = {
   matchId: string;
   messageId: string | null;
   startedAt: Date | null;
+};
+type ActiveGameTargetDetail = {
+  targetDiscordId: string;
+  champion: string;
 };
 
 function numberEnv(name: string, fallback: number) {
@@ -112,6 +117,7 @@ function createMatchWatcherProcessingContext(
       messageId: watcher.currentNotificationMessageId,
       targetDiscordIds: new Set([watcher.targetDiscordId]),
       activeWatchers: new Map([[watcher.targetDiscordId, watcher]]),
+      messageIdTargetDiscordIds: new Map(),
       resultMessageIdsInUse: new Set(),
     };
     rememberActiveNotificationMessage(group, watcher);
@@ -153,6 +159,7 @@ function rememberPendingResultNotificationMessage(
     messageId: null,
     targetDiscordIds: new Set(),
     activeWatchers: new Map(),
+    messageIdTargetDiscordIds: new Map(),
     resultMessageIdsInUse: new Set([
       watcher.pendingResultNotificationMessageId,
     ]),
@@ -173,13 +180,31 @@ function rememberActiveNotificationMessage(
 ) {
   if (!messageId) return;
   group.messageId ??= messageId;
+  const targetDiscordIds = group.messageIdTargetDiscordIds.get(messageId) ??
+    new Set<string>();
+  targetDiscordIds.add(watcher.targetDiscordId);
+  group.messageIdTargetDiscordIds.set(messageId, targetDiscordIds);
+}
+
+function activeNotificationMessageOwnerCount(
+  group: ActiveNotificationGroup,
+  messageId: string,
+) {
+  return group.messageIdTargetDiscordIds.get(messageId)?.size ?? 0;
 }
 
 function resultNotificationMessageId(
   group: ActiveNotificationGroup | undefined,
   watcher: MatchWatcher,
 ) {
-  const messageId = group?.messageId ?? watcher.currentNotificationMessageId;
+  const watcherMessageId = watcher.currentNotificationMessageId;
+  const groupMessageId = group?.messageId ?? null;
+  const shouldPreserveWatcherMessageId = group && watcherMessageId &&
+    watcherMessageId !== groupMessageId &&
+    activeNotificationMessageOwnerCount(group, watcherMessageId) === 1;
+  const messageId = shouldPreserveWatcherMessageId
+    ? watcherMessageId
+    : groupMessageId ?? watcherMessageId;
   if (!group || !messageId) return messageId ?? null;
   if (group.resultMessageIdsInUse.has(messageId)) return null;
   group.resultMessageIdsInUse.add(messageId);
@@ -214,6 +239,7 @@ function getActiveNotificationGroup(
       : null,
     targetDiscordIds: new Set([watcher.targetDiscordId]),
     activeWatchers: new Map(),
+    messageIdTargetDiscordIds: new Map(),
     resultMessageIdsInUse: new Set(),
   };
   if (watcher.currentGameId === String(gameId)) {
@@ -247,6 +273,7 @@ async function updateActiveNotificationGroupMessage(
       currentNotificationMessageId: messageId,
       lastCheckedAt: new Date(),
     });
+    rememberActiveNotificationMessage(group, watcher, messageId);
   }
 }
 
@@ -406,6 +433,37 @@ async function gameModeName(gameMode: string) {
   }
 }
 
+async function activeGameTargetDetails(
+  context: MatchWatcherProcessingContext,
+  currentWatcher: MatchWatcher,
+  currentAccount: RiotAccount,
+  activeGame: ActiveGame,
+  targetDiscordIds: Iterable<string>,
+): Promise<ActiveGameTargetDetail[]> {
+  const details: ActiveGameTargetDetail[] = [];
+  for (const targetDiscordId of targetDiscordIds) {
+    const accountResult = targetDiscordId === currentWatcher.targetDiscordId
+      ? { success: true as const, account: currentAccount }
+      : await getRiotAccountForWatcher(context, targetDiscordId);
+    if (!accountResult.success) {
+      details.push({
+        targetDiscordId,
+        champion: await championNameById(undefined),
+      });
+      continue;
+    }
+
+    const participant = activeGame.participants.find((p) =>
+      p.puuid === accountResult.account.puuid
+    );
+    details.push({
+      targetDiscordId,
+      champion: await championNameById(participant?.championId),
+    });
+  }
+  return details;
+}
+
 function formatCsPerMinute(cs: number, gameDurationSeconds: number) {
   if (!Number.isFinite(cs) || !Number.isFinite(gameDurationSeconds)) return "-";
   if (cs < 0 || gameDurationSeconds <= 0) return "-";
@@ -472,7 +530,7 @@ async function buildActiveGameEmbed(
   account: RiotAccount,
   activeGame: ActiveGame,
   kind: "started" | "progress",
-  targetDiscordIds: Iterable<string> = [watcher.targetDiscordId],
+  targetDetails?: ActiveGameTargetDetail[],
 ) {
   const participant = activeGame.participants.find((p) =>
     p.puuid === account.puuid
@@ -489,28 +547,56 @@ async function buildActiveGameEmbed(
     : messageHandler.formatMessage(
       messageKeys.matchTracking.embed.active.progressTitle,
     );
-  const targets = [...targetDiscordIds];
+  const targets = targetDetails?.length
+    ? targetDetails
+    : [{ targetDiscordId: watcher.targetDiscordId, champion }];
   const description = messageHandler.formatMessage(
     messageKeys.matchTracking.embed.active.description,
     {
-      member: targets.map((targetDiscordId) => `<@${targetDiscordId}>`).join(
-        ", ",
-      ),
+      member: targets.map(({ targetDiscordId }) => `<@${targetDiscordId}>`)
+        .join(", "),
     },
   );
+  const targetChampionField = targets.length > 1
+    ? {
+      name: messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.field.activeChampions,
+      ),
+      value: targets.map(({ targetDiscordId, champion }) =>
+        `<@${targetDiscordId}>: ${champion}`
+      ).join("\n"),
+      inline: false,
+    }
+    : {
+      name: messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.field.champion,
+      ),
+      value: champion,
+      inline: true,
+    };
+  const footerText = targets.length > 1
+    ? messageHandler.formatMessage(
+      messageKeys.matchTracking.embed.footer.gameOnly,
+      {
+        platform: account.platform.toUpperCase(),
+        gameId: activeGame.gameId,
+      },
+    )
+    : messageHandler.formatMessage(
+      messageKeys.matchTracking.embed.footer.game,
+      {
+        platform: account.platform.toUpperCase(),
+        gameId: activeGame.gameId,
+        riotId: `${account.gameName}#${account.tagLine}`,
+      },
+    );
 
   return new EmbedBuilder()
     .setTitle(title)
     .setDescription(description)
     .setColor(kind === "started" ? 0x2ecc71 : 0x3498db)
     .addFields(
-      {
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.champion,
-        ),
-        value: champion,
-        inline: true,
-      },
+      targetChampionField,
       {
         name: messageHandler.formatMessage(
           messageKeys.matchTracking.embed.field.queue,
@@ -544,14 +630,7 @@ async function buildActiveGameEmbed(
       },
     )
     .setFooter({
-      text: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.footer.game,
-        {
-          platform: account.platform.toUpperCase(),
-          gameId: activeGame.gameId,
-          riotId: `${account.gameName}#${account.tagLine}`,
-        },
-      ),
+      text: footerText,
     })
     .setTimestamp(new Date());
 }
@@ -992,7 +1071,13 @@ async function processWatcher(
         account,
         activeGame,
         "started",
-        activeNotificationGroup.targetDiscordIds,
+        await activeGameTargetDetails(
+          context,
+          watcher,
+          account,
+          activeGame,
+          activeNotificationGroup.targetDiscordIds,
+        ),
       ),
     );
     await updateActiveNotificationGroupMessage(
@@ -1036,7 +1121,13 @@ async function processWatcher(
         account,
         activeGame,
         "started",
-        activeNotificationGroup.targetDiscordIds,
+        await activeGameTargetDetails(
+          context,
+          watcher,
+          account,
+          activeGame,
+          activeNotificationGroup.targetDiscordIds,
+        ),
       ),
     );
     await updateActiveNotificationGroupMessage(
@@ -1067,7 +1158,13 @@ async function processWatcher(
         account,
         activeGame,
         "progress",
-        activeNotificationGroup.targetDiscordIds,
+        await activeGameTargetDetails(
+          context,
+          watcher,
+          account,
+          activeGame,
+          activeNotificationGroup.targetDiscordIds,
+        ),
       ),
     );
     await updateActiveNotificationGroupMessage(

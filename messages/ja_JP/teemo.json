@@ -120,6 +120,7 @@
       },
       "field": {
         "champion": "チャンピオン",
+        "activeChampions": "偵察対象のチャンピオン",
         "queue": "キュー",
         "map": "マップ",
         "mode": "モード",
@@ -138,6 +139,7 @@
       },
       "footer": {
         "game": "{platform} Game {gameId} / {riotId}",
+        "gameOnly": "{platform} Game {gameId}",
         "match": "Match {matchId}",
         "matchWithRiotId": "Match {matchId} / {riotId}"
       }

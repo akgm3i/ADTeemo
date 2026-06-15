@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import type { Client } from "discord.js";
@@ -150,15 +150,28 @@ function editedEmbedFieldValue(
   callIndex: number,
   fieldName: string,
 ) {
+  const resultEmbed = editedEmbedJson(editSpy, callIndex);
+  return resultEmbed.fields?.find((field) => field.name === fieldName)?.value;
+}
+
+function editedEmbedJson(
+  editSpy: { calls: unknown[] },
+  callIndex: number,
+) {
   const call = editSpy.calls[callIndex] as unknown as {
     args: [
       {
-        embeds: { toJSON(): { fields?: { name: string; value: string }[] } }[];
+        embeds: {
+          toJSON(): {
+            description?: string;
+            fields?: { name: string; value: string }[];
+            footer?: { text: string };
+          };
+        }[];
       },
     ];
   };
-  const resultEmbed = call.args[0].embeds[0].toJSON();
-  return resultEmbed.fields?.find((field) => field.name === fieldName)?.value;
+  return call.args[0].embeds[0].toJSON();
 }
 
 describe("match_tracking.ts", () => {
@@ -293,6 +306,67 @@ describe("match_tracking.ts", () => {
       editedEmbed.description?.includes("<@target-2>"),
       true,
     );
+  });
+
+  test("共有試合中通知に複数監視対象を表示するとき、対象ごとのチャンピオンを表示し単一Riot IDをfooterに出さない", async () => {
+    const [championNameStub] = staticDataStubs.splice(0, 1);
+    championNameStub.restore();
+    using _championNameByIdStub = stub(
+      riotStaticData,
+      "getChampionNameById",
+      (championId) =>
+        Promise.resolve(championId === 17 ? "ティーモ" : "トリスターナ"),
+    );
+    const { client, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher({ targetDiscordId: "target-1" }),
+            watcher({ targetDiscordId: "target-2" }),
+          ],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      (discordId) =>
+        Promise.resolve({
+          success: true as const,
+          account: account({
+            discordId,
+            puuid: discordId === "target-1" ? "puuid-1" : "puuid-2",
+            gameName: discordId === "target-1" ? "Teemo" : "Tristana",
+          }),
+        }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    const editedEmbed = editedEmbedJson(editSpy, 0);
+    const activeChampions = editedEmbed.fields?.find((field) =>
+      field.name === "監視対象のチャンピオン"
+    )?.value;
+    assertStringIncludes(activeChampions ?? "", "<@target-1>: ティーモ");
+    assertStringIncludes(activeChampions ?? "", "<@target-2>: トリスターナ");
+    assertEquals(
+      editedEmbed.fields?.some((field) => field.name === "チャンピオン"),
+      false,
+    );
+    assertEquals(editedEmbed.footer?.text, "JP1 Game 12345");
   });
 
   test("後続tickで同じ投稿IDの試合に監視対象が増えたとき、既存投稿を編集して対象者一覧を更新する", async () => {
@@ -874,6 +948,88 @@ describe("match_tracking.ts", () => {
     assertEquals(
       updateStub.calls.at(-1)?.args[2].currentNotificationMessageId,
       null,
+    );
+  });
+
+  test("統合前の個別試合中投稿IDが残る複数監視対象の試合終了時、それぞれの既存投稿を結果通知に使う", async () => {
+    const resultMatch = match();
+    resultMatch.metadata.participants.push("puuid-2");
+    resultMatch.info.participants.push({
+      puuid: "puuid-2",
+      championId: 18,
+      championName: "Tristana",
+      teamId: 100,
+      win: true,
+      kills: 2,
+      deaths: 1,
+      assists: 4,
+      totalMinionsKilled: 150,
+      neutralMinionsKilled: 8,
+      goldEarned: 9000,
+    });
+    const { client, sendSpy, fetchSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher({
+              targetDiscordId: "target-1",
+              currentGameId: "12345",
+              currentNotificationMessageId: "message-target-1",
+              lastState: "IN_GAME",
+            }),
+            watcher({
+              targetDiscordId: "target-2",
+              currentGameId: "12345",
+              currentNotificationMessageId: "message-target-2",
+              lastState: "IN_GAME",
+            }),
+          ],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      (discordId) =>
+        Promise.resolve({
+          success: true as const,
+          account: account({
+            discordId,
+            puuid: discordId === "target-1" ? "puuid-1" : "puuid-2",
+            gameName: discordId === "target-1" ? "Teemo" : "Tristana",
+          }),
+        }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(null),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(resultMatch),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(sendSpy, 0);
+    assertEquals(
+      fetchSpy.calls.map((call) => call.args[0]),
+      [
+        "message-target-1",
+        "message-target-1",
+        "message-target-2",
+        "message-target-2",
+      ],
     );
   });
 

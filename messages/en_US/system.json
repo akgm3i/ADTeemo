@@ -141,6 +141,7 @@
       },
       "field": {
         "champion": "Champion",
+        "activeChampions": "Watched Champions",
         "queue": "Queue",
         "map": "Map",
         "mode": "Mode",
@@ -161,6 +162,7 @@
       },
       "footer": {
         "game": "{platform} Game {gameId} / {riotId}",
+        "gameOnly": "{platform} Game {gameId}",
         "match": "Match {matchId}",
         "matchWithRiotId": "Match {matchId} / {riotId}"
       }
