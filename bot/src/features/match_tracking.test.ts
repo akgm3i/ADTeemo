@@ -119,6 +119,7 @@ function match() {
 function clientWithSend(
   send: (options: unknown) => Promise<unknown> = () =>
     Promise.resolve({ id: "message-new" }),
+  fetchMessage?: (messageId: string) => Promise<unknown>,
 ) {
   const message = {
     id: "message-existing",
@@ -129,7 +130,8 @@ function clientWithSend(
     send,
     messages: {
       fetch: (messageId: string) =>
-        Promise.resolve({ ...message, id: messageId }),
+        fetchMessage?.(messageId) ??
+          Promise.resolve({ ...message, id: messageId }),
     },
   };
   const sendSpy = spy(channel, "send");
@@ -425,6 +427,161 @@ describe("match_tracking.ts", () => {
         );
       }
     }
+  });
+
+  test("共有試合中投稿が削除され新規投稿へ置換されたとき、同じ試合の未通知監視対象にも置換後投稿IDを保存する", async () => {
+    const { client, sendSpy, fetchSpy } = clientWithSend(
+      undefined,
+      () => Promise.reject(new Error("message deleted")),
+    );
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher({
+              targetDiscordId: "target-1",
+              lastState: "IN_GAME",
+              currentGameId: "12345",
+              currentNotificationMessageId: "message-existing",
+              lastInGameNotifiedAt: new Date(Date.now() - 10 * 60_000),
+            }),
+            watcher({
+              targetDiscordId: "target-2",
+              lastState: "IN_GAME",
+              currentGameId: "12345",
+              currentNotificationMessageId: "message-existing",
+              lastInGameNotifiedAt: new Date(),
+            }),
+          ],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      (discordId) =>
+        Promise.resolve({
+          success: true as const,
+          account: account({
+            discordId,
+            puuid: discordId === "target-1" ? "puuid-1" : "puuid-2",
+            gameName: discordId === "target-1" ? "Teemo" : "Tristana",
+          }),
+        }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(fetchSpy, 1);
+    assertSpyCalls(sendSpy, 1);
+    const target2MessageSync = updateStub.calls.find((call) =>
+      call.args[1] === "target-2" &&
+      call.args[2].currentNotificationMessageId === "message-new"
+    );
+    assertEquals(target2MessageSync?.args[2].currentGameId, "12345");
+    assertEquals(
+      target2MessageSync?.args[2].lastInGameNotifiedAt,
+      undefined,
+    );
+  });
+
+  test("同一tickで共有試合中投稿が置換された後に試合終了を検知したとき、置換後投稿IDを結果通知に使う", async () => {
+    const { client, sendSpy, fetchSpy } = clientWithSend(
+      undefined,
+      (messageId) => {
+        if (messageId === "message-existing") {
+          return Promise.reject(new Error("message deleted"));
+        }
+        return Promise.resolve({
+          id: messageId,
+          edit: () => Promise.resolve(),
+        });
+      },
+    );
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher({
+              targetDiscordId: "target-1",
+              lastState: "IN_GAME",
+              currentGameId: "12345",
+              currentNotificationMessageId: "message-existing",
+              lastInGameNotifiedAt: new Date(Date.now() - 10 * 60_000),
+            }),
+            watcher({
+              targetDiscordId: "target-2",
+              lastState: "IN_GAME",
+              currentGameId: "12345",
+              currentNotificationMessageId: "message-existing",
+            }),
+          ],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      (discordId) =>
+        Promise.resolve({
+          success: true as const,
+          account: account({
+            discordId,
+            puuid: discordId === "target-1" ? "puuid-1" : "puuid-2",
+            gameName: discordId === "target-1" ? "Teemo" : "Tristana",
+          }),
+        }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      (_platform, puuid) =>
+        Promise.resolve(
+          puuid === "puuid-1"
+            ? activeGameWithParticipants(["puuid-1", "puuid-2"])
+            : null,
+        ),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(null),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(sendSpy, 1);
+    assertEquals(
+      fetchSpy.calls.map((call) => call.args[0]),
+      ["message-existing", "message-new"],
+    );
+    const target2PendingUpdate = updateStub.calls.find((call) =>
+      call.args[1] === "target-2" &&
+      call.args[2].pendingResultMatchId === "JP1_12345"
+    );
+    assertEquals(
+      target2PendingUpdate?.args[2].pendingResultNotificationMessageId,
+      "message-new",
+    );
   });
 
   test("同じgameIdでもギルドまたはチャンネルが違うとき、開始通知を統合しない", async () => {
