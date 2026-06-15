@@ -101,6 +101,7 @@ function match() {
       queueId: 420,
       participants: [{
         puuid: "puuid-1",
+        championId: 17,
         championName: "Teemo",
         teamId: 100,
         win: true,
@@ -656,10 +657,50 @@ describe("match_tracking.ts", () => {
     );
   });
 
+  test("ja_JPの試合結果ではchampionIdからチャンピオン名を表示する", async () => {
+    const { client, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "FETCHING_RESULT",
+            currentMatchId: "JP1_12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 0, "チャンピオン"),
+      "ティーモ",
+    );
+  });
+
   test("試合結果EmbedにMatch-v5から計算できるCS/minとキル関与率を表示する", async () => {
     const resultMatch = match();
     resultMatch.info.participants.push({
       puuid: "puuid-2",
+      championId: 98,
       championName: "Shen",
       teamId: 100,
       win: true,
@@ -767,6 +808,146 @@ describe("match_tracking.ts", () => {
       editedEmbedFieldValue(editSpy, 1, "キル関与率"),
       "-",
     );
+  });
+
+  test("静的データのチャンピオン名取得に失敗したとき、Match-v5の既存名で結果通知を完了する", async () => {
+    const [championNameStub] = staticDataStubs.splice(0, 1);
+    championNameStub.restore();
+    const { client, editSpy } = clientWithSend();
+    using _championNameFailureStub = stub(
+      riotStaticData,
+      "getChampionNameById",
+      () => Promise.reject(new Error("Data Dragon failed")),
+    );
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "FETCHING_RESULT",
+            currentMatchId: "JP1_12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(editSpy, 1);
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 0, "チャンピオン"),
+      "Teemo",
+    );
+    assertEquals(updateStub.calls.at(-1)?.args[2].lastState, "IDLE");
+    assertEquals(updateStub.calls.at(-1)?.args[2].currentMatchId, null);
+    assertEquals(updateStub.calls.at(-1)?.args[2].pendingResultMatchId, null);
+  });
+
+  test("静的データのモード名取得に失敗したとき、Match-v5の既存モードで結果通知を完了する", async () => {
+    const gameModeStub = staticDataStubs.splice(3, 1)[0];
+    gameModeStub.restore();
+    const { client, editSpy } = clientWithSend();
+    using _gameModeFailureStub = stub(
+      riotStaticData,
+      "getGameModeName",
+      () => Promise.reject(new Error("Data Dragon failed")),
+    );
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "FETCHING_RESULT",
+            currentMatchId: "JP1_12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(editSpy, 1);
+    assertEquals(editedEmbedFieldValue(editSpy, 0, "モード"), "CLASSIC");
+    assertEquals(updateStub.calls.at(-1)?.args[2].lastState, "IDLE");
+    assertEquals(updateStub.calls.at(-1)?.args[2].pendingResultMatchId, null);
+  });
+
+  test("ja_JPの試合結果では代表キューとマップとモードを日本語表示に寄せる", async () => {
+    const { client, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "FETCHING_RESULT",
+            currentMatchId: "JP1_12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 0, "キュー"),
+      "ランクソロ/デュオ",
+    );
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 0, "マップ"),
+      "サモナーズリフト",
+    );
+    assertEquals(editedEmbedFieldValue(editSpy, 0, "モード"), "クラシック");
   });
 
   test("結果取得待ちが一定時間を超えたとき、対象者とIDLE復帰理由を通知しMatch-v5を再試行しない", async () => {
@@ -890,6 +1071,79 @@ describe("match_tracking.ts", () => {
       updateStub.calls[0].args[2].currentNotificationMessageId,
       "message-new",
     );
+  });
+
+  test("同じ旧試合通知を共有した複数監視対象が次の試合へ進んだとき、後続の旧試合結果通知は共有投稿を上書きしない", async () => {
+    const { client, sendSpy, fetchSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher({
+              targetDiscordId: "target-1",
+              lastState: "IN_GAME",
+              currentGameId: "12345",
+              currentNotificationMessageId: "message-existing",
+              gameStartedAt: new Date(Date.now() - 120_000),
+            }),
+            watcher({
+              targetDiscordId: "target-2",
+              lastState: "IN_GAME",
+              currentGameId: "12345",
+              currentNotificationMessageId: "message-existing",
+              gameStartedAt: new Date(Date.now() - 120_000),
+            }),
+          ],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      (discordId) =>
+        Promise.resolve({
+          success: true as const,
+          account: account({
+            discordId,
+            puuid: discordId === "target-1" ? "puuid-1" : "puuid-2",
+            gameName: discordId === "target-1" ? "Teemo" : "Tristana",
+          }),
+        }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () =>
+        Promise.resolve(
+          activeGameWithParticipants(["puuid-1", "puuid-2"], 67890),
+        ),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(sendSpy, 2);
+    assertEquals(
+      fetchSpy.calls.filter((call) => call.args[0] === "message-existing")
+        .length,
+      2,
+    );
+    const target2FinalUpdate = updateStub.calls
+      .filter((call) => call.args[1] === "target-2")
+      .at(-1);
+    assertEquals(target2FinalUpdate?.args[2].currentGameId, "67890");
+    assertEquals(target2FinalUpdate?.args[2].pendingResultMatchId, null);
   });
 
   test("pending resultがある状態でも現在の試合監視を継続する", async () => {

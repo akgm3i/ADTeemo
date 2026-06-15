@@ -53,6 +53,11 @@ function numberEnv(name: string, fallback: number) {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+function messageLocale() {
+  return (Deno.env.get("BOT_MESSAGE_LANG") ?? Deno.env.get("LC_MESSAGES") ??
+    Deno.env.get("LC_ALL") ?? "ja_JP").replace("-", "_").split(".")[0];
+}
+
 function matchIdForGame(account: RiotAccount, gameId: string | number) {
   return `${account.platform.toUpperCase()}_${gameId}`;
 }
@@ -246,17 +251,37 @@ function isResultFetchTimedOut(
   return now.getTime() - startedAt.getTime() >= timeoutMs;
 }
 
-async function championNameById(championId: number | undefined) {
+function fallbackChampionName(
+  championId: number | undefined,
+  fallbackName?: string,
+) {
+  if (fallbackName) return fallbackName;
   if (championId === undefined) {
     return messageHandler.formatMessage(
       messageKeys.matchTracking.embed.fallback.unknownChampion,
     );
   }
-  return await riotStaticData.getChampionNameById(championId) ??
-    messageHandler.formatMessage(
-      messageKeys.matchTracking.embed.fallback.championId,
-      { id: championId },
-    );
+  return messageHandler.formatMessage(
+    messageKeys.matchTracking.embed.fallback.championId,
+    { id: championId },
+  );
+}
+
+async function championNameById(
+  championId: number | undefined,
+  fallbackName?: string,
+) {
+  if (championId === undefined) {
+    return fallbackChampionName(championId, fallbackName);
+  }
+  try {
+    return await riotStaticData.getChampionNameById(
+      championId,
+      messageLocale(),
+    ) ?? fallbackChampionName(championId, fallbackName);
+  } catch {
+    return fallbackChampionName(championId, fallbackName);
+  }
 }
 
 async function queueName(queueId: number | undefined) {
@@ -265,23 +290,38 @@ async function queueName(queueId: number | undefined) {
       messageKeys.matchTracking.embed.fallback.unknownQueue,
     );
   }
-  return await riotStaticData.getQueueNameById(queueId) ??
-    messageHandler.formatMessage(
-      messageKeys.matchTracking.embed.fallback.queueId,
-      { id: queueId },
-    );
+  const fallback = messageHandler.formatMessage(
+    messageKeys.matchTracking.embed.fallback.queueId,
+    { id: queueId },
+  );
+  try {
+    return await riotStaticData.getQueueNameById(queueId, messageLocale()) ??
+      fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 async function mapName(mapId: number) {
-  return await riotStaticData.getMapNameById(mapId) ??
-    messageHandler.formatMessage(
-      messageKeys.matchTracking.embed.fallback.mapId,
-      { id: mapId },
-    );
+  const fallback = messageHandler.formatMessage(
+    messageKeys.matchTracking.embed.fallback.mapId,
+    { id: mapId },
+  );
+  try {
+    return await riotStaticData.getMapNameById(mapId, messageLocale()) ??
+      fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 async function gameModeName(gameMode: string) {
-  return await riotStaticData.getGameModeName(gameMode) ?? gameMode;
+  try {
+    return await riotStaticData.getGameModeName(gameMode, messageLocale()) ??
+      gameMode;
+  } catch {
+    return gameMode;
+  }
 }
 
 function formatCsPerMinute(cs: number, gameDurationSeconds: number) {
@@ -515,6 +555,10 @@ async function buildMatchResultEmbed(
   }
 
   const cs = participant.totalMinionsKilled + participant.neutralMinionsKilled;
+  const champion = await championNameById(
+    participant.championId,
+    participant.championName,
+  );
   const teamKills = match.info.participants
     .filter((candidate) => candidate.teamId === participant.teamId)
     .reduce((sum, candidate) => sum + candidate.kills, 0);
@@ -526,6 +570,7 @@ async function buildMatchResultEmbed(
   );
   const queue = await queueName(match.info.queueId);
   const map = await mapName(match.info.mapId);
+  const mode = await gameModeName(match.info.gameMode);
   const result = participant.win
     ? messageHandler.formatMessage(messageKeys.matchTracking.embed.result.win)
     : messageHandler.formatMessage(messageKeys.matchTracking.embed.result.loss);
@@ -548,7 +593,7 @@ async function buildMatchResultEmbed(
         name: messageHandler.formatMessage(
           messageKeys.matchTracking.embed.field.champion,
         ),
-        value: participant.championName,
+        value: champion,
         inline: true,
       },
       {
@@ -599,6 +644,13 @@ async function buildMatchResultEmbed(
           messageKeys.matchTracking.embed.field.map,
         ),
         value: map,
+        inline: true,
+      },
+      {
+        name: messageHandler.formatMessage(
+          messageKeys.matchTracking.embed.field.mode,
+        ),
+        value: mode,
         inline: true,
       },
     )
@@ -838,10 +890,15 @@ async function processWatcher(
       });
     }
     const previousMatchId = matchIdForGame(account, watcher.currentGameId);
+    const previousActiveNotificationGroup = getActiveNotificationGroup(
+      context,
+      watcher,
+      watcher.currentGameId,
+    );
     const previousMessageId = await sendOrEditWatcherMessage(
       client,
       watcher,
-      watcher.currentNotificationMessageId,
+      resultNotificationMessageId(previousActiveNotificationGroup, watcher),
       buildResultPendingEmbed(watcher, previousMatchId),
     );
     const newMessageId = await sendOrEditWatcherMessage(
