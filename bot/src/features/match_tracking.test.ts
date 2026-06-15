@@ -1,12 +1,13 @@
 import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
-import type { APIEmbedField, Client } from "discord.js";
+import type { Client } from "discord.js";
 import type { MatchWatcher, RiotAccount } from "@adteemo/api/schema";
 import { riotApi } from "@adteemo/api/riot-api";
 import { riotStaticData } from "@adteemo/api/riot-static-data";
 import { apiClient } from "../api_client.ts";
 import { botLogger } from "../logger.ts";
+import { messageHandler, messageKeys } from "../messages.ts";
 import { matchTracker } from "./match_tracking.ts";
 import { afterEach, beforeEach } from "@std/testing/bdd";
 
@@ -34,7 +35,7 @@ function watcher(overrides: Partial<MatchWatcher> = {}): MatchWatcher {
   };
 }
 
-function account(): RiotAccount {
+function account(overrides: Partial<RiotAccount> = {}): RiotAccount {
   const now = new Date("2026-01-01T00:00:00.000Z");
   return {
     discordId: "target-1",
@@ -45,6 +46,7 @@ function account(): RiotAccount {
     region: "asia",
     createdAt: now,
     updatedAt: now,
+    ...overrides,
   };
 }
 
@@ -63,6 +65,12 @@ function activeGame(gameId = 12345) {
       teamId: 100,
     }],
   };
+}
+
+function activeGameForPuuid(puuid: string, gameId = 12345) {
+  const game = activeGame(gameId);
+  game.participants[0].puuid = puuid;
+  return game;
 }
 
 function match() {
@@ -98,7 +106,8 @@ function match() {
 }
 
 function clientWithSend(
-  send: () => Promise<unknown> = () => Promise.resolve({ id: "message-new" }),
+  send: (options: unknown) => Promise<unknown> = () =>
+    Promise.resolve({ id: "message-new" }),
 ) {
   const message = {
     id: "message-existing",
@@ -120,24 +129,20 @@ function clientWithSend(
   return { client, sendSpy, editSpy };
 }
 
-function embedFieldValue(
-  embed: { data: { fields?: APIEmbedField[] } },
-  name: string,
+function editedEmbedFieldValue(
+  editSpy: { calls: unknown[] },
+  callIndex: number,
+  fieldName: string,
 ) {
-  return embed.data.fields?.find((field) => field.name === name)?.value;
-}
-
-function firstEditedEmbed(
-  editSpy: ReturnType<typeof clientWithSend>["editSpy"],
-) {
-  const calls = editSpy.calls as unknown as Array<{
-    args: [{ embeds: [{ data: { fields?: APIEmbedField[] } }] }];
-  }>;
-  const options = calls[0]?.args[0];
-  if (!options?.embeds[0]) {
-    throw new Error("edited embed was not found");
-  }
-  return options.embeds[0];
+  const call = editSpy.calls[callIndex] as unknown as {
+    args: [
+      {
+        embeds: { toJSON(): { fields?: { name: string; value: string }[] } }[];
+      },
+    ];
+  };
+  const resultEmbed = call.args[0].embeds[0].toJSON();
+  return resultEmbed.fields?.find((field) => field.name === fieldName)?.value;
 }
 
 describe("match_tracking.ts", () => {
@@ -355,8 +360,124 @@ describe("match_tracking.ts", () => {
 
     await matchTracker.processMatchWatchers(client);
 
-    const resultEmbed = firstEditedEmbed(editSpy);
-    assertEquals(embedFieldValue(resultEmbed, "チャンピオン"), "ティーモ");
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 0, "チャンピオン"),
+      "ティーモ",
+    );
+  });
+
+  test("試合結果EmbedにMatch-v5から計算できるCS/minとキル関与率を表示する", async () => {
+    const resultMatch = match();
+    resultMatch.info.participants.push({
+      puuid: "puuid-2",
+      championId: 98,
+      championName: "Shen",
+      teamId: 100,
+      win: true,
+      kills: 20,
+      deaths: 4,
+      assists: 6,
+      totalMinionsKilled: 120,
+      neutralMinionsKilled: 0,
+      goldEarned: 10000,
+    });
+    const { client, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "IN_GAME",
+            currentGameId: "12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(null),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(resultMatch),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 1, "CS/min"),
+      "6.4",
+    );
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 1, "キル関与率"),
+      "60.0%",
+    );
+  });
+
+  test("試合結果Embedの追加戦績は試合時間やチームキルが不足してもfallback表示にする", async () => {
+    const resultMatch = match();
+    resultMatch.info.gameDuration = 0;
+    resultMatch.info.participants[0].kills = 0;
+    resultMatch.info.participants[0].assists = 0;
+    const { client, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "IN_GAME",
+            currentGameId: "12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(null),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(resultMatch),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 1, "CS/min"),
+      "-",
+    );
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 1, "キル関与率"),
+      "-",
+    );
   });
 
   test("静的データのチャンピオン名取得に失敗したとき、Match-v5の既存名で結果通知を完了する", async () => {
@@ -400,14 +521,62 @@ describe("match_tracking.ts", () => {
     await matchTracker.processMatchWatchers(client);
 
     assertSpyCalls(editSpy, 1);
-    const resultEmbed = firstEditedEmbed(editSpy);
-    assertEquals(embedFieldValue(resultEmbed, "チャンピオン"), "Teemo");
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 0, "チャンピオン"),
+      "Teemo",
+    );
     assertEquals(updateStub.calls.at(-1)?.args[2].lastState, "IDLE");
     assertEquals(updateStub.calls.at(-1)?.args[2].currentMatchId, null);
     assertEquals(updateStub.calls.at(-1)?.args[2].pendingResultMatchId, null);
   });
 
-  test("ja_JPの試合結果では代表キューとマップを日本語表示に寄せる", async () => {
+  test("静的データのモード名取得に失敗したとき、Match-v5の既存モードで結果通知を完了する", async () => {
+    const gameModeStub = staticDataStubs.splice(3, 1)[0];
+    gameModeStub.restore();
+    const { client, editSpy } = clientWithSend();
+    using _gameModeFailureStub = stub(
+      riotStaticData,
+      "getGameModeName",
+      () => Promise.reject(new Error("Data Dragon failed")),
+    );
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "FETCHING_RESULT",
+            currentMatchId: "JP1_12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(editSpy, 1);
+    assertEquals(editedEmbedFieldValue(editSpy, 0, "モード"), "CLASSIC");
+    assertEquals(updateStub.calls.at(-1)?.args[2].lastState, "IDLE");
+    assertEquals(updateStub.calls.at(-1)?.args[2].pendingResultMatchId, null);
+  });
+
+  test("ja_JPの試合結果では代表キューとマップとモードを日本語表示に寄せる", async () => {
     const { client, editSpy } = clientWithSend();
     using _getWatchersStub = stub(
       apiClient,
@@ -440,13 +609,18 @@ describe("match_tracking.ts", () => {
 
     await matchTracker.processMatchWatchers(client);
 
-    const resultEmbed = firstEditedEmbed(editSpy);
-    assertEquals(embedFieldValue(resultEmbed, "キュー"), "ランクソロ/デュオ");
-    assertEquals(embedFieldValue(resultEmbed, "マップ"), "サモナーズリフト");
-    assertEquals(embedFieldValue(resultEmbed, "モード"), "クラシック");
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 0, "キュー"),
+      "ランクソロ/デュオ",
+    );
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 0, "マップ"),
+      "サモナーズリフト",
+    );
+    assertEquals(editedEmbedFieldValue(editSpy, 0, "モード"), "クラシック");
   });
 
-  test("結果取得待ちが一定時間を超えたとき、Match-v5を再試行せずIDLEへ戻す", async () => {
+  test("結果取得待ちが一定時間を超えたとき、対象者とIDLE復帰理由を通知しMatch-v5を再試行しない", async () => {
     const { client, sendSpy } = clientWithSend();
     using _getWatchersStub = stub(
       apiClient,
@@ -482,6 +656,36 @@ describe("match_tracking.ts", () => {
 
     assertSpyCalls(getMatchStub, 0);
     assertSpyCalls(sendSpy, 1);
+    const sentMessage = sendSpy.calls[0].args[0] as {
+      embeds: {
+        data: {
+          title: string;
+          description: string;
+          footer: { text: string };
+        };
+      }[];
+    };
+    const sentEmbed = sentMessage.embeds[0].data;
+    assertEquals(
+      sentEmbed.title,
+      messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.resultTimeout.title,
+      ),
+    );
+    assertEquals(
+      sentEmbed.description,
+      messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.resultTimeout.description,
+        { member: "<@target-1>" },
+      ),
+    );
+    assertEquals(
+      sentEmbed.footer.text,
+      messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.footer.match,
+        { matchId: "JP1_12345" },
+      ),
+    );
     assertEquals(updateStub.calls[0].args[2].lastState, "IDLE");
     assertEquals(updateStub.calls[0].args[2].currentGameId, null);
     assertEquals(updateStub.calls[0].args[2].currentMatchId, null);
@@ -619,6 +823,172 @@ describe("match_tracking.ts", () => {
     assertSpyCalls(activeGameStub, 1);
     assertSpyCalls(sendSpy, 0);
     assertSpyCalls(updateStub, 0);
+  });
+
+  test("複数の監視対象が返されたとき、全員分の状態確認と通知と状態更新を行う", async () => {
+    const { client, sendSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher(),
+            watcher({
+              targetDiscordId: "target-2",
+              requesterId: "requester-2",
+            }),
+          ],
+        }),
+    );
+    using getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      (discordId) =>
+        Promise.resolve({
+          success: true as const,
+          account: account({
+            discordId,
+            puuid: discordId === "target-2" ? "puuid-2" : "puuid-1",
+            gameName: discordId === "target-2" ? "Tristana" : "Teemo",
+          }),
+        }),
+    );
+    using activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      (_platform, puuid) =>
+        Promise.resolve(
+          activeGameForPuuid(puuid, puuid === "puuid-2" ? 67890 : 12345),
+        ),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(getAccountStub, 2);
+    assertSpyCall(getAccountStub, 0, { args: ["target-1"] });
+    assertSpyCall(getAccountStub, 1, { args: ["target-2"] });
+    assertSpyCalls(activeGameStub, 2);
+    assertSpyCall(activeGameStub, 0, { args: ["jp1", "puuid-1"] });
+    assertSpyCall(activeGameStub, 1, { args: ["jp1", "puuid-2"] });
+    assertSpyCalls(sendSpy, 2);
+    assertSpyCalls(updateStub, 2);
+    assertEquals(updateStub.calls[0].args[1], "target-1");
+    assertEquals(updateStub.calls[0].args[2].currentGameId, "12345");
+    assertEquals(updateStub.calls[1].args[1], "target-2");
+    assertEquals(updateStub.calls[1].args[2].currentGameId, "67890");
+  });
+
+  test("一部の監視対象でRiotアカウント取得に失敗しても、後続の監視対象を処理する", async () => {
+    const { client, sendSpy } = clientWithSend();
+    using _loggerStub = stub(botLogger, "error", () => {});
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher(),
+            watcher({ targetDiscordId: "target-2" }),
+          ],
+        }),
+    );
+    using getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      (discordId) => {
+        if (discordId === "target-1") {
+          return Promise.resolve({
+            success: false as const,
+            error: "Riot account fetch failed",
+          });
+        }
+        return Promise.resolve({
+          success: true as const,
+          account: account({ discordId, puuid: "puuid-2" }),
+        });
+      },
+    );
+    using activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      (_platform, puuid) => Promise.resolve(activeGameForPuuid(puuid, 67890)),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(getAccountStub, 2);
+    assertSpyCalls(activeGameStub, 1);
+    assertSpyCall(activeGameStub, 0, { args: ["jp1", "puuid-2"] });
+    assertSpyCalls(sendSpy, 1);
+    assertSpyCalls(updateStub, 1);
+    assertEquals(updateStub.calls[0].args[1], "target-2");
+    assertEquals(updateStub.calls[0].args[2].currentGameId, "67890");
+  });
+
+  test("一部の監視対象でRiot API処理に失敗しても、後続の監視対象を処理する", async () => {
+    const { client, sendSpy } = clientWithSend();
+    using _loggerStub = stub(botLogger, "error", () => {});
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher(),
+            watcher({ targetDiscordId: "target-2" }),
+          ],
+        }),
+    );
+    using getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      (discordId) =>
+        Promise.resolve({
+          success: true as const,
+          account: account({
+            discordId,
+            puuid: discordId === "target-2" ? "puuid-2" : "puuid-1",
+          }),
+        }),
+    );
+    using activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      (_platform, puuid) => {
+        if (puuid === "puuid-1") {
+          throw new Error("Riot API failed");
+        }
+        return Promise.resolve(activeGameForPuuid(puuid, 67890));
+      },
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(getAccountStub, 2);
+    assertSpyCalls(activeGameStub, 2);
+    assertSpyCalls(sendSpy, 1);
+    assertSpyCalls(updateStub, 1);
+    assertEquals(updateStub.calls[0].args[1], "target-2");
+    assertEquals(updateStub.calls[0].args[2].currentGameId, "67890");
   });
 
   test("通知送信に失敗しても、試合開始の状態更新は継続する", async () => {

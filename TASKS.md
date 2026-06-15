@@ -58,18 +58,30 @@
     - [x] `riot_accounts` を追加し、PUUID、Riot ID、platform、region をユーザー別に保存する。
     - [x] `match_watchers` を追加し、ギルド単位で指定メンバーの継続監視状態と通知チャンネルを保存する。
     - [x] `/watch-match @member` と `/unwatch-match @member` を実装する。
+    - [x] `/watch-match @member` で対象メンバーが Riot ID 未登録の場合に専用メッセージを返す。
     - [x] Riot Spectator-v5 で試合開始・試合中概要・終了を検知し、Discord に通知する。
     - [x] Riot Match-v5 で終了後の勝敗、KDA、CS、Gold を取得し、通知する。
     - [x] Spectator-v5 / Match-v5 の 404、429、5xx を考慮したリトライと backoff を実装する。
     - [x] Match-v5 に戦績が生成されない場合に備え、結果取得待ちのタイムアウトと IDLE 復帰を実装する。
+    - [x] 結果取得タイムアウト通知で対象者、IDLE 復帰、継続監視、タイムアウト理由を確認できるようにする。
     - [x] Discord 通知失敗時も監視状態更新を継続し、完全に IDLE な対象の不要な DB 更新を抑止する。
     - [x] Riot API 制限を考慮し、ギルドごとの有効監視対象数上限を実装する。
     - [x] Riot API 呼び出しを共有キュー化し、429 と rate limit headers を後続呼び出しに反映する。
     - [x] 試合監視通知を1試合1投稿の Embed 更新にし、試合中に gameId が変わるケースへ対応する。
     - [x] 試合監視通知の表示文言を messages 管理へ移し、Riot 公式 static data の名称をDBキャッシュする。
+    - [x] #34: デフォルト監視と opt-out の最小仕様、現行仕様との差分、推奨データモデル、次アクションを `docs/default-watch-opt-out.md` に整理する。
     - [x] `deno task test:riot-live` を追加し、実 Riot API で Account-v1 / Spectator-v5 / Match-v5 の疎通確認を行う。
     - [x] Discord ギルド上で `/set-riot-id`、`/watch-match`、`/unwatch-match` の応答と監視状態更新を確認する。
     - [ ] Match-v5 で取得した戦績を既存 `matches` / `match_participants` に保存し、内部レート更新へ接続する。
+    - [ ] #34: デフォルト監視の通知先チャンネル設定、opt-out 永続化、Bot/API コマンド、実効監視対象解決を実装する。
+    - [x] `/watch-list` でギルド内の有効な試合監視対象一覧を確認できるようにする。
+    - [x] 試合結果 Embed に Match-v5 から計算できる `CS/min` と `キル関与率` を追加する。
+    - [x] `deno task test:riot-live` を追加し、実 Riot API で Account-v1 / Spectator-v5 / Match-v5 の疎通確認を行う。
+    - [x] Discord ギルド上で `/set-riot-id`、`/watch-match`、`/unwatch-match` の応答と監視状態更新を確認する。
+    - [ ] Match-v5 で取得した戦績を既存 `matches` / `match_participants` に保存し、内部レート更新へ接続する。
+    - [ ] LP delta 表示は League-v4 または試合前後スナップショット比較の設計が必要なため、現行の Match-v5 / Spectator-v5 だけでは実装しない。
+    - [ ] OP.GG 等のプレイヤー外部戦績ページリンクは特定サービス URL の安定性に依存するため、実装時はリンク生成 helper と単体テストを用意してから導入する。
+    - [ ] 試合中の各プレイヤーロール表示は Spectator-v5 active game の参加者情報だけでは確定できず、現行 parse 対象にも `teamPosition` 相当がないため、別データ源または推定方針を設計してから導入する。
 37. [ ] 内部レートを全ギルド共有のプレイヤー評価として保存するスキーマと更新ロジックを設計する。
 38. [ ] チーム分け時の戦力均等化ロジックと内部レート計算式を仕様に合わせて高度化する。
 39. [ ] Discord/Riot API 呼び出しに対するリクエストキューや指数バックオフ等のレート制限対策を導入する。
@@ -79,3 +91,7 @@
 
 41. [ ] Web サイトの要件定義を実施し、主要ユースケース・API 連携要件を整理する。
 42. [ ] 上記要件に基づき Web UI（管理者・参加者向け）を実装する。
+
+## 8. メッセージカタログ
+
+43. [x] ティーモ版メッセージの不足キーを補い、`check:messages` で現行ディレクトリのキー整合性を検知する。

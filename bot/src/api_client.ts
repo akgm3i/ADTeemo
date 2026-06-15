@@ -309,7 +309,11 @@ async function watchMatch(watcher: {
     if (!res.ok) {
       if (res.status === 404 || res.status === 409) {
         const body = await res.json();
-        return { success: false as const, error: body.error };
+        return {
+          success: false as const,
+          error: body.error,
+          status: res.status,
+        };
       }
       throw new Error(`Unexpected response: ${res}`);
     }
@@ -343,6 +347,27 @@ async function unwatchMatch(guildId: string, targetDiscordId: string) {
 async function getEnabledMatchWatchers() {
   try {
     const res = await client["match-watchers"].enabled.$get();
+
+    if (!res.ok) {
+      throw new Error(`Unexpected response: ${res}`);
+    }
+
+    const body = await res.json();
+    return {
+      success: true as const,
+      watchers: body.watchers.map(parseMatchWatcher),
+    };
+  } catch (error) {
+    console.error("Failed to communicate with API", error);
+    return { success: false as const, error: "Failed to communicate with API" };
+  }
+}
+
+async function getEnabledMatchWatchersByGuild(guildId: string) {
+  try {
+    const res = await client["match-watchers"].enabled[":guildId"].$get({
+      param: { guildId },
+    });
 
     if (!res.ok) {
       throw new Error(`Unexpected response: ${res}`);
@@ -407,5 +432,6 @@ export const apiClient = {
   watchMatch,
   unwatchMatch,
   getEnabledMatchWatchers,
+  getEnabledMatchWatchersByGuild,
   updateMatchWatcherState,
 };

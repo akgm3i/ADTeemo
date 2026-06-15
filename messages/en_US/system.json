@@ -67,7 +67,8 @@
   },
   "common": {
     "error": {
-      "command": "There was an error while executing this command!"
+      "command": "There was an error while executing this command!",
+      "internalServerError": "An internal server error occurred."
     },
     "info": {
       "guildOnlyCommand": "This command can only be used in a server."
@@ -100,6 +101,22 @@
     }
   },
   "matchTracking": {
+    "watchList": {
+      "header": "Current match watchers:",
+      "empty": "There are no active match watchers in this server.",
+      "item": "{position}. <@{targetId}> (Notification: <#{channelId}>)",
+      "omitted": "...and {count} more",
+      "error": {
+        "fetch": "Could not fetch match watchers: {error}"
+      }
+    },
+    "watch": {
+      "success": "Started watching {member}'s LoL matches. Notifications will be posted in this channel.",
+      "error": {
+        "failure": "Could not start watching {member}'s matches: {error}",
+        "riotAccountRequired": "To watch {member}'s matches, that member needs to register their Riot ID first. Ask them to run `/set-riot-id`."
+      }
+    },
     "embed": {
       "active": {
         "startedTitle": "Match start detected",
@@ -112,7 +129,7 @@
       },
       "resultTimeout": {
         "title": "Stopped fetching match result",
-        "description": "Could not fetch {member}'s match result within the timeout. Continuous monitoring will continue."
+        "description": "Could not fetch {member}'s match result within the timeout. The watcher state was returned to IDLE, and continuous monitoring will continue."
       },
       "result": {
         "title": "Match Result: {result}",
@@ -130,6 +147,8 @@
         "elapsed": "Elapsed",
         "kda": "KDA",
         "cs": "CS",
+        "csPerMinute": "CS/min",
+        "killParticipation": "Kill Participation",
         "gold": "Gold"
       },
       "fallback": {
@@ -144,6 +163,26 @@
         "game": "{platform} Game {gameId} / {riotId}",
         "match": "Match {matchId}",
         "matchWithRiotId": "Match {matchId} / {riotId}"
+      }
+    }
+  },
+  "riotAccount": {
+    "set": {
+      "error": {
+        "summonerNotFound": "Summoner not found. Please check the summoner name.",
+        "invalidFormat": "Invalid Riot ID format. Please use the format \"SummonerName#Tagline\"."
+      }
+    },
+    "link": {
+      "instructions": "To link your Riot Games account, open the link below and complete authentication.\n\n{url}",
+      "success": {
+        "title": "✅ Authentication complete!",
+        "body": "You can close this page and return to Discord."
+      },
+      "error": {
+        "generic": "An error occurred: {error}",
+        "urlNotFound": "Could not retrieve the URL.",
+        "invalidState": "The authentication session is invalid or expired. Please run the command again."
       }
     }
   }
