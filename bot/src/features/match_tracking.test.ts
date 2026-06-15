@@ -562,6 +562,83 @@ describe("match_tracking.ts", () => {
     assertEquals(target2StartUpdate?.args[2].lastState, "IN_GAME");
   });
 
+  test("共有試合中投稿の編集結果が同じ投稿IDのとき、投稿ID未保存の既存監視対象にも共有投稿IDを保存する", async () => {
+    const originalInterval = Deno.env.get(
+      "MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS",
+    );
+    Deno.env.set("MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS", "1");
+    try {
+      const { client, sendSpy, editSpy } = clientWithSend();
+      using _getWatchersStub = stub(
+        apiClient,
+        "getEnabledMatchWatchers",
+        () =>
+          Promise.resolve({
+            success: true as const,
+            watchers: [
+              watcher({
+                targetDiscordId: "target-1",
+                lastState: "IN_GAME",
+                currentGameId: "12345",
+                currentNotificationMessageId: "message-existing",
+                lastInGameNotifiedAt: new Date(Date.now() - 10_000),
+              }),
+              watcher({
+                targetDiscordId: "target-2",
+                lastState: "IN_GAME",
+                currentGameId: "12345",
+                currentNotificationMessageId: null,
+                lastInGameNotifiedAt: new Date(Date.now() + 10_000),
+              }),
+            ],
+          }),
+      );
+      using _getAccountStub = stub(
+        apiClient,
+        "getRiotAccount",
+        (discordId) =>
+          Promise.resolve({
+            success: true as const,
+            account: account({
+              discordId,
+              puuid: discordId === "target-1" ? "puuid-1" : "puuid-2",
+              gameName: discordId === "target-1" ? "Teemo" : "Tristana",
+            }),
+          }),
+      );
+      using _activeGameStub = stub(
+        riotApi,
+        "getActiveGameByPuuid",
+        () =>
+          Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
+      );
+      using updateStub = stub(
+        apiClient,
+        "updateMatchWatcherState",
+        () => Promise.resolve({ success: true as const }),
+      );
+
+      await matchTracker.processMatchWatchers(client);
+
+      assertSpyCalls(sendSpy, 0);
+      assertSpyCalls(editSpy, 1);
+      const target2MessageSync = updateStub.calls.find((call) =>
+        call.args[1] === "target-2" &&
+        call.args[2].currentNotificationMessageId === "message-existing"
+      );
+      assertEquals(target2MessageSync?.args[2].currentGameId, "12345");
+    } finally {
+      if (originalInterval === undefined) {
+        Deno.env.delete("MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS");
+      } else {
+        Deno.env.set(
+          "MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS",
+          originalInterval,
+        );
+      }
+    }
+  });
+
   test("共有試合中投稿が削除され新規投稿へ置換されたとき、同じ試合の未通知監視対象にも置換後投稿IDを保存する", async () => {
     const { client, sendSpy, fetchSpy } = clientWithSend(
       undefined,

@@ -256,11 +256,15 @@ async function updateActiveNotificationGroupMessage(
   gameId: string,
   messageId: string | null,
 ) {
-  const previousMessageId = group.messageId;
-  rememberActiveNotificationWatcher(group, currentWatcher);
+  rememberActiveNotificationWatcher(group, {
+    ...currentWatcher,
+    lastState: "IN_GAME",
+    currentGameId: gameId,
+    currentNotificationMessageId: messageId,
+  });
   group.messageId = messageId;
   rememberActiveNotificationMessage(group, currentWatcher, messageId);
-  if (!messageId || previousMessageId === messageId) {
+  if (!messageId) {
     return;
   }
 
@@ -272,6 +276,12 @@ async function updateActiveNotificationGroupMessage(
       currentGameId: gameId,
       currentNotificationMessageId: messageId,
       lastCheckedAt: new Date(),
+    });
+    rememberActiveNotificationWatcher(group, {
+      ...watcher,
+      lastState: "IN_GAME",
+      currentGameId: gameId,
+      currentNotificationMessageId: messageId,
     });
     rememberActiveNotificationMessage(group, watcher, messageId);
   }
