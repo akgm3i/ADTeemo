@@ -72,6 +72,36 @@ describe("check-messages script", () => {
     assertSpyCall(exitStub, 0, { args: [1] });
   });
 
+  test("メッセージファイル内に重複キーがある場合、エラーを表示してコード1で終了する", () => {
+    // Arrange
+    using exitStub = stub(Deno, "exit");
+    using consoleErrorSpy = spy(console, "error");
+    using _readFileSyncStub = stub(Deno, "readTextFileSync", (path) => {
+      if (String(path).endsWith("system.json")) {
+        return JSON.stringify(MOCK_SOURCE);
+      }
+      return `{
+        "a": "A",
+        "b": { "c": "BC" },
+        "b": { "c": "shadowed" },
+        "d": "D"
+      }`;
+    });
+
+    // Act
+    checkMessagesMain();
+
+    // Assert
+    assertSpyCall(consoleErrorSpy, 0, {
+      args: ["  ❌ Found duplicate key(s): b"],
+    });
+    assertSpyCall(consoleErrorSpy, 1, {
+      args: ["\n❌ Some message files contain duplicate keys."],
+    });
+    assertSpyCalls(exitStub, 1);
+    assertSpyCall(exitStub, 0, { args: [1] });
+  });
+
   test("対象ファイルが見つからない場合、警告を表示してコード1で終了する", () => {
     // Arrange
     using exitStub = stub(Deno, "exit");

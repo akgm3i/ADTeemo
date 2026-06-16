@@ -95,54 +95,6 @@
       "timeout": "時間切れだ。戦績の記録は中止するよ。"
     }
   },
-  "matchTracking": {
-    "embed": {
-      "active": {
-        "startedTitle": "任務開始を確認！",
-        "progressTitle": "試合状況を偵察中",
-        "description": "{member} が任務中だ。追って報告する。"
-      },
-      "resultPending": {
-        "title": "任務完了を確認！",
-        "description": "{member} の試合終了を確認。戦績が届き次第、偵察日誌を更新する。"
-      },
-      "resultTimeout": {
-        "title": "戦績報告は継続調査",
-        "description": "{member} の戦績は時間内に確認できなかった。監視は続行、次の動きがあれば追って報告する。"
-      },
-      "result": {
-        "title": "任務完了報告: {result}",
-        "description": "{member} の戦績を偵察日誌に記録した。",
-        "participantMissingTitle": "試合結果を確認",
-        "participantMissingDescription": "{member} の参加データが見つからない。追跡記録に残しておく。",
-        "win": "勝利",
-        "loss": "敗北"
-      },
-      "field": {
-        "champion": "チャンピオン",
-        "queue": "キュー",
-        "map": "マップ",
-        "mode": "モード",
-        "elapsed": "経過時間",
-        "kda": "KDA",
-        "cs": "CS",
-        "gold": "Gold"
-      },
-      "fallback": {
-        "unknownChampion": "知らないチャンピオン",
-        "championId": "チャンピオン #{id}",
-        "unknownQueue": "知らないキュー",
-        "queueId": "キュー {id}",
-        "mapId": "マップ {id}",
-        "elapsedMinutes": "約{minutes}分"
-      },
-      "footer": {
-        "game": "{platform} Game {gameId} / {riotId}",
-        "match": "Match {matchId}",
-        "matchWithRiotId": "Match {matchId} / {riotId}"
-      }
-    }
-  },
   "riotAccount": {
     "set": {
       "error": {
@@ -224,6 +176,56 @@
       "error": {
         "failure": "{member} の試合監視を開始できなかったよ…。 {error}",
         "riotAccountRequired": "{member} の試合を監視するには、まずRiot IDの登録が必要だよ。`/set-riot-id` で登録してもらってね。"
+      }
+    },
+    "embed": {
+      "active": {
+        "startedTitle": "任務開始を確認！",
+        "progressTitle": "試合状況を偵察中",
+        "description": "{member} が任務中だ。追って報告する。"
+      },
+      "resultPending": {
+        "title": "任務完了を確認！",
+        "description": "{member} の試合終了を確認。戦績が届き次第、偵察日誌を更新する。"
+      },
+      "resultTimeout": {
+        "title": "戦績報告は継続調査",
+        "description": "{member} の戦績は時間内に確認できなかった。監視は続行、次の動きがあれば追って報告する。"
+      },
+      "result": {
+        "title": "任務完了報告: {result}",
+        "description": "{member} の戦績を偵察日誌に記録した。",
+        "participantMissingTitle": "試合結果を確認",
+        "participantMissingDescription": "{member} の参加データが見つからない。追跡記録に残しておく。",
+        "win": "勝利",
+        "loss": "敗北"
+      },
+      "field": {
+        "champion": "チャンピオン",
+        "activeChampions": "偵察対象のチャンピオン",
+        "queue": "キュー",
+        "map": "マップ",
+        "mode": "モード",
+        "elapsed": "経過時間",
+        "kda": "KDA",
+        "cs": "CS",
+        "csPerMinute": "CS/min",
+        "killParticipation": "キル関与率",
+        "gold": "Gold"
+      },
+      "fallback": {
+        "unknownChampion": "知らないチャンピオン",
+        "championId": "チャンピオン #{id}",
+        "unknownQueue": "知らないキュー",
+        "queueId": "キュー {id}",
+        "mapId": "マップ {id}",
+        "elapsedMinutes": "約{minutes}分"
+      },
+      "footer": {
+        "game": "{platform} Game {gameId} / {riotId}",
+        "gameOnly": "{platform} Game {gameId}",
+        "match": "Match {matchId}",
+        "matchWithRiotId": "Match {matchId} / {riotId}"
       }
     }
   }
