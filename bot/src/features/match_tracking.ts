@@ -68,19 +68,29 @@ function matchIdForGame(account: RiotAccount, gameId: string | number) {
   return `${account.platform.toUpperCase()}_${gameId}`;
 }
 
-function activeNotificationGroupKey(
-  watcher: MatchWatcher,
-  gameId: string | number,
-) {
-  return `${watcher.guildId}:${watcher.channelId}:${gameId}`;
+function normalizePlatform(platform: string) {
+  return platform.toUpperCase();
 }
 
-function gameIdFromMatchId(matchId: string) {
+function activeNotificationGroupKey(
+  watcher: MatchWatcher,
+  platform: string,
+  gameId: string | number,
+) {
+  return `${watcher.guildId}:${watcher.channelId}:${
+    normalizePlatform(platform)
+  }:${gameId}`;
+}
+
+function matchIdParts(matchId: string) {
   const separatorIndex = matchId.indexOf("_");
   if (separatorIndex < 0 || separatorIndex === matchId.length - 1) {
     return null;
   }
-  return matchId.slice(separatorIndex + 1);
+  return {
+    platform: normalizePlatform(matchId.slice(0, separatorIndex)),
+    gameId: matchId.slice(separatorIndex + 1),
+  };
 }
 
 function activeGameCacheKey(account: RiotAccount) {
@@ -91,12 +101,24 @@ function matchCacheKey(account: RiotAccount, matchId: string) {
   return `${account.region}:${matchId}`;
 }
 
-function createMatchWatcherProcessingContext(
+function createMatchWatcherProcessingContext(): MatchWatcherProcessingContext {
+  return {
+    activeNotificationGroups: new Map(),
+    riotAccountsByTargetDiscordId: new Map(),
+    activeGamesByRiotAccount: new Map(),
+    matchesByRegionAndMatchId: new Map(),
+  };
+}
+
+async function seedMatchWatcherProcessingContext(
+  context: MatchWatcherProcessingContext,
   watchers: MatchWatcher[],
-): MatchWatcherProcessingContext {
-  const activeNotificationGroups = new Map<string, ActiveNotificationGroup>();
+) {
   for (const watcher of watchers) {
-    rememberPendingResultNotificationMessage(activeNotificationGroups, watcher);
+    rememberPendingResultNotificationMessage(
+      context.activeNotificationGroups,
+      watcher,
+    );
 
     if (
       watcher.lastState !== "IN_GAME" || !watcher.currentGameId
@@ -104,8 +126,18 @@ function createMatchWatcherProcessingContext(
       continue;
     }
 
-    const key = activeNotificationGroupKey(watcher, watcher.currentGameId);
-    const existingGroup = activeNotificationGroups.get(key);
+    const accountResult = await getRiotAccountForWatcher(
+      context,
+      watcher.targetDiscordId,
+    );
+    if (!accountResult.success) continue;
+
+    const key = activeNotificationGroupKey(
+      watcher,
+      accountResult.account.platform,
+      watcher.currentGameId,
+    );
+    const existingGroup = context.activeNotificationGroups.get(key);
     if (existingGroup) {
       existingGroup.targetDiscordIds.add(watcher.targetDiscordId);
       rememberActiveNotificationWatcher(existingGroup, watcher);
@@ -121,15 +153,8 @@ function createMatchWatcherProcessingContext(
       resultMessageIdsInUse: new Set(),
     };
     rememberActiveNotificationMessage(group, watcher);
-    activeNotificationGroups.set(key, group);
+    context.activeNotificationGroups.set(key, group);
   }
-
-  return {
-    activeNotificationGroups,
-    riotAccountsByTargetDiscordId: new Map(),
-    activeGamesByRiotAccount: new Map(),
-    matchesByRegionAndMatchId: new Map(),
-  };
 }
 
 function rememberPendingResultNotificationMessage(
@@ -139,10 +164,10 @@ function rememberPendingResultNotificationMessage(
   const pending = pendingResultFromWatcher(watcher);
   if (!pending?.messageId) return;
 
-  const gameId = gameIdFromMatchId(pending.matchId);
-  if (!gameId) return;
+  const parts = matchIdParts(pending.matchId);
+  if (!parts) return;
 
-  const key = activeNotificationGroupKey(watcher, gameId);
+  const key = activeNotificationGroupKey(watcher, parts.platform, parts.gameId);
   const existingGroup = activeNotificationGroups.get(key);
   if (existingGroup) {
     existingGroup.resultMessageIdsInUse.add(pending.messageId);
@@ -253,9 +278,10 @@ function resultNotificationMessageId(
 function getActiveNotificationGroup(
   context: MatchWatcherProcessingContext,
   watcher: MatchWatcher,
+  account: RiotAccount,
   gameId: string | number,
 ) {
-  const key = activeNotificationGroupKey(watcher, gameId);
+  const key = activeNotificationGroupKey(watcher, account.platform, gameId);
   const existing = context.activeNotificationGroups.get(key);
   if (existing) {
     existing.targetDiscordIds.add(watcher.targetDiscordId);
@@ -1105,6 +1131,7 @@ async function processWatcher(
       const activeNotificationGroup = getActiveNotificationGroup(
         context,
         watcher,
+        account,
         watcher.currentGameId,
       );
       const matchId = matchIdForGame(account, watcher.currentGameId);
@@ -1146,6 +1173,7 @@ async function processWatcher(
   const activeNotificationGroup = getActiveNotificationGroup(
     context,
     watcher,
+    account,
     currentGameId,
   );
   if (
@@ -1164,8 +1192,10 @@ async function processWatcher(
     const previousActiveNotificationGroup = getActiveNotificationGroup(
       context,
       watcher,
+      account,
       watcher.currentGameId,
     );
+    const notifiedAt = new Date();
     const previousMessageId = await sendOrEditWatcherMessage(
       client,
       watcher,
@@ -1195,6 +1225,7 @@ async function processWatcher(
       watcher,
       currentGameId,
       newMessageId,
+      notifiedAt,
     );
     const currentState = {
       lastState: "IN_GAME" as const,
@@ -1202,7 +1233,7 @@ async function processWatcher(
       currentMatchId: null,
       currentNotificationMessageId: newMessageId,
       gameStartedAt: new Date(activeGame.gameStartTime),
-      lastInGameNotifiedAt: new Date(),
+      lastInGameNotifiedAt: notifiedAt,
     };
     await setWatcherState(watcher, {
       ...currentState,
@@ -1222,6 +1253,7 @@ async function processWatcher(
   const started = watcher.lastState !== "IN_GAME" ||
     watcher.currentGameId !== currentGameId;
   if (started) {
+    const notifiedAt = new Date();
     const messageId = await sendOrEditWatcherMessage(
       client,
       watcher,
@@ -1245,6 +1277,7 @@ async function processWatcher(
       watcher,
       currentGameId,
       messageId,
+      notifiedAt,
     );
     await setWatcherState(watcher, {
       lastState: "IN_GAME",
@@ -1253,7 +1286,7 @@ async function processWatcher(
       currentNotificationMessageId: messageId,
       gameStartedAt: new Date(activeGame.gameStartTime),
       lastCheckedAt: new Date(),
-      lastInGameNotifiedAt: new Date(),
+      lastInGameNotifiedAt: notifiedAt,
     });
     return;
   }
@@ -1323,7 +1356,8 @@ async function processMatchWatchers(client: Client) {
 
   warnIfRiotRequestBudgetRisk(result.watchers.length);
 
-  const context = createMatchWatcherProcessingContext(result.watchers);
+  const context = createMatchWatcherProcessingContext();
+  await seedMatchWatcherProcessingContext(context, result.watchers);
   for (const watcher of result.watchers) {
     try {
       await processWatcher(client, watcher, context);

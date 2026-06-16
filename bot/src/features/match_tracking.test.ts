@@ -290,10 +290,23 @@ describe("match_tracking.ts", () => {
 
     assertSpyCalls(sendSpy, 1);
     assertSpyCalls(editSpy, 1);
-    assertEquals(updateStub.calls.length, 2);
+    const target1FinalUpdate = updateStub.calls
+      .filter((call) => call.args[1] === "target-1")
+      .at(-1);
+    const target2FinalUpdate = updateStub.calls
+      .filter((call) => call.args[1] === "target-2")
+      .at(-1);
     assertEquals(
-      updateStub.calls.map((call) => call.args[2].currentNotificationMessageId),
-      ["message-new", "message-new"],
+      target1FinalUpdate?.args[2].currentNotificationMessageId,
+      "message-new",
+    );
+    assertEquals(
+      target2FinalUpdate?.args[2].currentNotificationMessageId,
+      "message-new",
+    );
+    assertEquals(
+      target1FinalUpdate?.args[2].lastInGameNotifiedAt instanceof Date,
+      true,
     );
     const editedEmbed = editSpy.calls[0].args[0].embeds[0].toJSON() as {
       description?: string;
@@ -916,6 +929,62 @@ describe("match_tracking.ts", () => {
     assertEquals(updateStub.calls.length, 3);
   });
 
+  test("同じguild/channel/gameIdでもRiot platformが違うとき、開始通知を統合しない", async () => {
+    let sendCount = 0;
+    const { client, sendSpy, editSpy } = clientWithSend(() => {
+      sendCount += 1;
+      return Promise.resolve({ id: `message-new-${sendCount}` });
+    });
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher({ targetDiscordId: "target-1" }),
+            watcher({ targetDiscordId: "target-2" }),
+          ],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      (discordId) =>
+        Promise.resolve({
+          success: true as const,
+          account: account({
+            discordId,
+            puuid: discordId === "target-1" ? "puuid-1" : "puuid-2",
+            gameName: discordId === "target-1" ? "Teemo" : "Tristana",
+            platform: discordId === "target-1" ? "jp1" : "kr",
+          }),
+        }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      (_platform, puuid) =>
+        Promise.resolve(
+          activeGameWithParticipants([puuid], 12345),
+        ),
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(sendSpy, 2);
+    assertSpyCalls(editSpy, 0);
+    assertEquals(
+      updateStub.calls.map((call) => call.args[2].currentNotificationMessageId),
+      ["message-new-1", "message-new-2"],
+    );
+  });
+
   test("試合中通知間隔を過ぎたとき、既存投稿を編集する", async () => {
     const originalInterval = Deno.env.get(
       "MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS",
@@ -1041,6 +1110,80 @@ describe("match_tracking.ts", () => {
       );
       assertEquals(
         target2NotificationSync?.args[2].currentNotificationMessageId,
+        "message-existing",
+      );
+    } finally {
+      if (originalInterval === undefined) {
+        Deno.env.delete("MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS");
+      } else {
+        Deno.env.set(
+          "MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS",
+          originalInterval,
+        );
+      }
+    }
+  });
+
+  test("IDLE監視対象の開始編集後、同一tickの既存監視対象は進捗編集で開始通知を上書きしない", async () => {
+    const originalInterval = Deno.env.get(
+      "MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS",
+    );
+    Deno.env.set("MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS", "300000");
+    try {
+      const { client, sendSpy, editSpy } = clientWithSend();
+      using _getWatchersStub = stub(
+        apiClient,
+        "getEnabledMatchWatchers",
+        () =>
+          Promise.resolve({
+            success: true as const,
+            watchers: [
+              watcher({ targetDiscordId: "target-2" }),
+              watcher({
+                targetDiscordId: "target-1",
+                lastState: "IN_GAME",
+                currentGameId: "12345",
+                currentNotificationMessageId: "message-existing",
+                lastInGameNotifiedAt: new Date(Date.now() - 10 * 60_000),
+              }),
+            ],
+          }),
+      );
+      using _getAccountStub = stub(
+        apiClient,
+        "getRiotAccount",
+        (discordId) =>
+          Promise.resolve({
+            success: true as const,
+            account: account({
+              discordId,
+              puuid: discordId === "target-1" ? "puuid-1" : "puuid-2",
+              gameName: discordId === "target-1" ? "Teemo" : "Tristana",
+            }),
+          }),
+      );
+      using _activeGameStub = stub(
+        riotApi,
+        "getActiveGameByPuuid",
+        () =>
+          Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
+      );
+      using updateStub = stub(
+        apiClient,
+        "updateMatchWatcherState",
+        () => Promise.resolve({ success: true as const }),
+      );
+
+      await matchTracker.processMatchWatchers(client);
+
+      assertSpyCalls(sendSpy, 0);
+      assertSpyCalls(editSpy, 1);
+      const target1NotificationSync = updateStub.calls.find((call) =>
+        call.args[1] === "target-1" &&
+        call.args[2].lastInGameNotifiedAt instanceof Date
+      );
+      assertEquals(
+        target1NotificationSync?.args[2].currentNotificationMessageId,
         "message-existing",
       );
     } finally {
@@ -2105,6 +2248,93 @@ describe("match_tracking.ts", () => {
       .at(-1);
     assertEquals(target2FinalUpdate?.args[2].currentGameId, "67890");
     assertEquals(target2FinalUpdate?.args[2].pendingResultMatchId, null);
+  });
+
+  test("gameId変更時の新試合開始編集後、同一tickの既存監視対象は進捗編集で開始通知を上書きしない", async () => {
+    const originalInterval = Deno.env.get(
+      "MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS",
+    );
+    Deno.env.set("MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS", "300000");
+    try {
+      const { client, sendSpy, editSpy } = clientWithSend();
+      using _getWatchersStub = stub(
+        apiClient,
+        "getEnabledMatchWatchers",
+        () =>
+          Promise.resolve({
+            success: true as const,
+            watchers: [
+              watcher({
+                targetDiscordId: "target-1",
+                lastState: "IN_GAME",
+                currentGameId: "12345",
+                currentNotificationMessageId: "message-old",
+                gameStartedAt: new Date(Date.now() - 120_000),
+              }),
+              watcher({
+                targetDiscordId: "target-2",
+                lastState: "IN_GAME",
+                currentGameId: "67890",
+                currentNotificationMessageId: "message-new-existing",
+                lastInGameNotifiedAt: new Date(Date.now() - 10 * 60_000),
+              }),
+            ],
+          }),
+      );
+      using _getAccountStub = stub(
+        apiClient,
+        "getRiotAccount",
+        (discordId) =>
+          Promise.resolve({
+            success: true as const,
+            account: account({
+              discordId,
+              puuid: discordId === "target-1" ? "puuid-1" : "puuid-2",
+              gameName: discordId === "target-1" ? "Teemo" : "Tristana",
+            }),
+          }),
+      );
+      using _activeGameStub = stub(
+        riotApi,
+        "getActiveGameByPuuid",
+        () =>
+          Promise.resolve(
+            activeGameWithParticipants(["puuid-1", "puuid-2"], 67890),
+          ),
+      );
+      using _getMatchStub = stub(
+        riotApi,
+        "getMatchById",
+        () => Promise.resolve(null),
+      );
+      using updateStub = stub(
+        apiClient,
+        "updateMatchWatcherState",
+        () => Promise.resolve({ success: true as const }),
+      );
+
+      await matchTracker.processMatchWatchers(client);
+
+      assertSpyCalls(sendSpy, 0);
+      assertSpyCalls(editSpy, 2);
+      const target2NotificationSync = updateStub.calls.find((call) =>
+        call.args[1] === "target-2" &&
+        call.args[2].lastInGameNotifiedAt instanceof Date
+      );
+      assertEquals(
+        target2NotificationSync?.args[2].currentNotificationMessageId,
+        "message-new-existing",
+      );
+    } finally {
+      if (originalInterval === undefined) {
+        Deno.env.delete("MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS");
+      } else {
+        Deno.env.set(
+          "MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS",
+          originalInterval,
+        );
+      }
+    }
   });
 
   test("pending resultがある状態でも現在の試合監視を継続する", async () => {
