@@ -168,11 +168,18 @@ function rememberActiveNotificationWatcher(
     return;
   }
 
+  const shouldKeepSyncedGroupMessageId = group.messageId !== null &&
+    existing.currentNotificationMessageId === group.messageId &&
+    watcher.currentNotificationMessageId !== group.messageId;
+  const currentNotificationMessageId = shouldKeepSyncedGroupMessageId
+    ? existing.currentNotificationMessageId
+    : watcher.currentNotificationMessageId ??
+      existing.currentNotificationMessageId;
+
   group.activeWatchers.set(watcher.targetDiscordId, {
     ...watcher,
     currentGameId: watcher.currentGameId ?? existing.currentGameId,
-    currentNotificationMessageId: watcher.currentNotificationMessageId ??
-      existing.currentNotificationMessageId,
+    currentNotificationMessageId,
     lastInGameNotifiedAt: newerDate(
       existing.lastInGameNotifiedAt,
       watcher.lastInGameNotifiedAt,
@@ -191,13 +198,6 @@ function rememberActiveNotificationMessage(
     new Set<string>();
   targetDiscordIds.add(watcher.targetDiscordId);
   group.messageIdTargetDiscordIds.set(messageId, targetDiscordIds);
-}
-
-function activeNotificationMessageOwnerCount(
-  group: ActiveNotificationGroup,
-  messageId: string,
-) {
-  return group.messageIdTargetDiscordIds.get(messageId)?.size ?? 0;
 }
 
 function newerDate(left: Date | null, right: Date | null) {
@@ -231,15 +231,20 @@ function resultNotificationMessageId(
   group: ActiveNotificationGroup | undefined,
   watcher: MatchWatcher,
 ) {
-  const watcherMessageId = watcher.currentNotificationMessageId;
-  const groupMessageId = group?.messageId ?? null;
-  const shouldPreserveWatcherMessageId = group && watcherMessageId &&
-    watcherMessageId !== groupMessageId &&
-    activeNotificationMessageOwnerCount(group, watcherMessageId) === 1;
-  const messageId = shouldPreserveWatcherMessageId
-    ? watcherMessageId
-    : groupMessageId ?? watcherMessageId;
-  if (!group || !messageId) return messageId ?? null;
+  if (!group) return watcher.currentNotificationMessageId ?? null;
+
+  const activeWatcher = group.activeWatchers.get(watcher.targetDiscordId);
+  const watcherMessageId = activeWatcher?.currentNotificationMessageId ??
+    watcher.currentNotificationMessageId;
+  const groupMessageId = group.messageId;
+  if (watcherMessageId && watcherMessageId !== groupMessageId) {
+    if (group.resultMessageIdsInUse.has(watcherMessageId)) return null;
+    group.resultMessageIdsInUse.add(watcherMessageId);
+    return watcherMessageId;
+  }
+
+  const messageId = groupMessageId ?? watcherMessageId;
+  if (!messageId) return null;
   if (group.resultMessageIdsInUse.has(messageId)) return null;
   group.resultMessageIdsInUse.add(messageId);
   return messageId;
@@ -291,6 +296,7 @@ async function updateActiveNotificationGroupMessage(
   messageId: string | null,
   notifiedAt?: Date,
 ) {
+  group.messageId = messageId;
   rememberActiveNotificationWatcher(group, {
     ...currentWatcher,
     lastState: "IN_GAME",
@@ -301,7 +307,6 @@ async function updateActiveNotificationGroupMessage(
       ? notifiedAt
       : currentWatcher.lastInGameNotifiedAt,
   });
-  group.messageId = messageId;
   rememberActiveNotificationMessage(group, currentWatcher, messageId);
   if (!messageId) {
     return;

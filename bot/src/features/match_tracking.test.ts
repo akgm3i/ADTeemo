@@ -1346,6 +1346,118 @@ describe("match_tracking.ts", () => {
     );
   });
 
+  test("primaryではない共有試合中投稿IDが残る移行状態の試合終了時、distinctな既存投稿を1回だけ結果通知に使う", async () => {
+    const resultMatch = match();
+    resultMatch.metadata.participants.push("puuid-2", "puuid-3");
+    resultMatch.info.participants.push(
+      {
+        puuid: "puuid-2",
+        championId: 18,
+        championName: "Tristana",
+        teamId: 100,
+        win: true,
+        kills: 2,
+        deaths: 1,
+        assists: 4,
+        totalMinionsKilled: 150,
+        neutralMinionsKilled: 8,
+        goldEarned: 9000,
+      },
+      {
+        puuid: "puuid-3",
+        championId: 19,
+        championName: "Warwick",
+        teamId: 100,
+        win: true,
+        kills: 3,
+        deaths: 2,
+        assists: 6,
+        totalMinionsKilled: 40,
+        neutralMinionsKilled: 120,
+        goldEarned: 8500,
+      },
+    );
+    const { client, sendSpy, fetchSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [
+            watcher({
+              targetDiscordId: "target-1",
+              currentGameId: "12345",
+              currentNotificationMessageId: "message-stale",
+              lastState: "IN_GAME",
+            }),
+            watcher({
+              targetDiscordId: "target-2",
+              currentGameId: "12345",
+              currentNotificationMessageId: "message-shared",
+              lastState: "IN_GAME",
+            }),
+            watcher({
+              targetDiscordId: "target-3",
+              currentGameId: "12345",
+              currentNotificationMessageId: "message-shared",
+              lastState: "IN_GAME",
+            }),
+          ],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      (discordId) =>
+        Promise.resolve({
+          success: true as const,
+          account: account({
+            discordId,
+            puuid: discordId === "target-1"
+              ? "puuid-1"
+              : discordId === "target-2"
+              ? "puuid-2"
+              : "puuid-3",
+            gameName: discordId === "target-1"
+              ? "Teemo"
+              : discordId === "target-2"
+              ? "Tristana"
+              : "Warwick",
+          }),
+        }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(null),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(resultMatch),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertSpyCalls(sendSpy, 1);
+    assertEquals(
+      fetchSpy.calls.map((call) => call.args[0]),
+      [
+        "message-stale",
+        "message-stale",
+        "message-shared",
+        "message-shared",
+        "message-new",
+      ],
+    );
+  });
+
   test("共有投稿IDを使ったpending結果通知が残っているとき、同じ試合の後続結果通知は共有投稿を上書きしない", async () => {
     const { client, sendSpy, fetchSpy } = clientWithSend();
     using _getWatchersStub = stub(
