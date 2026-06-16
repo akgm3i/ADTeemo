@@ -358,12 +358,18 @@ describe("match_tracking.ts", () => {
 
     const editedEmbed = editedEmbedJson(editSpy, 0);
     const activeChampions = editedEmbed.fields?.find((field) =>
-      field.name === "監視対象のチャンピオン"
+      field.name === messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.field.activeChampions,
+      )
     )?.value;
     assertStringIncludes(activeChampions ?? "", "<@target-1>: ティーモ");
     assertStringIncludes(activeChampions ?? "", "<@target-2>: トリスターナ");
     assertEquals(
-      editedEmbed.fields?.some((field) => field.name === "チャンピオン"),
+      editedEmbed.fields?.some((field) =>
+        field.name === messageHandler.formatMessage(
+          messageKeys.matchTracking.embed.field.champion,
+        )
+      ),
       false,
     );
     assertEquals(editedEmbed.footer?.text, "JP1 Game 12345");

@@ -129,23 +129,23 @@ Backend API は既定で `http://localhost:8000` に公開されます。
 
 ## Deno Tasks
 
-| Task                  | Description                                                        |
-| --------------------- | ------------------------------------------------------------------ |
-| `dev:all`             | API と Bot を開発モードで起動します。                              |
-| `dev:api`             | API のみ開発モードで起動します。                                   |
-| `dev:bot`             | Bot のみ開発モードで起動します。                                   |
-| `dev:deploy-commands` | `.env.dev` を使って slash command を登録します。                   |
-| `deploy-commands`     | `.env` を使って slash command を登録します。                       |
-| `fmt:check`           | フォーマット差分を確認します。                                     |
-| `lint`                | Deno lint を実行します。                                           |
-| `check`               | 主要 entrypoint の型チェックを実行します。                         |
-| `test:all`            | `.env.example` を読み込み、coverage 付きで全テストを実行します。   |
-| `test:riot-live`      | 実 Riot API で疎通確認を行います。通常は opt-in で使用します。     |
-| `quality`             | `fmt:check` / `lint` / `check` / `test:all` をまとめて実行します。 |
-| `check:messages`      | メッセージ定義の整合性を確認します。                               |
-| `db:push`             | Drizzle schema を DB に反映します。                                |
-| `db:generate`         | Drizzle migration を生成します。                                   |
-| `db:migrate`          | Drizzle migration を適用します。                                   |
+| Task                  | Description                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| `dev:all`             | API と Bot を開発モードで起動します。                                                 |
+| `dev:api`             | API のみ開発モードで起動します。                                                      |
+| `dev:bot`             | Bot のみ開発モードで起動します。                                                      |
+| `dev:deploy-commands` | `.env.dev` を使って slash command を登録します。                                      |
+| `deploy-commands`     | `.env` を使って slash command を登録します。                                          |
+| `fmt:check`           | フォーマット差分を確認します。                                                        |
+| `lint`                | Deno lint を実行します。                                                              |
+| `check`               | 主要 entrypoint の型チェックを実行します。                                            |
+| `test:all`            | `.env.example` を読み込み、coverage 付きで全テストを実行します。                      |
+| `test:riot-live`      | 実 Riot API で疎通確認を行います。通常は opt-in で使用します。                        |
+| `quality`             | `fmt:check` / `lint` / `check` / `check:messages` / `test:all` をまとめて実行します。 |
+| `check:messages`      | メッセージ定義の整合性を確認します。                                                  |
+| `db:push`             | Drizzle schema を DB に反映します。                                                   |
+| `db:generate`         | Drizzle migration を生成します。                                                      |
+| `db:migrate`          | Drizzle migration を適用します。                                                      |
 
 ## Docker
 

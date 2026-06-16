@@ -11,7 +11,15 @@
     "test:all": "deno test --allow-env --allow-read --allow-sys --allow-ffi --env-file=.env.example --coverage -q",
     "test:riot-live": "RIOT_LIVE_TEST=1 deno test --allow-env --allow-net --env-file=.env api/src/riot_api.live.test.ts",
     "test:allcov": "deno task test:all",
-    "quality": { "dependencies": ["fmt:check", "lint", "check", "test:all"] },
+    "quality": {
+      "dependencies": [
+        "fmt:check",
+        "lint",
+        "check",
+        "check:messages",
+        "test:all"
+      ]
+    },
     "check:messages": "deno run --allow-read messages/src/check-messages.ts",
     "deploy-commands": "deno run --allow-net --allow-read --allow-env --allow-sys --allow-ffi --env=.env bot/src/deploy-commands.ts",
     "db:push": "deno run --allow-env --allow-read --allow-sys --allow-run --allow-ffi --node-modules-dir npm:drizzle-kit push",
