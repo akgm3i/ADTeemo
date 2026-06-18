@@ -54,6 +54,8 @@ https://op.gg/lol/summoners/jp/MelMe-darda/matches/QEguKI3c-BliQRVFs9XNvOWxr_s52
 
 OP.GGの詳細ページHTMLには、対象試合データとして `id`, `created_at`, `game_name`, `tagline`, `puuid`, `participant_id` などが含まれていました。一方で、`id` はRiot Match-v5の `matchId` から推定できる形ではありませんでした。
 
+2026-06-19の追加確認でも、既知のOP.GG詳細ページHTML内に `JP1_...` のようなRiot Match-v5の `metadata.matchId` 形式は見つかりませんでした。OP.GG詳細ページのURL path上の `gameId` はOP.GG側の試合IDであり、Riot Match-v5の `matchId` とは別物として扱います。
+
 2026-06-18の追加確認では、`renewal` 実行後に `renewalStatus` が `RENEWAL_FINISH` を返し、プロフィールHTMLの `initUpdatedAt` も更新後時刻へ反映されることを確認しました。これにより、少なくとも確認時点ではブラウザ操作なしでOP.GG側のプロフィール更新を開始し、その後の通常ページ取得にも反映されることが分かっています。
 
 ## 実装可能性
@@ -189,6 +191,46 @@ OP.GG詳細リンク解決を有効にする場合は、次の順序にします
 9. それでも一致しなければ詳細リンクを省略する。
 
 外部呼び出しは短いtimeoutと回数上限を持ち、429 / 403 / HTML構造変更 / Server Action ID再抽出失敗時はログに残してfallbackします。
+
+### 試合照合条件
+
+OP.GG詳細データにはRiot Match-v5の `metadata.matchId` が確認できないため、照合は複合条件で行います。
+
+採用する方針:
+
+- 時刻許容差: Match-v5の `info.gameCreation` とOP.GG `created_at` の差を±120秒まで許容する。
+- 必須フィルタ条件:
+  - PUUIDが一致する。
+  - championが一致する。
+  - queueが一致する（マッピング可能な場合）。
+- 候補優先順位（フィルタ通過後）:
+  1. 試合作成時刻の差が小さい。
+  2. game lengthの差が小さい。
+- 複数候補が同順位で一意に決まらない場合、誤リンクを避けるためOP.GG詳細リンクを表示しない。
+
+この方針により、OP.GG側にRiot matchIdがない前提でも、誤った試合へのリンクを避けることを優先します。
+
+### 保存方針
+
+OP.GG連携で解決した結果は保存します。ただし、OP.GGの生レスポンスは保存せず、表示と再利用に必要な値だけを正規化して保存します。
+
+現行DBの `matches` はRiot Match-v5の `metadata.matchId` を主キーとするグローバルな試合テーブルです。`match_participants` はその試合に紐づくユーザー別のKDA / CS / Goldなどの戦績テーブルです。OP.GG由来データは外部provider由来で構造変更リスクがあるため、既存の `match_participants` に直接混ぜず、別テーブルに分けます。
+
+初期実装の保存方針:
+
+- `matches` にRiot Match-v5の `metadata.matchId` を保存し、OP.GG由来データの親にする。
+- match単位のOP.GG解決結果は、provider別の外部試合詳細テーブルに保存する。
+  - 例: `external_match_details`
+  - 主な列: `match_id`, `provider`, `provider_region`, `provider_match_id`, `detail_url`, `provider_created_at`, `average_tier`, `fetched_at`
+  - `provider + match_id` と `provider + provider_region + provider_match_id` は一意に扱う。
+- participant単位のOP.GG由来値は、provider別の外部参加者詳細テーブルに保存する。
+  - 例: `external_match_participant_details`
+  - 主な列: `match_id`, `provider`, `puuid`, `participant_id`, `lane_score`, `fetched_at`
+  - `provider + match_id + puuid` は一意に扱う。
+- `lane_score` と `average_tier` は取得できる場合だけ保存し、取得できない場合は `null` にする。
+- OP.GG raw JSON / RSC payload / HTMLは保存しない。
+
+この分離により、Riot Match-v5由来の戦績保存と、OP.GGの任意補助情報を独立して変更できます。
 
 ## 表示情報の優先順位
 
