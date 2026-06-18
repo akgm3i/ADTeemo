@@ -117,9 +117,34 @@ https://op.gg/ja/lol/summoners/jp/MelMe-darda/matches/QEguKI3c-BkyrIVYCjA57hxpJB
 
 - Playwright等でOP.GGを開き、DOMを操作する方式は採用しない。Discord Botの常駐処理にブラウザ自動操作を入れると、実行環境、rate limit、CAPTCHA、UI変更の影響を受けやすい。
 - OP.GG Server Actionは公開APIではないため、本番の必須経路にはしない。
+- 2026-06-18時点で、OP.GGの `robots.txt` は `User-agent: *` に対して `/` を許可している。さらにOP.GGヘルプセンターの「OP.GGデータを使用できますか？」では、一般的にデータクロールやウェブスクレイピングを禁止していないと説明されている。一方で、出典明記なしの商業利用や、過剰リクエストによってサービス運営に影響する場合はアクセス制限され得るため、低頻度・出典明記・fallback前提で扱う。
+  - 参考: https://help.op.gg/hc/ja/articles/31091405109401-OP-GG%E3%83%87%E3%83%BC%E3%82%BF%E3%82%92%E4%BD%BF%E7%94%A8%E3%81%A7%E3%81%8D%E3%81%BE%E3%81%99%E3%81%8B
 - OP.GG側の更新処理はOP.GGの状態と更新可能時刻に依存する。`renewal` を使う場合でも、3秒後に `renewalStatus` を1回確認して `RENEWAL_FINISH` でなければ詳細リンクを諦める。
 - `renewalStatus` もOP.GG側の状態を返すため、完全な読み取り専用処理とは見なさない。
 - プロフィールページを戦績詳細URLとして扱うことはしない。プロフィールリンクへのfallbackも行わない。
+
+### 運用リスク方針
+
+OP.GG連携を実装する場合でも、次の方針で影響範囲を限定します。
+
+- ログ:
+  - `OPGG_ENABLED=false`、該当試合なし、OP.GG上で更新不可の場合は通常ログを出さない。
+  - Action ID抽出失敗、レスポンスschema不一致、403 / 429、timeoutは `warn` とする。
+  - 想定外例外のみ `error` とする。
+- `renewal` 抑制:
+  - 初期実装ではプロセス内メモリで、同じ `region + puuid` に対する短時間の `renewal` 連打だけを抑制する。
+  - DB永続化や分散ロックは、複数Botプロセスで運用する必要が出た場合に再検討する。
+- Action ID:
+  - 初回抽出に失敗した場合はOP.GG情報なしでfallbackする。
+  - 保持済みAction IDで失敗した場合は再抽出して1回だけ再試行する。
+- fixture:
+  - OP.GGのHTML全体ではなく、Action ID抽出に必要な最小HTML/chunk断片をfixture化する。
+  - `getGames` / `getGame` は表示と照合に必要な最小レスポンスをfixture化する。
+
+未決事項:
+
+- OP.GG連携を実装する場合、OP.GGを出典としてどの表示位置に明記するか。
+- 「過剰なリクエスト」を避けるためのプロセス内抑制に加えて、将来ギルド単位・ユーザー単位の抑制が必要になるか。
 
 ### Action IDの解決
 
