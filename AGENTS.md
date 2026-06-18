@@ -83,7 +83,7 @@ deno task quality
 
 ## GitHub / Issue Rules
 
-- GitHub issue / PR情報を確認する場合は、まずGitHub connectorを使います。
+- GitHub関連情報を確認する場合は、まずGitHub connectorを使います。
 - connectorで取得できない情報、Actions log、ローカルブランチとPRの対応確認などが必要な場合のみ `gh` CLIを使います。
 - issueが詳細追跡の正です。`TASKS.md` は要約Roadmapとissue化前の技術課題だけを残します。
 - 作業完了時は関連issueを更新し、必要に応じて `TASKS.md` の要約も同期します。
