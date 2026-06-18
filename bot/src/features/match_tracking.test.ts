@@ -1862,6 +1862,95 @@ describe("match_tracking.ts", () => {
     );
   });
 
+  test("試合結果Embedに外部戦績ページへのリンクを表示する", async () => {
+    const { client, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "IN_GAME",
+            currentGameId: "12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(null),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 1, "戦績リンク"),
+      "[OP.GG](https://www.op.gg/summoners/jp/Teemo-JP1)",
+    );
+  });
+
+  test("試合中Embedに外部戦績ページへのリンクを表示する", async () => {
+    const { client, sendSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher()],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(activeGame()),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    const sentMessage = sendSpy.calls[0].args[0] as {
+      embeds: {
+        data: {
+          fields?: { name: string; value: string }[];
+        };
+      }[];
+    };
+    const profileLinks = sentMessage.embeds[0].data.fields?.find((field) =>
+      field.name === "戦績リンク"
+    )?.value;
+    assertEquals(
+      profileLinks,
+      "[OP.GG](https://www.op.gg/summoners/jp/Teemo-JP1)",
+    );
+  });
+
   test("試合結果Embedの追加戦績は試合時間やチームキルが不足してもfallback表示にする", async () => {
     const resultMatch = match();
     resultMatch.info.gameDuration = 0;

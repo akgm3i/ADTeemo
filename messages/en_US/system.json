@@ -150,7 +150,8 @@
         "cs": "CS",
         "csPerMinute": "CS/min",
         "killParticipation": "Kill Participation",
-        "gold": "Gold"
+        "gold": "Gold",
+        "profileLinks": "Profile Links"
       },
       "fallback": {
         "unknownChampion": "Unknown champion",

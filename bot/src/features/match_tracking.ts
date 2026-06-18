@@ -5,6 +5,7 @@ import { riotStaticData } from "@adteemo/api/riot-static-data";
 import { apiClient } from "../api_client.ts";
 import { botLogger } from "../logger.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
+import { formatProfileLinks } from "./external_profile_links.ts";
 
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
 const DEFAULT_IN_GAME_NOTIFY_INTERVAL_MS = 300_000;
@@ -52,6 +53,7 @@ type PendingResult = {
 type ActiveGameTargetDetail = {
   targetDiscordId: string;
   champion: string;
+  profileLinks: string | null;
 };
 
 function numberEnv(name: string, fallback: number) {
@@ -585,6 +587,7 @@ async function activeGameTargetDetails(
       details.push({
         targetDiscordId,
         champion: await championNameById(undefined),
+        profileLinks: null,
       });
       continue;
     }
@@ -595,6 +598,7 @@ async function activeGameTargetDetails(
     details.push({
       targetDiscordId,
       champion: await championNameById(participant?.championId),
+      profileLinks: formatProfileLinks(accountResult.account),
     });
   }
   return details;
@@ -624,6 +628,27 @@ function formatKillParticipation(
   return `${
     (((participantKills + participantAssists) / teamKills) * 100).toFixed(1)
   }%`;
+}
+
+function profileLinksField(
+  targets: Pick<ActiveGameTargetDetail, "targetDiscordId" | "profileLinks">[],
+) {
+  const links = targets
+    .filter((target) => target.profileLinks)
+    .map((target) =>
+      targets.length === 1
+        ? target.profileLinks!
+        : `<@${target.targetDiscordId}>: ${target.profileLinks}`
+    );
+  if (links.length === 0) return null;
+
+  return {
+    name: messageHandler.formatMessage(
+      messageKeys.matchTracking.embed.field.profileLinks,
+    ),
+    value: links.join("\n"),
+    inline: false,
+  };
 }
 
 function currentStateFromWatcher(watcher: MatchWatcher): WatcherState {
@@ -683,9 +708,11 @@ async function buildActiveGameEmbed(
     : messageHandler.formatMessage(
       messageKeys.matchTracking.embed.active.progressTitle,
     );
-  const targets = targetDetails?.length
-    ? targetDetails
-    : [{ targetDiscordId: watcher.targetDiscordId, champion }];
+  const targets = targetDetails?.length ? targetDetails : [{
+    targetDiscordId: watcher.targetDiscordId,
+    champion,
+    profileLinks: formatProfileLinks(account),
+  }];
   const description = messageHandler.formatMessage(
     messageKeys.matchTracking.embed.active.description,
     {
@@ -727,7 +754,8 @@ async function buildActiveGameEmbed(
       },
     );
 
-  return new EmbedBuilder()
+  const profileLinkField = profileLinksField(targets);
+  const embed = new EmbedBuilder()
     .setTitle(title)
     .setDescription(description)
     .setColor(kind === "started" ? 0x2ecc71 : 0x3498db)
@@ -764,7 +792,11 @@ async function buildActiveGameEmbed(
         ),
         inline: true,
       },
-    )
+    );
+  if (profileLinkField) {
+    embed.addFields(profileLinkField);
+  }
+  return embed
     .setFooter({
       text: footerText,
     })
@@ -868,10 +900,11 @@ async function buildMatchResultEmbed(
   const queue = await queueName(match.info.queueId);
   const map = await mapName(match.info.mapId);
   const mode = await gameModeName(match.info.gameMode);
+  const profileLinks = formatProfileLinks(account);
   const result = participant.win
     ? messageHandler.formatMessage(messageKeys.matchTracking.embed.result.win)
     : messageHandler.formatMessage(messageKeys.matchTracking.embed.result.loss);
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setTitle(
       messageHandler.formatMessage(
         messageKeys.matchTracking.embed.result.title,
@@ -950,7 +983,17 @@ async function buildMatchResultEmbed(
         value: mode,
         inline: true,
       },
-    )
+    );
+  if (profileLinks) {
+    embed.addFields({
+      name: messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.field.profileLinks,
+      ),
+      value: profileLinks,
+      inline: false,
+    });
+  }
+  return embed
     .setFooter({
       text: messageHandler.formatMessage(
         messageKeys.matchTracking.embed.footer.matchWithRiotId,

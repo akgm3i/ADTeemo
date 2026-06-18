@@ -150,7 +150,8 @@
         "cs": "CS",
         "csPerMinute": "CS/min",
         "killParticipation": "キル関与率",
-        "gold": "Gold"
+        "gold": "Gold",
+        "profileLinks": "戦績リンク"
       },
       "fallback": {
         "unknownChampion": "チャンピオン不明",
