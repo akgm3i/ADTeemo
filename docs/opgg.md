@@ -199,12 +199,13 @@ OP.GG詳細データにはRiot Match-v5の `metadata.matchId` が確認できな
 採用する方針:
 
 - 時刻許容差: Match-v5の `info.gameCreation` とOP.GG `created_at` の差を±120秒まで許容する。
-- 候補優先順位:
-  1. PUUIDが一致する。
-  2. queueが一致する。
-  3. championが一致する。
-  4. 試合作成時刻の差が小さい。
-  5. game lengthの差が小さい。
+- 必須フィルタ条件:
+  - PUUIDが一致する。
+  - championが一致する。
+  - queueが一致する（マッピング可能な場合）。
+- 候補優先順位（フィルタ通過後）:
+  1. 試合作成時刻の差が小さい。
+  2. game lengthの差が小さい。
 - 複数候補が同順位で一意に決まらない場合、誤リンクを避けるためOP.GG詳細リンクを表示しない。
 
 この方針により、OP.GG側にRiot matchIdがない前提でも、誤った試合へのリンクを避けることを優先します。
