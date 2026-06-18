@@ -117,6 +117,43 @@ describe("riot_api.ts", () => {
     assertSpyCalls(fetchStub, 1);
   });
 
+  test("League-v4がランクentryを返すとき、queueとLPをparseする", async () => {
+    // Arrange
+    Deno.env.set("RIOT_API_KEY", "test-key");
+    using fetchStub = stub(
+      globalThis,
+      "fetch",
+      (input) => {
+        const url = new URL(String(input));
+        assertEquals(
+          url.pathname,
+          "/lol/league/v4/entries/by-puuid/puuid-1",
+        );
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([{
+              queueType: "RANKED_SOLO_5x5",
+              tier: "EMERALD",
+              rank: "IV",
+              leaguePoints: 19,
+              wins: 11,
+              losses: 8,
+            }]),
+            { status: 200 },
+          ),
+        );
+      },
+    );
+
+    // Act
+    const entries = await riotApi.getLeagueEntriesByPuuid("jp1", "puuid-1");
+
+    // Assert
+    assertEquals(entries[0].queueType, "RANKED_SOLO_5x5");
+    assertEquals(entries[0].leaguePoints, 19);
+    assertSpyCalls(fetchStub, 1);
+  });
+
   test("Riot APIが429を返したあと成功するとき、再試行して結果を返す", async () => {
     Deno.env.set("RIOT_API_KEY", "test-key");
     let calls = 0;

@@ -62,6 +62,15 @@ const matchSchema = z.object({
   }).passthrough(),
 }).passthrough();
 
+const leagueEntrySchema = z.object({
+  queueType: z.string(),
+  tier: z.string().optional(),
+  rank: z.string().optional(),
+  leaguePoints: z.number().int(),
+  wins: z.number().int(),
+  losses: z.number().int(),
+}).passthrough();
+
 function riotApiKey() {
   const apiKey = Deno.env.get("RIOT_API_KEY");
   if (!apiKey) {
@@ -163,6 +172,10 @@ function normalizeMethodKey(url: URL) {
   path = path.replace(
     /\/lol\/match\/v5\/matches\/[^/]+$/,
     "/lol/match/v5/matches/:matchId",
+  );
+  path = path.replace(
+    /\/lol\/league\/v4\/entries\/by-puuid\/[^/]+$/,
+    "/lol/league/v4/entries/by-puuid/:puuid",
   );
   path = path.replace(
     /\/riot\/account\/v1\/accounts\/by-riot-id\/[^/]+\/[^/]+$/,
@@ -409,10 +422,22 @@ async function getMatchById(region: RiotRegion, matchId: string) {
   return matchSchema.parse(data);
 }
 
+async function getLeagueEntriesByPuuid(platform: RiotPlatform, puuid: string) {
+  const url = new URL(
+    `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${
+      encodeURIComponent(puuid)
+    }`,
+  );
+  const data = await fetchRiotJson(url, { notFoundAsNull: true });
+  if (!data) return [];
+  return z.array(leagueEntrySchema).parse(data);
+}
+
 export const riotApi = {
   getAccountByRiotId,
   getActiveGameByPuuid,
   getMatchById,
+  getLeagueEntriesByPuuid,
   __testing: {
     resetRateLimiter() {
       appBuckets.clear();

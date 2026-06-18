@@ -139,6 +139,10 @@
         "win": "勝利",
         "loss": "敗北"
       },
+      "rank": {
+        "current": "現在: {rank}",
+        "delta": "LP: {delta}\n{before} -> {after}"
+      },
       "field": {
         "champion": "チャンピオン",
         "activeChampions": "監視対象のチャンピオン",
@@ -150,7 +154,8 @@
         "cs": "CS",
         "csPerMinute": "CS/min",
         "killParticipation": "キル関与率",
-        "gold": "Gold"
+        "gold": "Gold",
+        "rank": "ランク"
       },
       "fallback": {
         "unknownChampion": "チャンピオン不明",

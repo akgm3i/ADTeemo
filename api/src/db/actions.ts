@@ -9,8 +9,11 @@ import {
   type Lane,
   matches,
   matchParticipants,
+  matchRankSnapshots,
   matchWatchers,
   type MatchWatcherState,
+  pendingMatchRankSnapshots,
+  type RankedQueueType,
   riotAccounts,
   type RiotPlatform,
   type RiotRegion,
@@ -28,8 +31,13 @@ const userGuildProfileInsertSchema = createInsertSchema(userGuildProfiles);
 const customGameEventInsertSchema = createInsertSchema(customGameEvents);
 const matchParticipantInsertSchema = createInsertSchema(matchParticipants);
 const matchWatcherInsertSchema = createInsertSchema(matchWatchers);
+const pendingMatchRankSnapshotInsertSchema = createInsertSchema(
+  pendingMatchRankSnapshots,
+);
+const matchRankSnapshotInsertSchema = createInsertSchema(matchRankSnapshots);
 
 const DEFAULT_MATCH_WATCH_MAX_ENABLED_PER_GUILD = 20;
+const DEFAULT_PENDING_RANK_SNAPSHOT_TTL_MS = 6 * 60 * 60 * 1000;
 
 function numberEnv(name: string, fallback: number) {
   const value = Number(Deno.env.get(name));
@@ -168,6 +176,170 @@ async function createMatchParticipant(
     id: matchParticipants.id,
   });
   return result[0];
+}
+
+type RankSnapshotPayload = {
+  queueType: RankedQueueType;
+  tier: string | null;
+  rank: string | null;
+  leaguePoints: number | null;
+  wins: number | null;
+  losses: number | null;
+  fetchedAt?: Date;
+};
+
+function pendingRankSnapshotExpiresAt(fetchedAt: Date) {
+  return new Date(fetchedAt.getTime() + DEFAULT_PENDING_RANK_SNAPSHOT_TTL_MS);
+}
+
+async function upsertPendingRankSnapshots(input: {
+  platform: RiotPlatform;
+  gameId: string;
+  puuid: string;
+  snapshots: RankSnapshotPayload[];
+}) {
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    for (const snapshot of input.snapshots) {
+      const fetchedAt = snapshot.fetchedAt ?? now;
+      const payload = pendingMatchRankSnapshotInsertSchema.parse({
+        platform: input.platform,
+        gameId: input.gameId,
+        puuid: input.puuid,
+        queueType: snapshot.queueType,
+        tier: snapshot.tier,
+        rank: snapshot.rank,
+        leaguePoints: snapshot.leaguePoints,
+        wins: snapshot.wins,
+        losses: snapshot.losses,
+        fetchedAt,
+        expiresAt: pendingRankSnapshotExpiresAt(fetchedAt),
+      });
+      await tx.insert(pendingMatchRankSnapshots).values(payload)
+        .onConflictDoUpdate({
+          target: [
+            pendingMatchRankSnapshots.platform,
+            pendingMatchRankSnapshots.gameId,
+            pendingMatchRankSnapshots.puuid,
+            pendingMatchRankSnapshots.queueType,
+          ],
+          set: {
+            tier: payload.tier,
+            rank: payload.rank,
+            leaguePoints: payload.leaguePoints,
+            wins: payload.wins,
+            losses: payload.losses,
+            fetchedAt: payload.fetchedAt,
+            expiresAt: payload.expiresAt,
+          },
+        }).execute();
+    }
+  });
+}
+
+async function finalizeMatchRankSnapshots(input: {
+  matchId: string;
+  platform: RiotPlatform;
+  gameId: string;
+  puuid: string;
+  snapshots: RankSnapshotPayload[];
+}) {
+  return await db.transaction(async (tx) => {
+    await tx.insert(matches).values({ id: input.matchId })
+      .onConflictDoNothing()
+      .execute();
+
+    const beforeSnapshots = await tx.query.pendingMatchRankSnapshots.findMany({
+      where: and(
+        eq(pendingMatchRankSnapshots.platform, input.platform),
+        eq(pendingMatchRankSnapshots.gameId, input.gameId),
+        eq(pendingMatchRankSnapshots.puuid, input.puuid),
+      ),
+    });
+
+    const savedBefore = [];
+    for (const snapshot of beforeSnapshots) {
+      const payload = matchRankSnapshotInsertSchema.parse({
+        matchId: input.matchId,
+        platform: snapshot.platform,
+        puuid: snapshot.puuid,
+        queueType: snapshot.queueType,
+        phase: "before",
+        tier: snapshot.tier,
+        rank: snapshot.rank,
+        leaguePoints: snapshot.leaguePoints,
+        wins: snapshot.wins,
+        losses: snapshot.losses,
+        fetchedAt: snapshot.fetchedAt,
+      });
+      const [saved] = await tx.insert(matchRankSnapshots).values(payload)
+        .onConflictDoUpdate({
+          target: [
+            matchRankSnapshots.matchId,
+            matchRankSnapshots.puuid,
+            matchRankSnapshots.queueType,
+            matchRankSnapshots.phase,
+          ],
+          set: {
+            tier: payload.tier,
+            rank: payload.rank,
+            leaguePoints: payload.leaguePoints,
+            wins: payload.wins,
+            losses: payload.losses,
+            fetchedAt: payload.fetchedAt,
+          },
+        })
+        .returning();
+      savedBefore.push(saved);
+    }
+
+    const savedAfter = [];
+    const now = new Date();
+    for (const snapshot of input.snapshots) {
+      const payload = matchRankSnapshotInsertSchema.parse({
+        matchId: input.matchId,
+        platform: input.platform,
+        puuid: input.puuid,
+        queueType: snapshot.queueType,
+        phase: "after",
+        tier: snapshot.tier,
+        rank: snapshot.rank,
+        leaguePoints: snapshot.leaguePoints,
+        wins: snapshot.wins,
+        losses: snapshot.losses,
+        fetchedAt: snapshot.fetchedAt ?? now,
+      });
+      const [saved] = await tx.insert(matchRankSnapshots).values(payload)
+        .onConflictDoUpdate({
+          target: [
+            matchRankSnapshots.matchId,
+            matchRankSnapshots.puuid,
+            matchRankSnapshots.queueType,
+            matchRankSnapshots.phase,
+          ],
+          set: {
+            tier: payload.tier,
+            rank: payload.rank,
+            leaguePoints: payload.leaguePoints,
+            wins: payload.wins,
+            losses: payload.losses,
+            fetchedAt: payload.fetchedAt,
+          },
+        })
+        .returning();
+      savedAfter.push(saved);
+    }
+
+    await tx.delete(pendingMatchRankSnapshots).where(
+      and(
+        eq(pendingMatchRankSnapshots.platform, input.platform),
+        eq(pendingMatchRankSnapshots.gameId, input.gameId),
+        eq(pendingMatchRankSnapshots.puuid, input.puuid),
+      ),
+    ).execute();
+
+    return { before: savedBefore, after: savedAfter };
+  });
 }
 
 async function getAuthState(state: string) {
@@ -392,6 +564,8 @@ export const dbActions = {
   deleteCustomGameEventByDiscordEventId,
   getEventStartingTodayByCreatorId,
   createMatchParticipant,
+  upsertPendingRankSnapshots,
+  finalizeMatchRankSnapshots,
   getAuthState,
   deleteAuthState,
   updateUserRiotId,

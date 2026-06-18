@@ -3,6 +3,7 @@ import {
   primaryKey,
   sqliteTable,
   text,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import { type InferSelectModel, relations } from "drizzle-orm";
 
@@ -35,6 +36,13 @@ export const matchWatcherStates = [
   "FETCHING_RESULT",
 ] as const;
 export type MatchWatcherState = (typeof matchWatcherStates)[number];
+export const rankedQueueTypes = [
+  "RANKED_SOLO_5x5",
+  "RANKED_FLEX_SR",
+] as const;
+export type RankedQueueType = (typeof rankedQueueTypes)[number];
+export const rankSnapshotPhases = ["before", "after"] as const;
+export type RankSnapshotPhase = (typeof rankSnapshotPhases)[number];
 
 export const guilds = sqliteTable("guilds", {
   id: text("id").primaryKey(),
@@ -126,6 +134,58 @@ export const matchParticipants = sqliteTable("match_participants", {
   gold: integer("gold").notNull(),
 });
 
+export const pendingMatchRankSnapshots = sqliteTable(
+  "pending_match_rank_snapshots",
+  {
+    platform: text("platform", { enum: riotPlatforms }).notNull(),
+    gameId: text("game_id").notNull(),
+    puuid: text("puuid").notNull(),
+    queueType: text("queue_type", { enum: rankedQueueTypes }).notNull(),
+    tier: text("tier"),
+    rank: text("rank"),
+    leaguePoints: integer("league_points"),
+    wins: integer("wins"),
+    losses: integer("losses"),
+    fetchedAt: integer("fetched_at", { mode: "timestamp" }).notNull()
+      .$defaultFn(() => new Date()),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      columns: [table.platform, table.gameId, table.puuid, table.queueType],
+    }),
+  }),
+);
+
+export const matchRankSnapshots = sqliteTable(
+  "match_rank_snapshots",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    matchId: text("match_id").notNull().references(() => matches.id, {
+      onDelete: "cascade",
+    }),
+    puuid: text("puuid").notNull(),
+    platform: text("platform", { enum: riotPlatforms }).notNull(),
+    queueType: text("queue_type", { enum: rankedQueueTypes }).notNull(),
+    phase: text("phase", { enum: rankSnapshotPhases }).notNull(),
+    tier: text("tier"),
+    rank: text("rank"),
+    leaguePoints: integer("league_points"),
+    wins: integer("wins"),
+    losses: integer("losses"),
+    fetchedAt: integer("fetched_at", { mode: "timestamp" }).notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => ({
+    uniqueSnapshot: uniqueIndex("match_rank_snapshots_unique_snapshot").on(
+      table.matchId,
+      table.puuid,
+      table.queueType,
+      table.phase,
+    ),
+  }),
+);
+
 export const customGameEvents = sqliteTable("custom_game_events", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -193,6 +253,10 @@ export type Event = InferSelectModel<typeof customGameEvents>;
 export type RiotAccount = InferSelectModel<typeof riotAccounts>;
 export type RiotStaticDataCache = InferSelectModel<typeof riotStaticDataCache>;
 export type MatchWatcher = InferSelectModel<typeof matchWatchers>;
+export type PendingMatchRankSnapshot = InferSelectModel<
+  typeof pendingMatchRankSnapshots
+>;
+export type MatchRankSnapshot = InferSelectModel<typeof matchRankSnapshots>;
 
 // --- RELATIONS ---
 
@@ -226,6 +290,7 @@ export const userGuildProfilesRelations = relations(
 
 export const matchesRelations = relations(matches, ({ many }) => ({
   participants: many(matchParticipants),
+  rankSnapshots: many(matchRankSnapshots),
 }));
 
 export const matchParticipantsRelations = relations(
@@ -238,6 +303,16 @@ export const matchParticipantsRelations = relations(
     user: one(users, {
       fields: [matchParticipants.userId],
       references: [users.discordId],
+    }),
+  }),
+);
+
+export const matchRankSnapshotsRelations = relations(
+  matchRankSnapshots,
+  ({ one }) => ({
+    match: one(matches, {
+      fields: [matchRankSnapshots.matchId],
+      references: [matches.id],
     }),
   }),
 );

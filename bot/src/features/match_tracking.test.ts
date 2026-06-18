@@ -116,6 +116,17 @@ function match() {
   };
 }
 
+function leagueEntries(leaguePoints = 19) {
+  return [{
+    queueType: "RANKED_SOLO_5x5",
+    tier: "EMERALD",
+    rank: "IV",
+    leaguePoints,
+    wins: 11,
+    losses: 8,
+  }];
+}
+
 function clientWithSend(
   send: (options: unknown) => Promise<unknown> = () =>
     Promise.resolve({ id: "message-new" }),
@@ -246,6 +257,71 @@ describe("match_tracking.ts", () => {
       updateStub.calls[0].args[2].currentNotificationMessageId,
       "message-new",
     );
+  });
+
+  test("ランク対象queueの試合開始を検知したとき、試合前ランクスナップショットを一時保存する", async () => {
+    // Arrange
+    const { client } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () => Promise.resolve({ success: true as const, watchers: [watcher()] }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(activeGame()),
+    );
+    using _leagueStub = stub(
+      riotApi,
+      "getLeagueEntriesByPuuid",
+      () => Promise.resolve(leagueEntries(2)),
+    );
+    using pendingRankStub = stub(
+      apiClient,
+      "upsertPendingRankSnapshots",
+      () => Promise.resolve({ success: true as const }),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    // Act
+    await matchTracker.processMatchWatchers(client);
+
+    // Assert
+    assertSpyCalls(pendingRankStub, 1);
+    const payload = pendingRankStub.calls[0].args[0];
+    assertEquals(payload.platform, "jp1");
+    assertEquals(payload.gameId, "12345");
+    assertEquals(payload.puuid, "puuid-1");
+    assertEquals(payload.snapshots[0], {
+      queueType: "RANKED_SOLO_5x5",
+      tier: "EMERALD",
+      rank: "IV",
+      leaguePoints: 2,
+      wins: 11,
+      losses: 8,
+      fetchedAt: payload.snapshots[0].fetchedAt,
+    });
+    assertEquals(payload.snapshots[0].fetchedAt instanceof Date, true);
+    assertEquals(payload.snapshots[1], {
+      queueType: "RANKED_FLEX_SR",
+      tier: null,
+      rank: null,
+      leaguePoints: null,
+      wins: null,
+      losses: null,
+      fetchedAt: payload.snapshots[1].fetchedAt,
+    });
+    assertEquals(payload.snapshots[1].fetchedAt instanceof Date, true);
   });
 
   test("同じギルドとチャンネルで複数の監視対象が同じ試合を開始したとき、開始通知を1回だけ送り同じ投稿IDへ更新する", async () => {
@@ -1859,6 +1935,100 @@ describe("match_tracking.ts", () => {
     assertEquals(
       editedEmbedFieldValue(editSpy, 1, "キル関与率"),
       "60.0%",
+    );
+  });
+
+  test("ランク対象queueの試合結果EmbedにLP差分と現在ランクを表示する", async () => {
+    // Arrange
+    const { client, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "IN_GAME",
+            currentGameId: "12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(null),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using _leagueStub = stub(
+      riotApi,
+      "getLeagueEntriesByPuuid",
+      () => Promise.resolve(leagueEntries(19)),
+    );
+    using _finalizeRankStub = stub(
+      apiClient,
+      "finalizeRankSnapshots",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          snapshots: {
+            before: [{
+              matchId: "JP1_12345",
+              platform: "jp1",
+              puuid: "puuid-1",
+              queueType: "RANKED_SOLO_5x5",
+              phase: "before",
+              tier: "EMERALD",
+              rank: "IV",
+              leaguePoints: 2,
+              wins: 10,
+              losses: 8,
+              fetchedAt: new Date("2026-01-01T00:00:00.000Z"),
+            }],
+            after: [{
+              matchId: "JP1_12345",
+              platform: "jp1",
+              puuid: "puuid-1",
+              queueType: "RANKED_SOLO_5x5",
+              phase: "after",
+              tier: "EMERALD",
+              rank: "IV",
+              leaguePoints: 19,
+              wins: 11,
+              losses: 8,
+              fetchedAt: new Date("2026-01-01T00:10:00.000Z"),
+            }],
+          },
+        }),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    // Act
+    await matchTracker.processMatchWatchers(client);
+
+    // Assert
+    assertEquals(
+      editedEmbedFieldValue(
+        editSpy,
+        1,
+        messageHandler.formatMessage(
+          messageKeys.matchTracking.embed.field.rank,
+        ),
+      ),
+      "LP: +17\nEmerald IV 2LP -> Emerald IV 19LP",
     );
   });
 

@@ -205,6 +205,126 @@ describe("apiClient", () => {
     });
   });
 
+  describe("upsertPendingRankSnapshots", () => {
+    test("beforeスナップショット保存APIが204を返すと、成功ステータスを返す", async () => {
+      // Arrange
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () => Promise.resolve(new Response(null, { status: 204 })),
+      );
+      const payload = {
+        platform: "jp1" as const,
+        gameId: "12345",
+        puuid: "puuid-1",
+        snapshots: [{
+          queueType: "RANKED_SOLO_5x5" as const,
+          tier: "EMERALD",
+          rank: "IV",
+          leaguePoints: 2,
+          wins: 10,
+          losses: 8,
+        }],
+      };
+
+      // Act
+      const result = await apiClient.upsertPendingRankSnapshots(payload);
+
+      // Assert
+      assertEquals(result.success, true);
+      assertSpyCalls(fetchStub, 1);
+      const [url, init] = fetchStub.calls[0].args;
+      assertEquals(
+        url,
+        `${Deno.env.get("API_URL")}/matches/rank-snapshots/pending`,
+      );
+      assertEquals(init?.method, "POST");
+      assertEquals(init?.body, JSON.stringify(payload));
+    });
+  });
+
+  describe("finalizeRankSnapshots", () => {
+    test("afterスナップショット保存APIがbefore/afterを返すと、fetchedAtをDateへ変換する", async () => {
+      // Arrange
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () =>
+          Promise.resolve(
+            new Response(
+              JSON.stringify({
+                snapshots: {
+                  before: [{
+                    matchId: "JP1_12345",
+                    puuid: "puuid-1",
+                    platform: "jp1",
+                    queueType: "RANKED_SOLO_5x5",
+                    phase: "before",
+                    tier: "EMERALD",
+                    rank: "IV",
+                    leaguePoints: 2,
+                    wins: 10,
+                    losses: 8,
+                    fetchedAt: "2026-01-01T00:00:00.000Z",
+                  }],
+                  after: [{
+                    matchId: "JP1_12345",
+                    puuid: "puuid-1",
+                    platform: "jp1",
+                    queueType: "RANKED_SOLO_5x5",
+                    phase: "after",
+                    tier: "EMERALD",
+                    rank: "IV",
+                    leaguePoints: 19,
+                    wins: 11,
+                    losses: 8,
+                    fetchedAt: "2026-01-01T00:10:00.000Z",
+                  }],
+                },
+              }),
+              { status: 200 },
+            ),
+          ),
+      );
+      const payload = {
+        platform: "jp1" as const,
+        gameId: "12345",
+        puuid: "puuid-1",
+        snapshots: [{
+          queueType: "RANKED_SOLO_5x5" as const,
+          tier: "EMERALD",
+          rank: "IV",
+          leaguePoints: 19,
+          wins: 11,
+          losses: 8,
+        }],
+      };
+
+      // Act
+      const result = await apiClient.finalizeRankSnapshots(
+        "JP1_12345",
+        payload,
+      );
+
+      // Assert
+      assertEquals(result.success, true);
+      if (!result.success) return;
+      assertEquals(
+        result.snapshots.before[0].fetchedAt,
+        new Date("2026-01-01T00:00:00.000Z"),
+      );
+      assertEquals(result.snapshots.after[0].leaguePoints, 19);
+      assertSpyCalls(fetchStub, 1);
+      const [url, init] = fetchStub.calls[0].args;
+      assertEquals(
+        url,
+        `${Deno.env.get("API_URL")}/matches/JP1_12345/rank-snapshots/finalize`,
+      );
+      assertEquals(init?.method, "POST");
+      assertEquals(init?.body, JSON.stringify(payload));
+    });
+  });
+
   describe("setMainRole", () => {
     const userId = "test-user";
     const guildId = "test-guild";

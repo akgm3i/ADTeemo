@@ -2,7 +2,11 @@ import { type Client, EmbedBuilder } from "discord.js";
 import type { Lane, MatchWatcher, RiotAccount } from "@adteemo/api/schema";
 import { riotApi } from "@adteemo/api/riot-api";
 import { riotStaticData } from "@adteemo/api/riot-static-data";
-import { apiClient } from "../api_client.ts";
+import {
+  apiClient,
+  type FinalizedRankSnapshot,
+  type RankSnapshotPayload,
+} from "../api_client.ts";
 import { botLogger } from "../logger.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 
@@ -20,6 +24,9 @@ type ActiveGameResult = Awaited<
 >;
 type RiotAccountResult = Awaited<ReturnType<typeof apiClient.getRiotAccount>>;
 type RiotMatch = NonNullable<Awaited<ReturnType<typeof riotApi.getMatchById>>>;
+type LeagueEntries = Awaited<
+  ReturnType<typeof riotApi.getLeagueEntriesByPuuid>
+>;
 type WatcherState = Parameters<typeof apiClient.updateMatchWatcherState>[2];
 type ActiveNotificationGroup = {
   messageId: string | null;
@@ -53,6 +60,34 @@ type ActiveGameTargetDetail = {
   targetDiscordId: string;
   champion: string;
 };
+type RankedQueueType = RankSnapshotPayload["queueType"];
+type RankSummary = {
+  queueType: RankedQueueType;
+  before: FinalizedRankSnapshot | null;
+  after: FinalizedRankSnapshot | null;
+};
+
+const RANKED_QUEUE_TYPES: RankedQueueType[] = [
+  "RANKED_SOLO_5x5",
+  "RANKED_FLEX_SR",
+];
+const RANKED_QUEUE_BY_QUEUE_ID = new Map<number, RankedQueueType>([
+  [420, "RANKED_SOLO_5x5"],
+  [440, "RANKED_FLEX_SR"],
+]);
+const TIER_ORDER = [
+  "IRON",
+  "BRONZE",
+  "SILVER",
+  "GOLD",
+  "PLATINUM",
+  "EMERALD",
+  "DIAMOND",
+  "MASTER",
+  "GRANDMASTER",
+  "CHALLENGER",
+];
+const DIVISION_ORDER = ["IV", "III", "II", "I"];
 
 function numberEnv(name: string, fallback: number) {
   const value = Number(Deno.env.get(name));
@@ -99,6 +134,12 @@ function activeGameCacheKey(account: RiotAccount) {
 
 function matchCacheKey(account: RiotAccount, matchId: string) {
   return `${account.region}:${matchId}`;
+}
+
+function rankedQueueTypeByQueueId(queueId: number | undefined) {
+  return queueId === undefined
+    ? undefined
+    : RANKED_QUEUE_BY_QUEUE_ID.get(queueId);
 }
 
 function createMatchWatcherProcessingContext(): MatchWatcherProcessingContext {
@@ -424,6 +465,112 @@ function getMatchForPendingResult(
   return result;
 }
 
+function rankSnapshotPayloadsFromEntries(
+  entries: LeagueEntries,
+  fetchedAt = new Date(),
+): RankSnapshotPayload[] {
+  return RANKED_QUEUE_TYPES.map((queueType) => {
+    const entry = entries.find((candidate) =>
+      candidate.queueType === queueType
+    );
+    return {
+      queueType,
+      tier: entry?.tier ?? null,
+      rank: entry?.rank ?? null,
+      leaguePoints: entry?.leaguePoints ?? null,
+      wins: entry?.wins ?? null,
+      losses: entry?.losses ?? null,
+      fetchedAt,
+    };
+  });
+}
+
+async function capturePendingRankSnapshots(
+  watcher: MatchWatcher,
+  account: RiotAccount,
+  activeGame: ActiveGame,
+) {
+  if (!rankedQueueTypeByQueueId(activeGame.gameQueueConfigId)) return;
+
+  try {
+    const entries = await riotApi.getLeagueEntriesByPuuid(
+      account.platform,
+      account.puuid,
+    );
+    const result = await apiClient.upsertPendingRankSnapshots({
+      platform: account.platform,
+      gameId: String(activeGame.gameId),
+      puuid: account.puuid,
+      snapshots: rankSnapshotPayloadsFromEntries(entries),
+    });
+    if (!result.success) {
+      botLogger.warn("match_tracking.rank_snapshot_pending_save_failed", {
+        guildId: watcher.guildId,
+        targetDiscordId: watcher.targetDiscordId,
+        error: result.error,
+      });
+    }
+  } catch (error) {
+    botLogger.warn("match_tracking.rank_snapshot_before_fetch_failed", {
+      guildId: watcher.guildId,
+      targetDiscordId: watcher.targetDiscordId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function finalizeRankSnapshotsForResult(
+  watcher: MatchWatcher,
+  account: RiotAccount,
+  match: RiotMatch,
+): Promise<RankSummary | null> {
+  const queueType = rankedQueueTypeByQueueId(match.info.queueId);
+  if (!queueType) return null;
+
+  try {
+    const entries = await riotApi.getLeagueEntriesByPuuid(
+      account.platform,
+      account.puuid,
+    );
+    const result = await apiClient.finalizeRankSnapshots(
+      match.metadata.matchId,
+      {
+        platform: account.platform,
+        gameId: String(match.info.gameId),
+        puuid: account.puuid,
+        snapshots: rankSnapshotPayloadsFromEntries(entries),
+      },
+    );
+    if (!result.success) {
+      botLogger.warn("match_tracking.rank_snapshot_finalize_failed", {
+        guildId: watcher.guildId,
+        targetDiscordId: watcher.targetDiscordId,
+        matchId: match.metadata.matchId,
+        error: result.error,
+      });
+      return null;
+    }
+
+    return {
+      queueType,
+      before: result.snapshots.before.find((snapshot) =>
+        snapshot.queueType === queueType
+      ) ?? null,
+      after: result.snapshots.after.find((snapshot) =>
+        snapshot.queueType === queueType
+      ) ?? null,
+    };
+  } catch (error) {
+    botLogger.warn("match_tracking.rank_snapshot_after_fetch_failed", {
+      guildId: watcher.guildId,
+      targetDiscordId: watcher.targetDiscordId,
+      matchId: match.metadata.matchId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 function elapsedMinutes(activeGame: ActiveGame, now = Date.now()) {
   const currentLengthMs = (activeGame.gameLength ?? 0) * 1000;
   const elapsedMs = activeGame.gameStartTime > 0
@@ -626,6 +773,87 @@ function formatKillParticipation(
   }%`;
 }
 
+function displayTier(tier: string) {
+  return tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase();
+}
+
+function formatRankSnapshot(snapshot: FinalizedRankSnapshot) {
+  if (
+    !snapshot.tier || snapshot.leaguePoints === null ||
+    snapshot.leaguePoints === undefined
+  ) {
+    return null;
+  }
+  const rank = snapshot.rank ? ` ${snapshot.rank}` : "";
+  return `${displayTier(snapshot.tier)}${rank} ${snapshot.leaguePoints}LP`;
+}
+
+function rankSnapshotTotalLp(snapshot: FinalizedRankSnapshot) {
+  if (
+    !snapshot.tier || snapshot.leaguePoints === null ||
+    snapshot.leaguePoints === undefined
+  ) {
+    return null;
+  }
+
+  const tierIndex = TIER_ORDER.indexOf(snapshot.tier.toUpperCase());
+  if (tierIndex < 0) return null;
+  const isApexTier = tierIndex >= TIER_ORDER.indexOf("MASTER");
+  if (isApexTier) {
+    return tierIndex * 400 + snapshot.leaguePoints;
+  }
+
+  if (!snapshot.rank) return null;
+  const divisionIndex = DIVISION_ORDER.indexOf(snapshot.rank.toUpperCase());
+  if (divisionIndex < 0) return null;
+  return tierIndex * 400 + divisionIndex * 100 + snapshot.leaguePoints;
+}
+
+function rankDelta(
+  before: FinalizedRankSnapshot,
+  after: FinalizedRankSnapshot,
+) {
+  const beforeLp = rankSnapshotTotalLp(before);
+  const afterLp = rankSnapshotTotalLp(after);
+  if (beforeLp === null || afterLp === null) return null;
+  const delta = afterLp - beforeLp;
+  if (delta === 0 || Math.abs(delta) > 100) return null;
+  return delta;
+}
+
+function rankFieldValue(summary: RankSummary | null) {
+  if (!summary?.after) return null;
+
+  const afterRank = formatRankSnapshot(summary.after);
+  if (!afterRank) return null;
+
+  if (!summary.before) {
+    return messageHandler.formatMessage(
+      messageKeys.matchTracking.embed.rank.current,
+      { rank: afterRank },
+    );
+  }
+
+  const beforeRank = formatRankSnapshot(summary.before);
+  const delta = beforeRank ? rankDelta(summary.before, summary.after) : null;
+  if (beforeRank && delta !== null) {
+    const sign = delta > 0 ? "+" : "";
+    return messageHandler.formatMessage(
+      messageKeys.matchTracking.embed.rank.delta,
+      {
+        delta: `${sign}${delta}`,
+        before: beforeRank,
+        after: afterRank,
+      },
+    );
+  }
+
+  return messageHandler.formatMessage(
+    messageKeys.matchTracking.embed.rank.current,
+    { rank: afterRank },
+  );
+}
+
 function currentStateFromWatcher(watcher: MatchWatcher): WatcherState {
   return {
     lastState: watcher.lastState === "FETCHING_RESULT"
@@ -824,6 +1052,7 @@ async function buildMatchResultEmbed(
   watcher: MatchWatcher,
   account: RiotAccount,
   match: RiotMatch,
+  rankSummary: RankSummary | null = null,
 ) {
   const participant = match.info.participants.find((p) =>
     p.puuid === account.puuid
@@ -871,7 +1100,8 @@ async function buildMatchResultEmbed(
   const result = participant.win
     ? messageHandler.formatMessage(messageKeys.matchTracking.embed.result.win)
     : messageHandler.formatMessage(messageKeys.matchTracking.embed.result.loss);
-  return new EmbedBuilder()
+  const rankValue = rankFieldValue(rankSummary);
+  const embed = new EmbedBuilder()
     .setTitle(
       messageHandler.formatMessage(
         messageKeys.matchTracking.embed.result.title,
@@ -961,6 +1191,16 @@ async function buildMatchResultEmbed(
       ),
     })
     .setTimestamp(new Date(match.info.gameEndTimestamp ?? Date.now()));
+  if (rankValue) {
+    embed.addFields({
+      name: messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.field.rank,
+      ),
+      value: rankValue,
+      inline: false,
+    });
+  }
+  return embed;
 }
 
 async function sendOrEditWatcherMessage(
@@ -1073,11 +1313,16 @@ async function tryFetchAndNotifyResult(
     return { status: "pending" as const, messageId: pending.messageId };
   }
 
+  const rankSummary = await finalizeRankSnapshotsForResult(
+    watcher,
+    account,
+    match,
+  );
   const messageId = await sendOrEditWatcherMessage(
     client,
     watcher,
     pending.messageId,
-    await buildMatchResultEmbed(watcher, account, match),
+    await buildMatchResultEmbed(watcher, account, match, rankSummary),
   );
   await setWatcherState(watcher, {
     ...currentState,
@@ -1202,6 +1447,7 @@ async function processWatcher(
       resultNotificationMessageId(previousActiveNotificationGroup, watcher),
       buildResultPendingEmbed(watcher, previousMatchId),
     );
+    await capturePendingRankSnapshots(watcher, account, activeGame);
     const newMessageId = await sendOrEditWatcherMessage(
       client,
       watcher,
@@ -1254,6 +1500,7 @@ async function processWatcher(
     watcher.currentGameId !== currentGameId;
   if (started) {
     const notifiedAt = new Date();
+    await capturePendingRankSnapshots(watcher, account, activeGame);
     const messageId = await sendOrEditWatcherMessage(
       client,
       watcher,
