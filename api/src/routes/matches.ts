@@ -4,6 +4,7 @@ import { dbActions } from "../db/actions.ts";
 import {
   createParticipantSchema,
   finalizeRankSnapshotsSchema,
+  upsertExternalMatchDetailSchema,
   upsertPendingRankSnapshotsSchema,
 } from "../validators.ts";
 import { RecordNotFoundError } from "../errors.ts";
@@ -29,6 +30,19 @@ export const matchesRoutes = new Hono()
         matchId,
       });
       return c.json({ snapshots }, 200);
+    },
+  )
+  .post(
+    "/:matchId/external-details",
+    zValidator("json", upsertExternalMatchDetailSchema),
+    async (c) => {
+      const { matchId } = c.req.param();
+      const payload = c.req.valid("json");
+      await dbActions.upsertExternalMatchDetail({
+        ...payload,
+        matchId,
+      });
+      return c.body(null, 204);
     },
   )
   .post(

@@ -5,6 +5,8 @@ import { db } from "./index.ts";
 import {
   authStates,
   customGameEvents,
+  externalMatchDetails,
+  externalMatchParticipantDetails,
   guilds,
   type Lane,
   matches,
@@ -30,6 +32,12 @@ const riotStaticDataCacheInsertSchema = createInsertSchema(riotStaticDataCache);
 const userGuildProfileInsertSchema = createInsertSchema(userGuildProfiles);
 const customGameEventInsertSchema = createInsertSchema(customGameEvents);
 const matchParticipantInsertSchema = createInsertSchema(matchParticipants);
+const externalMatchDetailInsertSchema = createInsertSchema(
+  externalMatchDetails,
+);
+const externalMatchParticipantDetailInsertSchema = createInsertSchema(
+  externalMatchParticipantDetails,
+);
 const matchWatcherInsertSchema = createInsertSchema(matchWatchers);
 const pendingMatchRankSnapshotInsertSchema = createInsertSchema(
   pendingMatchRankSnapshots,
@@ -355,6 +363,79 @@ async function finalizeMatchRankSnapshots(input: {
   });
 }
 
+async function upsertExternalMatchDetail(input: {
+  matchId: string;
+  provider: "opgg";
+  providerRegion: string;
+  providerMatchId: string;
+  detailUrl: string;
+  providerCreatedAt: Date;
+  averageTier: string | null;
+  participant?: {
+    puuid: string;
+    participantId: number | null;
+    laneScore: number | null;
+  };
+}) {
+  await db.transaction(async (tx) => {
+    await tx.insert(matches).values({ id: input.matchId })
+      .onConflictDoNothing()
+      .execute();
+
+    const now = new Date();
+    const detailPayload = externalMatchDetailInsertSchema.parse({
+      matchId: input.matchId,
+      provider: input.provider,
+      providerRegion: input.providerRegion,
+      providerMatchId: input.providerMatchId,
+      detailUrl: input.detailUrl,
+      providerCreatedAt: input.providerCreatedAt,
+      averageTier: input.averageTier,
+      fetchedAt: now,
+    });
+    await tx.insert(externalMatchDetails).values(detailPayload)
+      .onConflictDoUpdate({
+        target: [externalMatchDetails.matchId, externalMatchDetails.provider],
+        set: {
+          providerRegion: detailPayload.providerRegion,
+          providerMatchId: detailPayload.providerMatchId,
+          detailUrl: detailPayload.detailUrl,
+          providerCreatedAt: detailPayload.providerCreatedAt,
+          averageTier: detailPayload.averageTier,
+          fetchedAt: detailPayload.fetchedAt,
+        },
+      })
+      .execute();
+
+    if (!input.participant) return;
+
+    const participantPayload = externalMatchParticipantDetailInsertSchema.parse(
+      {
+        matchId: input.matchId,
+        provider: input.provider,
+        puuid: input.participant.puuid,
+        participantId: input.participant.participantId,
+        laneScore: input.participant.laneScore,
+        fetchedAt: now,
+      },
+    );
+    await tx.insert(externalMatchParticipantDetails).values(participantPayload)
+      .onConflictDoUpdate({
+        target: [
+          externalMatchParticipantDetails.matchId,
+          externalMatchParticipantDetails.provider,
+          externalMatchParticipantDetails.puuid,
+        ],
+        set: {
+          participantId: participantPayload.participantId,
+          laneScore: participantPayload.laneScore,
+          fetchedAt: participantPayload.fetchedAt,
+        },
+      })
+      .execute();
+  });
+}
+
 async function getAuthState(state: string) {
   return await db.query.authStates.findFirst({
     where: eq(authStates.state, state),
@@ -579,6 +660,7 @@ export const dbActions = {
   createMatchParticipant,
   upsertPendingRankSnapshots,
   finalizeMatchRankSnapshots,
+  upsertExternalMatchDetail,
   getAuthState,
   deleteAuthState,
   updateUserRiotId,

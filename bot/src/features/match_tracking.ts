@@ -9,6 +9,7 @@ import {
 } from "../api_client.ts";
 import { botLogger } from "../logger.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
+import { opggClient, type OpggMatchDetail } from "./opgg.ts";
 
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
 const DEFAULT_IN_GAME_NOTIFY_INTERVAL_MS = 300_000;
@@ -97,6 +98,12 @@ function numberEnv(name: string, fallback: number) {
 function messageLocale() {
   return (Deno.env.get("BOT_MESSAGE_LANG") ?? Deno.env.get("LC_MESSAGES") ??
     Deno.env.get("LC_ALL") ?? "ja_JP").replace("-", "_").split(".")[0];
+}
+
+function booleanEnv(name: string) {
+  const value = Deno.env.get(name)?.toLowerCase();
+  return value === "1" || value === "true" || value === "yes" ||
+    value === "on";
 }
 
 function matchIdForGame(account: RiotAccount, gameId: string | number) {
@@ -862,6 +869,82 @@ function rankFieldValue(summary: RankSummary | null) {
   );
 }
 
+function opggScoreValue(score: number) {
+  return score.toFixed(1);
+}
+
+function opggFieldValue(detail: OpggMatchDetail | null) {
+  if (!detail) return null;
+
+  const lines = [
+    messageHandler.formatMessage(
+      messageKeys.matchTracking.embed.opgg.detail,
+      { url: detail.detailUrl },
+    ),
+  ];
+  const laneScore = detail.participant?.laneScore;
+  if (laneScore !== null && laneScore !== undefined) {
+    lines.push(
+      messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.opgg.laneScore,
+        { score: opggScoreValue(laneScore) },
+      ),
+    );
+  }
+  if (detail.averageTier) {
+    lines.push(
+      messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.opgg.averageTier,
+        { tier: detail.averageTier },
+      ),
+    );
+  }
+  return lines.join("\n");
+}
+
+async function resolveOpggMatchDetailForResult(
+  watcher: MatchWatcher,
+  account: RiotAccount,
+  match: RiotMatch,
+) {
+  if (!booleanEnv("OPGG_ENABLED")) return null;
+
+  try {
+    const detail = await opggClient.resolveMatchDetail(account, match);
+    if (!detail) return null;
+
+    const result = await apiClient.upsertExternalMatchDetail(
+      match.metadata.matchId,
+      {
+        provider: detail.provider,
+        providerRegion: detail.providerRegion,
+        providerMatchId: detail.providerMatchId,
+        detailUrl: detail.detailUrl,
+        providerCreatedAt: detail.providerCreatedAt,
+        averageTier: detail.averageTier,
+        participant: detail.participant,
+      },
+    );
+    if (!result.success) {
+      botLogger.warn("match_tracking.opgg_detail_save_failed", {
+        guildId: watcher.guildId,
+        targetDiscordId: watcher.targetDiscordId,
+        matchId: match.metadata.matchId,
+        error: result.error,
+      });
+    }
+    return detail;
+  } catch (error) {
+    botLogger.warn("match_tracking.opgg_detail_resolve_failed", {
+      guildId: watcher.guildId,
+      targetDiscordId: watcher.targetDiscordId,
+      matchId: match.metadata.matchId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 function currentStateFromWatcher(watcher: MatchWatcher): WatcherState {
   return {
     lastState: watcher.lastState === "FETCHING_RESULT"
@@ -1061,6 +1144,7 @@ async function buildMatchResultEmbed(
   account: RiotAccount,
   match: RiotMatch,
   rankSummary: RankSummary | null = null,
+  opggDetail: OpggMatchDetail | null = null,
 ) {
   const participant = match.info.participants.find((p) =>
     p.puuid === account.puuid
@@ -1109,6 +1193,7 @@ async function buildMatchResultEmbed(
     ? messageHandler.formatMessage(messageKeys.matchTracking.embed.result.win)
     : messageHandler.formatMessage(messageKeys.matchTracking.embed.result.loss);
   const rankValue = rankFieldValue(rankSummary);
+  const opggValue = opggFieldValue(opggDetail);
   const embed = new EmbedBuilder()
     .setTitle(
       messageHandler.formatMessage(
@@ -1205,6 +1290,15 @@ async function buildMatchResultEmbed(
         messageKeys.matchTracking.embed.field.rank,
       ),
       value: rankValue,
+      inline: false,
+    });
+  }
+  if (opggValue) {
+    embed.addFields({
+      name: messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.field.opgg,
+      ),
+      value: opggValue,
       inline: false,
     });
   }
@@ -1326,11 +1420,22 @@ async function tryFetchAndNotifyResult(
     account,
     match,
   );
+  const opggDetail = await resolveOpggMatchDetailForResult(
+    watcher,
+    account,
+    match,
+  );
   const messageId = await sendOrEditWatcherMessage(
     client,
     watcher,
     pending.messageId,
-    await buildMatchResultEmbed(watcher, account, match, rankSummary),
+    await buildMatchResultEmbed(
+      watcher,
+      account,
+      match,
+      rankSummary,
+      opggDetail,
+    ),
   );
   await setWatcherState(watcher, {
     ...currentState,

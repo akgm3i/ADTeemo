@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { lanes, rankedQueueTypes, riotPlatforms } from "./db/schema.ts";
+import {
+  externalMatchProviders,
+  lanes,
+  rankedQueueTypes,
+  riotPlatforms,
+} from "./db/schema.ts";
 
 export const createParticipantSchema = z.object({
   userId: z.string(),
@@ -35,4 +40,18 @@ export const finalizeRankSnapshotsSchema = z.object({
   gameId: z.string(),
   puuid: z.string(),
   snapshots: z.array(rankSnapshotPayloadSchema).min(1),
+});
+
+export const upsertExternalMatchDetailSchema = z.object({
+  provider: z.enum(externalMatchProviders),
+  providerRegion: z.string().min(1),
+  providerMatchId: z.string().min(1),
+  detailUrl: z.string().url(),
+  providerCreatedAt: z.coerce.date(),
+  averageTier: z.string().nullable().default(null),
+  participant: z.object({
+    puuid: z.string().min(1),
+    participantId: z.number().int().min(0).nullable().default(null),
+    laneScore: z.number().nullable().default(null),
+  }).optional(),
 });

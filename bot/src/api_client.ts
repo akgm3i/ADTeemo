@@ -11,6 +11,7 @@ import { z } from "zod";
 import {
   createParticipantSchema,
   finalizeRankSnapshotsSchema,
+  upsertExternalMatchDetailSchema,
   upsertPendingRankSnapshotsSchema,
 } from "@adteemo/api/validators";
 
@@ -249,6 +250,9 @@ export type MatchParticipant = z.infer<typeof createParticipantSchema>;
 export type RankSnapshotPayload = z.infer<
   typeof upsertPendingRankSnapshotsSchema
 >["snapshots"][number];
+export type ExternalMatchDetailPayload = z.infer<
+  typeof upsertExternalMatchDetailSchema
+>;
 export type FinalizedRankSnapshot = {
   matchId: string;
   puuid: string;
@@ -352,6 +356,27 @@ async function finalizeRankSnapshots(
         after: body.snapshots.after.map(parseRankSnapshot),
       },
     };
+  } catch (error) {
+    console.error("Failed to communicate with API", error);
+    return { success: false as const, error: "Failed to communicate with API" };
+  }
+}
+
+async function upsertExternalMatchDetail(
+  matchId: string,
+  payload: ExternalMatchDetailPayload,
+) {
+  try {
+    const res = await client.matches[":matchId"]["external-details"].$post({
+      param: { matchId },
+      json: payload,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Unexpected response: ${res}`);
+    }
+
+    return { success: true as const };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return { success: false as const, error: "Failed to communicate with API" };
@@ -509,6 +534,7 @@ export const apiClient = {
   createMatchParticipant,
   upsertPendingRankSnapshots,
   finalizeRankSnapshots,
+  upsertExternalMatchDetail,
   getLoginUrl,
   watchMatch,
   unwatchMatch,

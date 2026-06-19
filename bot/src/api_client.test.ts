@@ -325,6 +325,48 @@ describe("apiClient", () => {
     });
   });
 
+  describe("upsertExternalMatchDetail", () => {
+    test("OP.GG詳細保存APIが204を返すと、成功ステータスを返す", async () => {
+      // Arrange
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () => Promise.resolve(new Response(null, { status: 204 })),
+      );
+      const payload = {
+        provider: "opgg" as const,
+        providerRegion: "jp",
+        providerMatchId: "opgg-match-1",
+        detailUrl:
+          "https://op.gg/ja/lol/summoners/jp/Teemo-JP1/matches/opgg-match-1/1780000000000",
+        providerCreatedAt: new Date("2026-06-19T00:00:00.000Z"),
+        averageTier: "Emerald",
+        participant: {
+          puuid: "puuid-1",
+          participantId: 3,
+          laneScore: 7.2,
+        },
+      };
+
+      // Act
+      const result = await apiClient.upsertExternalMatchDetail(
+        "JP1_12345",
+        payload,
+      );
+
+      // Assert
+      assertEquals(result.success, true);
+      assertSpyCalls(fetchStub, 1);
+      const [url, init] = fetchStub.calls[0].args;
+      assertEquals(
+        url,
+        `${Deno.env.get("API_URL")}/matches/JP1_12345/external-details`,
+      );
+      assertEquals(init?.method, "POST");
+      assertEquals(init?.body, JSON.stringify(payload));
+    });
+  });
+
   describe("setMainRole", () => {
     const userId = "test-user";
     const guildId = "test-guild";

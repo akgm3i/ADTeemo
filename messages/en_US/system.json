@@ -155,7 +155,13 @@
         "csPerMinute": "CS/min",
         "killParticipation": "Kill Participation",
         "gold": "Gold",
-        "rank": "Rank"
+        "rank": "Rank",
+        "opgg": "OP.GG"
+      },
+      "opgg": {
+        "detail": "[Match Detail]({url})",
+        "laneScore": "Laning: {score}",
+        "averageTier": "Average Tier: {tier}"
       },
       "fallback": {
         "unknownChampion": "Unknown champion",

@@ -1,6 +1,7 @@
 import {
   integer,
   primaryKey,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -43,6 +44,8 @@ export const rankedQueueTypes = [
 export type RankedQueueType = (typeof rankedQueueTypes)[number];
 export const rankSnapshotPhases = ["before", "after"] as const;
 export type RankSnapshotPhase = (typeof rankSnapshotPhases)[number];
+export const externalMatchProviders = ["opgg"] as const;
+export type ExternalMatchProvider = (typeof externalMatchProviders)[number];
 
 export const guilds = sqliteTable("guilds", {
   id: text("id").primaryKey(),
@@ -186,6 +189,49 @@ export const matchRankSnapshots = sqliteTable(
   }),
 );
 
+export const externalMatchDetails = sqliteTable(
+  "external_match_details",
+  {
+    matchId: text("match_id").notNull().references(() => matches.id, {
+      onDelete: "cascade",
+    }),
+    provider: text("provider", { enum: externalMatchProviders }).notNull(),
+    providerRegion: text("provider_region").notNull(),
+    providerMatchId: text("provider_match_id").notNull(),
+    detailUrl: text("detail_url").notNull(),
+    providerCreatedAt: integer("provider_created_at", {
+      mode: "timestamp",
+    }).notNull(),
+    averageTier: text("average_tier"),
+    fetchedAt: integer("fetched_at", { mode: "timestamp" }).notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.matchId, table.provider] }),
+    uniqueProviderMatch: uniqueIndex(
+      "external_match_details_unique_provider_match",
+    ).on(table.provider, table.providerRegion, table.providerMatchId),
+  }),
+);
+
+export const externalMatchParticipantDetails = sqliteTable(
+  "external_match_participant_details",
+  {
+    matchId: text("match_id").notNull().references(() => matches.id, {
+      onDelete: "cascade",
+    }),
+    provider: text("provider", { enum: externalMatchProviders }).notNull(),
+    puuid: text("puuid").notNull(),
+    participantId: integer("participant_id"),
+    laneScore: real("lane_score"),
+    fetchedAt: integer("fetched_at", { mode: "timestamp" }).notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.matchId, table.provider, table.puuid] }),
+  }),
+);
+
 export const customGameEvents = sqliteTable("custom_game_events", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
@@ -257,6 +303,12 @@ export type PendingMatchRankSnapshot = InferSelectModel<
   typeof pendingMatchRankSnapshots
 >;
 export type MatchRankSnapshot = InferSelectModel<typeof matchRankSnapshots>;
+export type ExternalMatchDetail = InferSelectModel<
+  typeof externalMatchDetails
+>;
+export type ExternalMatchParticipantDetail = InferSelectModel<
+  typeof externalMatchParticipantDetails
+>;
 
 // --- RELATIONS ---
 
