@@ -10,6 +10,134 @@ import { RecordNotFoundError } from "../errors.ts";
 describe("routes/matches.ts", () => {
   const client = testClient(app);
 
+  describe("POST /matches/rank-snapshots/pending", () => {
+    test("Active Game検知時のbeforeスナップショットを受け取ったとき、204を返す", async () => {
+      // Arrange
+      using upsertStub = stub(
+        dbActions,
+        "upsertPendingRankSnapshots",
+        () => Promise.resolve(),
+      );
+      const payload = {
+        platform: "jp1" as const,
+        gameId: "12345",
+        puuid: "puuid-1",
+        snapshots: [{
+          queueType: "RANKED_SOLO_5x5" as const,
+          tier: "EMERALD",
+          rank: "IV",
+          leaguePoints: 2,
+          wins: 10,
+          losses: 8,
+        }],
+      };
+
+      // Act
+      const res = await app.request("/matches/rank-snapshots/pending", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      // Assert
+      assertEquals(res.status, 204);
+      assertSpyCall(upsertStub, 0, {
+        args: [payload],
+      });
+    });
+
+    test("不正なbeforeスナップショットが指定されたとき、400を返す", async () => {
+      // Arrange / Act
+      const res = await app.request("/matches/rank-snapshots/pending", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform: "jp1",
+          gameId: "12345",
+          puuid: "puuid-1",
+          snapshots: [],
+        }),
+      });
+
+      // Assert
+      assertEquals(res.status, 400);
+    });
+  });
+
+  describe("POST /matches/:matchId/rank-snapshots/finalize", () => {
+    test("Match-v5確定後のafterスナップショットを受け取ったとき、保存済みbefore/afterを返す", async () => {
+      // Arrange
+      const fetchedAt = new Date("2026-01-01T00:00:00.000Z");
+      using finalizeStub = stub(
+        dbActions,
+        "finalizeMatchRankSnapshots",
+        () =>
+          Promise.resolve({
+            before: [{
+              id: 1,
+              matchId: "JP1_12345",
+              platform: "jp1" as const,
+              puuid: "puuid-1",
+              queueType: "RANKED_SOLO_5x5" as const,
+              phase: "before" as const,
+              tier: "EMERALD",
+              rank: "IV",
+              leaguePoints: 2,
+              wins: 10,
+              losses: 8,
+              fetchedAt,
+            }],
+            after: [{
+              id: 2,
+              matchId: "JP1_12345",
+              platform: "jp1" as const,
+              puuid: "puuid-1",
+              queueType: "RANKED_SOLO_5x5" as const,
+              phase: "after" as const,
+              tier: "EMERALD",
+              rank: "IV",
+              leaguePoints: 19,
+              wins: 11,
+              losses: 8,
+              fetchedAt,
+            }],
+          }),
+      );
+      const payload = {
+        platform: "jp1" as const,
+        gameId: "12345",
+        puuid: "puuid-1",
+        snapshots: [{
+          queueType: "RANKED_SOLO_5x5" as const,
+          tier: "EMERALD",
+          rank: "IV",
+          leaguePoints: 19,
+          wins: 11,
+          losses: 8,
+        }],
+      };
+
+      // Act
+      const res = await app.request(
+        "/matches/JP1_12345/rank-snapshots/finalize",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+
+      // Assert
+      assertEquals(res.status, 200);
+      const body = await res.json();
+      assertEquals(body.snapshots.before[0].leaguePoints, 2);
+      assertEquals(body.snapshots.after[0].leaguePoints, 19);
+      assertSpyCall(finalizeStub, 0, {
+        args: [{ ...payload, matchId: "JP1_12345" }],
+      });
+    });
+  });
+
   describe("POST /matches/:matchId/participants", () => {
     const matchId = "test-match-id";
     const participantData: {

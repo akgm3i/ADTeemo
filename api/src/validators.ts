@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { lanes } from "./db/schema.ts";
+import { lanes, rankedQueueTypes, riotPlatforms } from "./db/schema.ts";
 
 export const createParticipantSchema = z.object({
   userId: z.string(),
@@ -11,4 +11,28 @@ export const createParticipantSchema = z.object({
   assists: z.number().int().min(0),
   cs: z.number().int().min(0),
   gold: z.number().int().min(0),
+});
+
+const rankSnapshotPayloadSchema = z.object({
+  queueType: z.enum(rankedQueueTypes),
+  tier: z.string().nullable(),
+  rank: z.string().nullable(),
+  leaguePoints: z.number().int().min(0).nullable(),
+  wins: z.number().int().min(0).nullable(),
+  losses: z.number().int().min(0).nullable(),
+  fetchedAt: z.coerce.date().optional(),
+});
+
+export const upsertPendingRankSnapshotsSchema = z.object({
+  platform: z.enum(riotPlatforms),
+  gameId: z.string(),
+  puuid: z.string(),
+  snapshots: z.array(rankSnapshotPayloadSchema).min(1),
+});
+
+export const finalizeRankSnapshotsSchema = z.object({
+  platform: z.enum(riotPlatforms),
+  gameId: z.string(),
+  puuid: z.string(),
+  snapshots: z.array(rankSnapshotPayloadSchema).min(1),
 });

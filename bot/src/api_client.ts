@@ -8,7 +8,11 @@ import type {
 } from "@adteemo/api/schema";
 import { type Client, hcWithType } from "@adteemo/api/hc";
 import { z } from "zod";
-import { createParticipantSchema } from "@adteemo/api/validators";
+import {
+  createParticipantSchema,
+  finalizeRankSnapshotsSchema,
+  upsertPendingRankSnapshotsSchema,
+} from "@adteemo/api/validators";
 
 const API_URL = Deno.env.get("API_URL");
 if (!API_URL) {
@@ -242,6 +246,33 @@ async function getEventStartingTodayByCreatorId(creatorId: string) {
 }
 
 export type MatchParticipant = z.infer<typeof createParticipantSchema>;
+export type RankSnapshotPayload = z.infer<
+  typeof upsertPendingRankSnapshotsSchema
+>["snapshots"][number];
+export type FinalizedRankSnapshot = {
+  matchId: string;
+  puuid: string;
+  platform: RiotPlatform;
+  queueType: RankSnapshotPayload["queueType"];
+  phase: "before" | "after";
+  tier: string | null;
+  rank: string | null;
+  leaguePoints: number | null;
+  wins: number | null;
+  losses: number | null;
+  fetchedAt: Date;
+};
+
+function parseRankSnapshot(
+  snapshot: Omit<FinalizedRankSnapshot, "fetchedAt"> & {
+    fetchedAt: string | Date;
+  },
+): FinalizedRankSnapshot {
+  return {
+    ...snapshot,
+    fetchedAt: new Date(snapshot.fetchedAt),
+  };
+}
 
 async function createMatchParticipant(
   matchId: string,
@@ -273,6 +304,54 @@ async function createMatchParticipant(
     }
 
     return { success: true as const, id: data.id };
+  } catch (error) {
+    console.error("Failed to communicate with API", error);
+    return { success: false as const, error: "Failed to communicate with API" };
+  }
+}
+
+async function upsertPendingRankSnapshots(
+  payload: z.infer<typeof upsertPendingRankSnapshotsSchema>,
+) {
+  try {
+    const res = await client.matches["rank-snapshots"].pending.$post({
+      json: payload,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Unexpected response: ${res}`);
+    }
+
+    return { success: true as const };
+  } catch (error) {
+    console.error("Failed to communicate with API", error);
+    return { success: false as const, error: "Failed to communicate with API" };
+  }
+}
+
+async function finalizeRankSnapshots(
+  matchId: string,
+  payload: z.infer<typeof finalizeRankSnapshotsSchema>,
+) {
+  try {
+    const res = await client.matches[":matchId"]["rank-snapshots"].finalize
+      .$post({
+        param: { matchId },
+        json: payload,
+      });
+
+    if (!res.ok) {
+      throw new Error(`Unexpected response: ${res}`);
+    }
+
+    const body = await res.json();
+    return {
+      success: true as const,
+      snapshots: {
+        before: body.snapshots.before.map(parseRankSnapshot),
+        after: body.snapshots.after.map(parseRankSnapshot),
+      },
+    };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return { success: false as const, error: "Failed to communicate with API" };
@@ -428,6 +507,8 @@ export const apiClient = {
   deleteCustomGameEvent,
   getEventStartingTodayByCreatorId,
   createMatchParticipant,
+  upsertPendingRankSnapshots,
+  finalizeRankSnapshots,
   getLoginUrl,
   watchMatch,
   unwatchMatch,

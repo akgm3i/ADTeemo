@@ -139,6 +139,10 @@
         "win": "Win",
         "loss": "Loss"
       },
+      "rank": {
+        "current": "Current: {rank}",
+        "delta": "LP: {delta}\n{before} -> {after}"
+      },
       "field": {
         "champion": "Champion",
         "activeChampions": "Watched Champions",
@@ -150,7 +154,8 @@
         "cs": "CS",
         "csPerMinute": "CS/min",
         "killParticipation": "Kill Participation",
-        "gold": "Gold"
+        "gold": "Gold",
+        "rank": "Rank"
       },
       "fallback": {
         "unknownChampion": "Unknown champion",
