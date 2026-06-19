@@ -200,6 +200,10 @@ async function upsertPendingRankSnapshots(input: {
 }) {
   const now = new Date();
   await db.transaction(async (tx) => {
+    await tx.delete(pendingMatchRankSnapshots).where(
+      lte(pendingMatchRankSnapshots.expiresAt, now),
+    ).execute();
+
     for (const snapshot of input.snapshots) {
       const fetchedAt = snapshot.fetchedAt ?? now;
       const payload = pendingMatchRankSnapshotInsertSchema.parse({
@@ -293,6 +297,15 @@ async function finalizeMatchRankSnapshots(input: {
       savedBefore.push(saved);
     }
 
+    const reusableBefore = savedBefore.length > 0 ? savedBefore : await tx.query
+      .matchRankSnapshots.findMany({
+        where: and(
+          eq(matchRankSnapshots.matchId, input.matchId),
+          eq(matchRankSnapshots.puuid, input.puuid),
+          eq(matchRankSnapshots.phase, "before"),
+        ),
+      });
+
     const savedAfter = [];
     const now = new Date();
     for (const snapshot of input.snapshots) {
@@ -338,7 +351,7 @@ async function finalizeMatchRankSnapshots(input: {
       ),
     ).execute();
 
-    return { before: savedBefore, after: savedAfter };
+    return { before: reusableBefore, after: savedAfter };
   });
 }
 

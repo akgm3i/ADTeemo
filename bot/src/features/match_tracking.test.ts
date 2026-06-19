@@ -2032,6 +2032,108 @@ describe("match_tracking.ts", () => {
     );
   });
 
+  test("Apex Tier間でランクが変わったとき、Tier差を400LPとして扱わずLP差分を表示する", async () => {
+    // Arrange
+    const { client, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "IN_GAME",
+            currentGameId: "12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _activeGameStub = stub(
+      riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(null),
+    );
+    using _getMatchStub = stub(
+      riotApi,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using _leagueStub = stub(
+      riotApi,
+      "getLeagueEntriesByPuuid",
+      () =>
+        Promise.resolve([{
+          queueType: "RANKED_SOLO_5x5",
+          tier: "GRANDMASTER",
+          rank: "",
+          leaguePoints: 172,
+          wins: 111,
+          losses: 88,
+        }]),
+    );
+    using _finalizeRankStub = stub(
+      apiClient,
+      "finalizeRankSnapshots",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          snapshots: {
+            before: [{
+              matchId: "JP1_12345",
+              platform: "jp1",
+              puuid: "puuid-1",
+              queueType: "RANKED_SOLO_5x5",
+              phase: "before",
+              tier: "MASTER",
+              rank: null,
+              leaguePoints: 150,
+              wins: 110,
+              losses: 88,
+              fetchedAt: new Date("2026-01-01T00:00:00.000Z"),
+            }],
+            after: [{
+              matchId: "JP1_12345",
+              platform: "jp1",
+              puuid: "puuid-1",
+              queueType: "RANKED_SOLO_5x5",
+              phase: "after",
+              tier: "GRANDMASTER",
+              rank: null,
+              leaguePoints: 172,
+              wins: 111,
+              losses: 88,
+              fetchedAt: new Date("2026-01-01T00:10:00.000Z"),
+            }],
+          },
+        }),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    // Act
+    await matchTracker.processMatchWatchers(client);
+
+    // Assert
+    assertEquals(
+      editedEmbedFieldValue(
+        editSpy,
+        1,
+        messageHandler.formatMessage(
+          messageKeys.matchTracking.embed.field.rank,
+        ),
+      ),
+      "LP: +22\nMaster 150LP -> Grandmaster 172LP",
+    );
+  });
+
   test("試合結果Embedの追加戦績は試合時間やチームキルが不足してもfallback表示にする", async () => {
     const resultMatch = match();
     resultMatch.info.gameDuration = 0;

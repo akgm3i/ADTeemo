@@ -798,9 +798,10 @@ function rankSnapshotTotalLp(snapshot: FinalizedRankSnapshot) {
 
   const tierIndex = TIER_ORDER.indexOf(snapshot.tier.toUpperCase());
   if (tierIndex < 0) return null;
-  const isApexTier = tierIndex >= TIER_ORDER.indexOf("MASTER");
+  const masterIndex = TIER_ORDER.indexOf("MASTER");
+  const isApexTier = tierIndex >= masterIndex;
   if (isApexTier) {
-    return tierIndex * 400 + snapshot.leaguePoints;
+    return masterIndex * 400 + snapshot.leaguePoints;
   }
 
   if (!snapshot.rank) return null;
