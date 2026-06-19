@@ -803,24 +803,26 @@ function resultMetricFields(
   const role = resultMetricRole(participant);
 
   if (role === "SUPPORT") {
-    const visionScore = displayMetric(participant.visionScore);
-    if (!visionScore) return fields;
+    const visionScore = participant.visionScore;
+    if (
+      visionScore === undefined || !Number.isFinite(visionScore) ||
+      visionScore < 0
+    ) {
+      return fields;
+    }
     fields.push(
       {
         name: messageHandler.formatMessage(
           messageKeys.matchTracking.embed.field.visionScore,
         ),
-        value: visionScore,
+        value: String(visionScore),
         inline: true,
       },
       {
         name: messageHandler.formatMessage(
           messageKeys.matchTracking.embed.field.visionScorePerMinute,
         ),
-        value: formatPerMinute(
-          participant.visionScore ?? Number.NaN,
-          gameDurationSeconds,
-        ),
+        value: formatPerMinute(visionScore, gameDurationSeconds),
         inline: true,
       },
     );
