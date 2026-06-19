@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import type { RiotAccount } from "@adteemo/api/schema";
 import {
@@ -218,6 +218,176 @@ describe("opgg.ts", () => {
     // Assert
     assertEquals(profileGetCount, 3);
     assertEquals(renewalCount, 1);
+  });
+
+  test("Action IDがアクション名の前後にあるとき、最も近いIDを対応付ける", async () => {
+    // Arrange
+    resetOpggClientCacheForTesting();
+    const actionIds = {
+      getGames: "1111111111111111111111111111111111111111",
+      renewal: "2222222222222222222222222222222222222222",
+      renewalStatus: "3333333333333333333333333333333333333333",
+      getGame: "4444444444444444444444444444444444444444",
+    };
+    const actionCalls: (string | null)[] = [];
+    const fetcher: typeof fetch = ((input: string | URL | Request, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const nextAction = init?.headers instanceof Headers
+        ? init.headers.get("Next-Action")
+        : (init?.headers as Record<string, string> | undefined)?.[
+          "Next-Action"
+        ] ?? null;
+
+      if (init?.method === "POST") {
+        actionCalls.push(nextAction);
+        return Promise.resolve(new Response(JSON.stringify({ data: [] })));
+      }
+      if (url.endsWith("/action.js")) {
+        return Promise.resolve(
+          new Response(`
+            const manifest = {
+              "${actionIds.getGames}": { name: "getGames" },
+              "${actionIds.renewal}": { name: "renewal" },
+              "${actionIds.renewalStatus}": { name: "renewalStatus" },
+              "${actionIds.getGame}": { name: "getGame" }
+            };
+          `),
+        );
+      }
+      return Promise.resolve(
+        new Response(`
+          <html>
+            <script src="/action.js"></script>
+            <script>window.__OPGG__ = {"isRenewable":false}</script>
+          </html>
+        `),
+      );
+    }) as typeof fetch;
+
+    // Act
+    await opggClient.resolveMatchDetail(account(), match(), { fetcher });
+
+    // Assert
+    assertEquals(actionCalls, [actionIds.getGames]);
+  });
+
+  test("Server Action不在を示さないHTTPエラーのとき、Action IDを再抽出せず再送しない", async () => {
+    // Arrange
+    const actionIds = {
+      getGames: "1111111111111111111111111111111111111111",
+      renewal: "2222222222222222222222222222222222222222",
+      renewalStatus: "3333333333333333333333333333333333333333",
+      getGame: "4444444444444444444444444444444444444444",
+    };
+    for (const status of [403, 404, 429, 500]) {
+      resetOpggClientCacheForTesting();
+      let profileGetCount = 0;
+      let actionCallCount = 0;
+      const fetcher: typeof fetch = ((_input: string | URL | Request, init) => {
+        if (init?.method === "POST") {
+          actionCallCount += 1;
+          return Promise.resolve(new Response("blocked", { status }));
+        }
+        profileGetCount += 1;
+        return Promise.resolve(
+          new Response(`
+            <html><script>
+              export const getGames = "${actionIds.getGames}";
+              export const renewal = "${actionIds.renewal}";
+              export const renewalStatus = "${actionIds.renewalStatus}";
+              export const getGame = "${actionIds.getGame}";
+            </script></html>
+          `),
+        );
+      }) as typeof fetch;
+
+      // Act
+      await assertRejects(() =>
+        opggClient.resolveMatchDetail(account(), match(), { fetcher })
+      );
+
+      // Assert
+      assertEquals(profileGetCount, 1);
+      assertEquals(actionCallCount, 1);
+    }
+  });
+
+  test("Server Actionがtimeoutするとき、Action IDを再抽出せず再送しない", async () => {
+    // Arrange
+    resetOpggClientCacheForTesting();
+    let profileGetCount = 0;
+    let actionCallCount = 0;
+    const fetcher: typeof fetch = ((_input: string | URL | Request, init) => {
+      if (init?.method === "POST") {
+        actionCallCount += 1;
+        return Promise.reject(new DOMException("Timed out", "TimeoutError"));
+      }
+      profileGetCount += 1;
+      return Promise.resolve(
+        new Response(`
+          <html><script>
+            export const getGames = "1111111111111111111111111111111111111111";
+            export const renewal = "2222222222222222222222222222222222222222";
+            export const renewalStatus = "3333333333333333333333333333333333333333";
+            export const getGame = "4444444444444444444444444444444444444444";
+          </script></html>
+        `),
+      );
+    }) as typeof fetch;
+
+    // Act
+    await assertRejects(() =>
+      opggClient.resolveMatchDetail(account(), match(), { fetcher })
+    );
+
+    // Assert
+    assertEquals(profileGetCount, 1);
+    assertEquals(actionCallCount, 1);
+  });
+
+  test("404がServer Action不在を示すとき、Action IDを再抽出して1回だけ再送する", async () => {
+    // Arrange
+    resetOpggClientCacheForTesting();
+    const oldGetGamesId = "1111111111111111111111111111111111111111";
+    const newGetGamesId = "5555555555555555555555555555555555555555";
+    const actionCalls: (string | null)[] = [];
+    let profileGetCount = 0;
+    const fetcher: typeof fetch = ((_input: string | URL | Request, init) => {
+      const nextAction = init?.headers instanceof Headers
+        ? init.headers.get("Next-Action")
+        : (init?.headers as Record<string, string> | undefined)?.[
+          "Next-Action"
+        ] ?? null;
+      if (init?.method === "POST") {
+        actionCalls.push(nextAction);
+        if (nextAction === oldGetGamesId) {
+          return Promise.resolve(
+            new Response("Server Action not found", { status: 404 }),
+          );
+        }
+        return Promise.resolve(new Response(JSON.stringify({ data: [] })));
+      }
+
+      profileGetCount += 1;
+      const getGamesId = profileGetCount === 1 ? oldGetGamesId : newGetGamesId;
+      return Promise.resolve(
+        new Response(`
+          <html><script>
+            export const getGames = "${getGamesId}";
+            export const renewal = "2222222222222222222222222222222222222222";
+            export const renewalStatus = "3333333333333333333333333333333333333333";
+            export const getGame = "4444444444444444444444444444444444444444";
+            window.__OPGG__ = {"isRenewable":false};
+          </script></html>
+        `),
+      );
+    }) as typeof fetch;
+
+    // Act
+    await opggClient.resolveMatchDetail(account(), match(), { fetcher });
+
+    // Assert
+    assertEquals(actionCalls, [oldGetGamesId, newGetGamesId]);
   });
 
   test("初回実行時にHTMLとchunkからAction IDを抽出し、OP.GG詳細を正規化する", async () => {

@@ -118,19 +118,40 @@ function unique<T>(values: T[]) {
   return [...new Set(values)];
 }
 
+function nearestActionId(text: string, actionName: ActionName) {
+  const actionMatches = [...text.matchAll(
+    new RegExp(`(?<![A-Za-z0-9_])${actionName}(?![A-Za-z0-9_])`, "gi"),
+  )];
+  const idMatches = [...text.matchAll(/[0-9a-f]{40}/gi)];
+  let best: { id: string; distance: number } | null = null;
+  let ambiguous = false;
+
+  for (const actionMatch of actionMatches) {
+    const actionStart = actionMatch.index;
+    const actionEnd = actionStart + actionMatch[0].length;
+    for (const idMatch of idMatches) {
+      const idStart = idMatch.index;
+      const idEnd = idStart + idMatch[0].length;
+      const distance = idEnd <= actionStart
+        ? actionStart - idEnd
+        : idStart - actionEnd;
+      if (distance < 0 || distance > 800) continue;
+      if (!best || distance < best.distance) {
+        best = { id: idMatch[0], distance };
+        ambiguous = false;
+      } else if (distance === best.distance && idMatch[0] !== best.id) {
+        ambiguous = true;
+      }
+    }
+  }
+
+  return ambiguous ? null : best?.id ?? null;
+}
+
 function extractActionIdsFromText(text: string): Partial<ActionIds> {
   const ids: Partial<ActionIds> = {};
   for (const actionName of ACTION_NAMES) {
-    const actionPattern = `${actionName}(?![A-Za-z0-9_])`;
-    const afterName = new RegExp(
-      `${actionPattern}[\\s\\S]{0,800}?([0-9a-f]{40})`,
-      "i",
-    ).exec(text);
-    const beforeName = new RegExp(
-      `([0-9a-f]{40})[\\s\\S]{0,800}?${actionPattern}`,
-      "i",
-    ).exec(text);
-    const id = afterName?.[1] ?? beforeName?.[1];
+    const id = nearestActionId(text, actionName);
     if (id) {
       ids[actionName] = id;
     }
@@ -165,6 +186,23 @@ function parseRenewalAllowed(html: string) {
   return null;
 }
 
+class OpggHttpError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly responseBody: string,
+  ) {
+    super(`OP.GG request failed: ${status}`);
+    this.name = "OpggHttpError";
+  }
+}
+
+function isStaleActionIdError(error: unknown) {
+  return error instanceof OpggHttpError &&
+    error.status === 404 &&
+    /Failed to find Server Action|Server Action(?: ["'][^"']+["'])? (?:was )?not found/i
+      .test(error.responseBody);
+}
+
 async function fetchText(
   fetcher: typeof fetch,
   url: string,
@@ -173,7 +211,7 @@ async function fetchText(
   const signal = AbortSignal.timeout(ACTION_REQUEST_TIMEOUT_MS);
   const response = await fetcher(url, { ...init, signal });
   if (!response.ok) {
-    throw new Error(`OP.GG request failed: ${response.status}`);
+    throw new OpggHttpError(response.status, await response.text());
   }
   return await response.text();
 }
@@ -239,7 +277,10 @@ async function callResolvedAction(
       first.ids[actionName],
       payload,
     );
-  } catch {
+  } catch (error) {
+    if (!isStaleActionIdError(error)) {
+      throw error;
+    }
     cachedActionIds = null;
     const resolved = await actionIds(fetcher, profile);
     return await callServerAction(
