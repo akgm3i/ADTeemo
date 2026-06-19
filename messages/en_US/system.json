@@ -155,6 +155,11 @@
         "csPerMinute": "CS/min",
         "killParticipation": "Kill Participation",
         "gold": "Gold",
+        "damage": "Damage",
+        "jungleCs": "Jungle CS",
+        "enemyJungleCs": "Enemy Jungle CS",
+        "visionScore": "Vision Score",
+        "visionScorePerMinute": "Vision Score/min",
         "rank": "Rank",
         "opgg": "OP.GG"
       },

@@ -155,6 +155,11 @@
         "csPerMinute": "CS/min",
         "killParticipation": "キル関与率",
         "gold": "Gold",
+        "damage": "ダメージ",
+        "jungleCs": "JG CS",
+        "enemyJungleCs": "敵JG CS",
+        "visionScore": "視界スコア",
+        "visionScorePerMinute": "視界スコア/min",
         "rank": "ランク",
         "opgg": "OP.GG"
       },
