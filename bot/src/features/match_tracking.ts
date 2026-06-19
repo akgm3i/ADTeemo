@@ -25,6 +25,7 @@ type ActiveGameResult = Awaited<
 >;
 type RiotAccountResult = Awaited<ReturnType<typeof apiClient.getRiotAccount>>;
 type RiotMatch = NonNullable<Awaited<ReturnType<typeof riotApi.getMatchById>>>;
+type RiotMatchParticipant = RiotMatch["info"]["participants"][number];
 type LeagueEntries = Awaited<
   ReturnType<typeof riotApi.getLeagueEntriesByPuuid>
 >;
@@ -754,10 +755,124 @@ async function activeGameTargetDetails(
   return details;
 }
 
-function formatCsPerMinute(cs: number, gameDurationSeconds: number) {
-  if (!Number.isFinite(cs) || !Number.isFinite(gameDurationSeconds)) return "-";
-  if (cs < 0 || gameDurationSeconds <= 0) return "-";
-  return (cs / (gameDurationSeconds / 60)).toFixed(1);
+function formatPerMinute(value: number, gameDurationSeconds: number) {
+  if (!Number.isFinite(value) || !Number.isFinite(gameDurationSeconds)) {
+    return "-";
+  }
+  if (value < 0 || gameDurationSeconds <= 0) return "-";
+  return (value / (gameDurationSeconds / 60)).toFixed(1);
+}
+
+function resultMetricRole(participant: RiotMatchParticipant) {
+  for (
+    const position of [
+      participant.teamPosition,
+      participant.individualPosition,
+    ]
+  ) {
+    switch (position?.toUpperCase()) {
+      case "TOP":
+        return "TOP";
+      case "JUNGLE":
+        return "JUNGLE";
+      case "MIDDLE":
+      case "MID":
+        return "MIDDLE";
+      case "BOTTOM":
+      case "BOT":
+        return "BOTTOM";
+      case "UTILITY":
+      case "SUPPORT":
+        return "SUPPORT";
+    }
+  }
+  return "UNKNOWN";
+}
+
+function displayMetric(value: number | undefined) {
+  return value !== undefined && Number.isFinite(value) && value >= 0
+    ? String(value)
+    : null;
+}
+
+function resultMetricFields(
+  participant: RiotMatchParticipant,
+  gameDurationSeconds: number,
+) {
+  const fields: { name: string; value: string; inline: boolean }[] = [];
+  const role = resultMetricRole(participant);
+
+  if (role === "SUPPORT") {
+    const visionScore = participant.visionScore;
+    if (
+      visionScore === undefined || !Number.isFinite(visionScore) ||
+      visionScore < 0
+    ) {
+      return fields;
+    }
+    fields.push(
+      {
+        name: messageHandler.formatMessage(
+          messageKeys.matchTracking.embed.field.visionScore,
+        ),
+        value: String(visionScore),
+        inline: true,
+      },
+      {
+        name: messageHandler.formatMessage(
+          messageKeys.matchTracking.embed.field.visionScorePerMinute,
+        ),
+        value: formatPerMinute(visionScore, gameDurationSeconds),
+        inline: true,
+      },
+    );
+    return fields;
+  }
+
+  if (role === "JUNGLE") {
+    const jungleCs = displayMetric(participant.neutralMinionsKilled);
+    if (jungleCs) {
+      fields.push({
+        name: messageHandler.formatMessage(
+          messageKeys.matchTracking.embed.field.jungleCs,
+        ),
+        value: jungleCs,
+        inline: true,
+      });
+    }
+    const enemyJungleCs = displayMetric(
+      participant.totalEnemyJungleMinionsKilled,
+    );
+    if (enemyJungleCs) {
+      fields.push({
+        name: messageHandler.formatMessage(
+          messageKeys.matchTracking.embed.field.enemyJungleCs,
+        ),
+        value: enemyJungleCs,
+        inline: true,
+      });
+    }
+    return fields;
+  }
+
+  const cs = participant.totalMinionsKilled + participant.neutralMinionsKilled;
+  fields.push(
+    {
+      name: messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.field.cs,
+      ),
+      value: String(cs),
+      inline: true,
+    },
+    {
+      name: messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.field.csPerMinute,
+      ),
+      value: formatPerMinute(cs, gameDurationSeconds),
+      inline: true,
+    },
+  );
+  return fields;
 }
 
 function formatKillParticipation(
@@ -1172,7 +1287,6 @@ async function buildMatchResultEmbed(
       .setTimestamp(new Date());
   }
 
-  const cs = participant.totalMinionsKilled + participant.neutralMinionsKilled;
   const champion = await championNameById(
     participant.championId,
     participant.championName,
@@ -1180,7 +1294,6 @@ async function buildMatchResultEmbed(
   const teamKills = match.info.participants
     .filter((candidate) => candidate.teamId === participant.teamId)
     .reduce((sum, candidate) => sum + candidate.kills, 0);
-  const csPerMinute = formatCsPerMinute(cs, match.info.gameDuration);
   const killParticipation = formatKillParticipation(
     participant.kills,
     participant.assists,
@@ -1194,6 +1307,71 @@ async function buildMatchResultEmbed(
     : messageHandler.formatMessage(messageKeys.matchTracking.embed.result.loss);
   const rankValue = rankFieldValue(rankSummary);
   const opggValue = opggFieldValue(opggDetail);
+  const fields: { name: string; value: string; inline: boolean }[] = [
+    {
+      name: messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.field.champion,
+      ),
+      value: champion,
+      inline: true,
+    },
+    {
+      name: messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.field.kda,
+      ),
+      value:
+        `${participant.kills}/${participant.deaths}/${participant.assists}`,
+      inline: true,
+    },
+    {
+      name: messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.field.killParticipation,
+      ),
+      value: killParticipation,
+      inline: true,
+    },
+    {
+      name: messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.field.gold,
+      ),
+      value: String(participant.goldEarned),
+      inline: true,
+    },
+  ];
+  const damage = displayMetric(participant.totalDamageDealtToChampions);
+  if (damage) {
+    fields.push({
+      name: messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.field.damage,
+      ),
+      value: damage,
+      inline: true,
+    });
+  }
+  fields.push(
+    {
+      name: messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.field.queue,
+      ),
+      value: queue,
+      inline: true,
+    },
+    {
+      name: messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.field.map,
+      ),
+      value: map,
+      inline: true,
+    },
+    {
+      name: messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.field.mode,
+      ),
+      value: mode,
+      inline: true,
+    },
+    ...resultMetricFields(participant, match.info.gameDuration),
+  );
   const embed = new EmbedBuilder()
     .setTitle(
       messageHandler.formatMessage(
@@ -1208,72 +1386,7 @@ async function buildMatchResultEmbed(
       ),
     )
     .setColor(participant.win ? 0x2ecc71 : 0xe74c3c)
-    .addFields(
-      {
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.champion,
-        ),
-        value: champion,
-        inline: true,
-      },
-      {
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.kda,
-        ),
-        value:
-          `${participant.kills}/${participant.deaths}/${participant.assists}`,
-        inline: true,
-      },
-      {
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.cs,
-        ),
-        value: String(cs),
-        inline: true,
-      },
-      {
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.csPerMinute,
-        ),
-        value: csPerMinute,
-        inline: true,
-      },
-      {
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.killParticipation,
-        ),
-        value: killParticipation,
-        inline: true,
-      },
-      {
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.gold,
-        ),
-        value: String(participant.goldEarned),
-        inline: true,
-      },
-      {
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.queue,
-        ),
-        value: queue,
-        inline: true,
-      },
-      {
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.map,
-        ),
-        value: map,
-        inline: true,
-      },
-      {
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.mode,
-        ),
-        value: mode,
-        inline: true,
-      },
-    )
+    .addFields(fields)
     .setFooter({
       text: messageHandler.formatMessage(
         messageKeys.matchTracking.embed.footer.matchWithRiotId,

@@ -69,7 +69,7 @@ describe("riot_api.ts", () => {
     assertSpyCalls(fetchStub, 1);
   });
 
-  test("Match-v5が試合詳細を返すとき、participantのchampionIdをparseする", async () => {
+  test("Match-v5が試合詳細を返すとき、participantの表示用metricとpositionをparseする", async () => {
     Deno.env.set("RIOT_API_KEY", "test-key");
     using fetchStub = stub(
       globalThis,
@@ -103,6 +103,11 @@ describe("riot_api.ts", () => {
                   totalMinionsKilled: 180,
                   neutralMinionsKilled: 12,
                   goldEarned: 12345,
+                  totalDamageDealtToChampions: 23456,
+                  visionScore: 20,
+                  totalEnemyJungleMinionsKilled: 7,
+                  teamPosition: "TOP",
+                  individualPosition: "TOP",
                 }],
               },
             }),
@@ -114,6 +119,17 @@ describe("riot_api.ts", () => {
     const match = await riotApi.getMatchById("asia", "JP1_12345");
 
     assertEquals(match?.info.participants[0].championId, 17);
+    assertEquals(
+      match?.info.participants[0].totalDamageDealtToChampions,
+      23456,
+    );
+    assertEquals(match?.info.participants[0].visionScore, 20);
+    assertEquals(
+      match?.info.participants[0].totalEnemyJungleMinionsKilled,
+      7,
+    );
+    assertEquals(match?.info.participants[0].teamPosition, "TOP");
+    assertEquals(match?.info.participants[0].individualPosition, "TOP");
     assertSpyCalls(fetchStub, 1);
   });
 

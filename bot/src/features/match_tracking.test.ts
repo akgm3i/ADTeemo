@@ -12,6 +12,8 @@ import { matchTracker } from "./match_tracking.ts";
 import { opggClient } from "./opgg.ts";
 import { afterEach, beforeEach } from "@std/testing/bdd";
 
+type RiotMatch = NonNullable<Awaited<ReturnType<typeof riotApi.getMatchById>>>;
+
 function watcher(overrides: Partial<MatchWatcher> = {}): MatchWatcher {
   const now = new Date("2026-01-01T00:00:00.000Z");
   return {
@@ -85,7 +87,7 @@ function activeGameForPuuid(puuid: string, gameId = 12345) {
   return game;
 }
 
-function match() {
+function match(): RiotMatch {
   return {
     metadata: {
       matchId: "JP1_12345",
@@ -112,6 +114,11 @@ function match() {
         totalMinionsKilled: 180,
         neutralMinionsKilled: 12,
         goldEarned: 12345,
+        totalDamageDealtToChampions: 23456,
+        visionScore: 20,
+        totalEnemyJungleMinionsKilled: 7,
+        teamPosition: "TOP",
+        individualPosition: "TOP",
       }],
     },
   };
@@ -184,6 +191,43 @@ function editedEmbedJson(
     ];
   };
   return call.args[0].embeds[0].toJSON();
+}
+
+async function resultEmbedFields(resultMatch: RiotMatch) {
+  resultMatch.info.queueId = 0;
+  const { client, editSpy } = clientWithSend();
+  using _getWatchersStub = stub(
+    apiClient,
+    "getEnabledMatchWatchers",
+    () =>
+      Promise.resolve({
+        success: true as const,
+        watchers: [watcher({
+          lastState: "FETCHING_RESULT",
+          currentMatchId: "JP1_12345",
+          currentNotificationMessageId: "message-existing",
+        })],
+      }),
+  );
+  using _getAccountStub = stub(
+    apiClient,
+    "getRiotAccount",
+    () => Promise.resolve({ success: true as const, account: account() }),
+  );
+  using _getMatchStub = stub(
+    riotApi,
+    "getMatchById",
+    () => Promise.resolve(resultMatch),
+  );
+  using _updateStub = stub(
+    apiClient,
+    "updateMatchWatcherState",
+    () => Promise.resolve({ success: true as const }),
+  );
+
+  await matchTracker.processMatchWatchers(client);
+
+  return editedEmbedJson(editSpy, 0).fields ?? [];
 }
 
 describe("match_tracking.ts", () => {
@@ -1939,6 +1983,125 @@ describe("match_tracking.ts", () => {
     );
   });
 
+  test("Topの試合結果では、共通ダメージとCSとCS/minを表示する", async () => {
+    // Arrange
+    const resultMatch = match();
+    resultMatch.info.participants[0].teamPosition = "TOP";
+
+    // Act
+    const fields = await resultEmbedFields(resultMatch);
+
+    // Assert
+    assertEquals(
+      fields.find((field) => field.name === "ダメージ")?.value,
+      "23456",
+    );
+    assertEquals(fields.find((field) => field.name === "CS")?.value, "192");
+    assertEquals(
+      fields.find((field) => field.name === "CS/min")?.value,
+      "6.4",
+    );
+    assertEquals(fields.length, 10);
+  });
+
+  test("Supportの試合結果では、CSではなく視界スコアと視界スコア/minを表示する", async () => {
+    // Arrange
+    const resultMatch = match();
+    resultMatch.info.participants[0].teamPosition = "UTILITY";
+
+    // Act
+    const fields = await resultEmbedFields(resultMatch);
+    const fieldNames = fields.map((field) => field.name);
+
+    // Assert
+    assertEquals(fieldNames.includes("CS"), false);
+    assertEquals(fieldNames.includes("CS/min"), false);
+    assertEquals(
+      fields.find((field) => field.name === "視界スコア")?.value,
+      "20",
+    );
+    assertEquals(
+      fields.find((field) => field.name === "視界スコア/min")?.value,
+      "0.7",
+    );
+  });
+
+  test("Jungleの試合結果では、JG CSと取得できた敵JG CSを表示する", async () => {
+    // Arrange
+    const resultMatch = match();
+    resultMatch.info.participants[0].teamPosition = "JUNGLE";
+
+    // Act
+    const fields = await resultEmbedFields(resultMatch);
+    const fieldNames = fields.map((field) => field.name);
+
+    // Assert
+    assertEquals(fieldNames.includes("CS"), false);
+    assertEquals(fieldNames.includes("CS/min"), false);
+    assertEquals(
+      fields.find((field) => field.name === "JG CS")?.value,
+      "12",
+    );
+    assertEquals(
+      fields.find((field) => field.name === "敵JG CS")?.value,
+      "7",
+    );
+  });
+
+  test("敵JG CSが欠損したJungleの試合結果では、JG CSだけを表示する", async () => {
+    // Arrange
+    const resultMatch = match();
+    resultMatch.info.participants[0].teamPosition = "JUNGLE";
+    resultMatch.info.participants[0].totalEnemyJungleMinionsKilled = undefined;
+
+    // Act
+    const fields = await resultEmbedFields(resultMatch);
+    const fieldNames = fields.map((field) => field.name);
+
+    // Assert
+    assertEquals(
+      fields.find((field) => field.name === "JG CS")?.value,
+      "12",
+    );
+    assertEquals(fieldNames.includes("敵JG CS"), false);
+  });
+
+  test("ロールを判定できない試合結果では、CSとCS/minへfallbackする", async () => {
+    // Arrange
+    const resultMatch = match();
+    resultMatch.info.participants[0].teamPosition = undefined;
+    resultMatch.info.participants[0].individualPosition = undefined;
+
+    // Act
+    const fields = await resultEmbedFields(resultMatch);
+
+    // Assert
+    assertEquals(fields.find((field) => field.name === "CS")?.value, "192");
+    assertEquals(
+      fields.find((field) => field.name === "CS/min")?.value,
+      "6.4",
+    );
+  });
+
+  test("Supportのmetricが欠損した試合結果では、取得できないfieldを省略して通知する", async () => {
+    // Arrange
+    const resultMatch = match();
+    resultMatch.info.participants[0].teamPosition = "UTILITY";
+    resultMatch.info.participants[0].visionScore = undefined;
+    resultMatch.info.participants[0].totalDamageDealtToChampions = undefined;
+
+    // Act
+    const fields = await resultEmbedFields(resultMatch);
+    const fieldNames = fields.map((field) => field.name);
+
+    // Assert
+    assertEquals(fieldNames.includes("ダメージ"), false);
+    assertEquals(fieldNames.includes("視界スコア"), false);
+    assertEquals(fieldNames.includes("視界スコア/min"), false);
+    assertEquals(fieldNames.includes("CS"), false);
+    assertEquals(fieldNames.includes("CS/min"), false);
+  });
+
   test("OP.GG連携が無効なとき、試合結果取得時にOP.GGへ問い合わせない", async () => {
     // Arrange
     const originalEnabled = Deno.env.get("OPGG_ENABLED");
@@ -2022,6 +2185,47 @@ describe("match_tracking.ts", () => {
         "getMatchById",
         () => Promise.resolve(match()),
       );
+      using _leagueStub = stub(
+        riotApi,
+        "getLeagueEntriesByPuuid",
+        () => Promise.resolve(leagueEntries(19)),
+      );
+      using _finalizeRankStub = stub(
+        apiClient,
+        "finalizeRankSnapshots",
+        () =>
+          Promise.resolve({
+            success: true as const,
+            snapshots: {
+              before: [{
+                matchId: "JP1_12345",
+                platform: "jp1",
+                puuid: "puuid-1",
+                queueType: "RANKED_SOLO_5x5",
+                phase: "before",
+                tier: "EMERALD",
+                rank: "IV",
+                leaguePoints: 2,
+                wins: 10,
+                losses: 8,
+                fetchedAt: new Date("2026-01-01T00:00:00.000Z"),
+              }],
+              after: [{
+                matchId: "JP1_12345",
+                platform: "jp1",
+                puuid: "puuid-1",
+                queueType: "RANKED_SOLO_5x5",
+                phase: "after",
+                tier: "EMERALD",
+                rank: "IV",
+                leaguePoints: 19,
+                wins: 11,
+                losses: 8,
+                fetchedAt: new Date("2026-01-01T00:10:00.000Z"),
+              }],
+            },
+          }),
+      );
       using _opggStub = stub(
         opggClient,
         "resolveMatchDetail",
@@ -2060,6 +2264,12 @@ describe("match_tracking.ts", () => {
       assertStringIncludes(opggValue ?? "", "[試合詳細](https://op.gg/");
       assertStringIncludes(opggValue ?? "", "レーン戦: 7.2");
       assertStringIncludes(opggValue ?? "", "平均Tier: Emerald");
+      const fields = editedEmbedJson(editSpy, 0).fields ?? [];
+      assertEquals(fields.length, 12);
+      assertEquals(
+        fields.find((field) => field.name === "ランク")?.value,
+        "LP: +17\nEmerald IV 2LP -> Emerald IV 19LP",
+      );
       assertSpyCall(saveStub, 0, {
         args: ["JP1_12345", {
           provider: "opgg",
