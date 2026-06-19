@@ -777,6 +777,12 @@ function displayTier(tier: string) {
   return tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase();
 }
 
+function isApexTier(tier: string) {
+  const tierIndex = TIER_ORDER.indexOf(tier.toUpperCase());
+  const masterIndex = TIER_ORDER.indexOf("MASTER");
+  return tierIndex >= masterIndex && masterIndex >= 0;
+}
+
 function formatRankSnapshot(snapshot: FinalizedRankSnapshot) {
   if (
     !snapshot.tier || snapshot.leaguePoints === null ||
@@ -784,7 +790,9 @@ function formatRankSnapshot(snapshot: FinalizedRankSnapshot) {
   ) {
     return null;
   }
-  const rank = snapshot.rank ? ` ${snapshot.rank}` : "";
+  const rank = snapshot.rank && !isApexTier(snapshot.tier)
+    ? ` ${snapshot.rank}`
+    : "";
   return `${displayTier(snapshot.tier)}${rank} ${snapshot.leaguePoints}LP`;
 }
 
@@ -799,8 +807,7 @@ function rankSnapshotTotalLp(snapshot: FinalizedRankSnapshot) {
   const tierIndex = TIER_ORDER.indexOf(snapshot.tier.toUpperCase());
   if (tierIndex < 0) return null;
   const masterIndex = TIER_ORDER.indexOf("MASTER");
-  const isApexTier = tierIndex >= masterIndex;
-  if (isApexTier) {
+  if (isApexTier(snapshot.tier)) {
     return masterIndex * 400 + snapshot.leaguePoints;
   }
 
