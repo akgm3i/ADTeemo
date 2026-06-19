@@ -434,16 +434,18 @@ export function selectOpggGameCandidate(
           candidate,
           match.info.gameDuration,
         ),
-        puuidMatch: candidatePuuidMatch(candidate, account.puuid) ? 1 : 0,
-        queueMatch: candidateQueueMatch(candidate, match.info.queueId) ? 1 : 0,
-        championMatch: candidateChampionMatch(candidate, participant) ? 1 : 0,
+        puuidMatch: candidatePuuidMatch(candidate, account.puuid),
+        queueMatch: candidateQueueMatch(candidate, match.info.queueId),
+        championMatch: candidateChampionMatch(candidate, participant),
       };
     })
-    .filter(({ timeDiff }) => timeDiff <= MATCH_CREATED_AT_TOLERANCE_MS)
+    .filter(({ timeDiff, puuidMatch, queueMatch, championMatch }) =>
+      timeDiff <= MATCH_CREATED_AT_TOLERANCE_MS &&
+      puuidMatch &&
+      queueMatch &&
+      championMatch
+    )
     .sort((left, right) =>
-      right.puuidMatch - left.puuidMatch ||
-      right.queueMatch - left.queueMatch ||
-      right.championMatch - left.championMatch ||
       left.timeDiff - right.timeDiff ||
       left.gameLengthDiff - right.gameLengthDiff
     );
@@ -452,9 +454,6 @@ export function selectOpggGameCandidate(
   const [best, second] = ranked;
   if (
     second &&
-    best.puuidMatch === second.puuidMatch &&
-    best.queueMatch === second.queueMatch &&
-    best.championMatch === second.championMatch &&
     best.timeDiff === second.timeDiff &&
     best.gameLengthDiff === second.gameLengthDiff
   ) {
@@ -498,14 +497,16 @@ function renewalKey(region: string, puuid: string) {
   return `${region}:${puuid}`;
 }
 
-function renewalSuppressed(region: string, puuid: string, now = Date.now()) {
+function isRenewalSuppressed(region: string, puuid: string, now = Date.now()) {
   const key = renewalKey(region, puuid);
   const lastRenewal = renewalSuppressions.get(key);
-  if (lastRenewal && now - lastRenewal < RENEWAL_SUPPRESSION_MS) {
-    return true;
-  }
+  return lastRenewal !== undefined &&
+    now - lastRenewal < RENEWAL_SUPPRESSION_MS;
+}
+
+function recordRenewal(region: string, puuid: string, now = Date.now()) {
+  const key = renewalKey(region, puuid);
   renewalSuppressions.set(key, now);
-  return false;
 }
 
 function renewalFinished(text: string) {
@@ -543,9 +544,10 @@ async function resolveMatchDetail(
   let candidates = await getGames(fetcher, profile, region, account.puuid);
   let candidate = selectOpggGameCandidate(match, account, candidates);
 
-  if (!candidate && !renewalSuppressed(region, account.puuid)) {
+  if (!candidate && !isRenewalSuppressed(region, account.puuid)) {
     const renewalAllowed = await fetchProfileRenewalAllowed(fetcher, profile);
     if (renewalAllowed) {
+      recordRenewal(region, account.puuid);
       await callResolvedAction(fetcher, profile, "renewal", {
         region,
         puuid: account.puuid,

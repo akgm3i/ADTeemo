@@ -97,6 +97,129 @@ describe("opgg.ts", () => {
     assertEquals(selected, null);
   });
 
+  test("開始時刻が近くてもPUUIDが一致しないとき、候補を選択しない", () => {
+    // Arrange
+    const candidates = [{
+      id: "opgg-match-1",
+      createdAt: new Date("2026-06-19T00:00:00.000Z"),
+      raw: {
+        puuid: "different-puuid",
+        queue_id: 420,
+        champion_id: 17,
+        game_length_second: 1800,
+      },
+    }];
+
+    // Act
+    const selected = selectOpggGameCandidate(match(), account(), candidates);
+
+    // Assert
+    assertEquals(selected, null);
+  });
+
+  test("開始時刻が近くてもchampionが一致しないとき、候補を選択しない", () => {
+    // Arrange
+    const candidates = [{
+      id: "opgg-match-1",
+      createdAt: new Date("2026-06-19T00:00:00.000Z"),
+      raw: {
+        puuid: "puuid-1",
+        queue_id: 420,
+        champion_id: 1,
+        game_length_second: 1800,
+      },
+    }];
+
+    // Act
+    const selected = selectOpggGameCandidate(match(), account(), candidates);
+
+    // Assert
+    assertEquals(selected, null);
+  });
+
+  test("開始時刻が近くてもqueueが一致しないとき、候補を選択しない", () => {
+    // Arrange
+    const candidates = [{
+      id: "opgg-match-1",
+      createdAt: new Date("2026-06-19T00:00:00.000Z"),
+      raw: {
+        puuid: "puuid-1",
+        queue_id: 430,
+        champion_id: 17,
+        game_length_second: 1800,
+      },
+    }];
+
+    // Act
+    const selected = selectOpggGameCandidate(match(), account(), candidates);
+
+    // Assert
+    assertEquals(selected, null);
+  });
+
+  test("更新不可でrenewalを行わなかったとき、次回の更新確認を抑制しない", async () => {
+    // Arrange
+    resetOpggClientCacheForTesting();
+    const actionIds = {
+      getGames: "1111111111111111111111111111111111111111",
+      renewal: "2222222222222222222222222222222222222222",
+      renewalStatus: "3333333333333333333333333333333333333333",
+      getGame: "4444444444444444444444444444444444444444",
+    };
+    let profileGetCount = 0;
+    let renewalCount = 0;
+    const fetcher: typeof fetch = ((_input: string | URL | Request, init) => {
+      const nextAction = init?.headers instanceof Headers
+        ? init.headers.get("Next-Action")
+        : (init?.headers as Record<string, string> | undefined)?.[
+          "Next-Action"
+        ] ?? null;
+
+      if (init?.method === "POST") {
+        if (nextAction === actionIds.getGames) {
+          return Promise.resolve(new Response(JSON.stringify({ data: [] })));
+        }
+        if (nextAction === actionIds.renewal) {
+          renewalCount += 1;
+          return Promise.resolve(new Response("RENEWAL_STARTED"));
+        }
+        if (nextAction === actionIds.renewalStatus) {
+          return Promise.resolve(new Response("RENEWAL_PENDING"));
+        }
+      }
+
+      profileGetCount += 1;
+      const renewalAllowed = profileGetCount >= 3;
+      return Promise.resolve(
+        new Response(`
+          <html>
+            <script>
+              export const getGames = "${actionIds.getGames}";
+              export const renewal = "${actionIds.renewal}";
+              export const renewalStatus = "${actionIds.renewalStatus}";
+              export const getGame = "${actionIds.getGame}";
+              window.__OPGG__ = {"isRenewable":${renewalAllowed}};
+            </script>
+          </html>
+        `),
+      );
+    }) as typeof fetch;
+
+    // Act
+    await opggClient.resolveMatchDetail(account(), match(), {
+      fetcher,
+      sleep: () => Promise.resolve(),
+    });
+    await opggClient.resolveMatchDetail(account(), match(), {
+      fetcher,
+      sleep: () => Promise.resolve(),
+    });
+
+    // Assert
+    assertEquals(profileGetCount, 3);
+    assertEquals(renewalCount, 1);
+  });
+
   test("初回実行時にHTMLとchunkからAction IDを抽出し、OP.GG詳細を正規化する", async () => {
     // Arrange
     resetOpggClientCacheForTesting();
