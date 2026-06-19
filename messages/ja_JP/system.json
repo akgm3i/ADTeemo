@@ -155,7 +155,13 @@
         "csPerMinute": "CS/min",
         "killParticipation": "キル関与率",
         "gold": "Gold",
-        "rank": "ランク"
+        "rank": "ランク",
+        "opgg": "OP.GG"
+      },
+      "opgg": {
+        "detail": "[試合詳細]({url})",
+        "laneScore": "レーン戦: {score}",
+        "averageTier": "平均Tier: {tier}"
       },
       "fallback": {
         "unknownChampion": "チャンピオン不明",

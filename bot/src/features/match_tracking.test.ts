@@ -9,6 +9,7 @@ import { apiClient } from "../api_client.ts";
 import { botLogger } from "../logger.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import { matchTracker } from "./match_tracking.ts";
+import { opggClient } from "./opgg.ts";
 import { afterEach, beforeEach } from "@std/testing/bdd";
 
 function watcher(overrides: Partial<MatchWatcher> = {}): MatchWatcher {
@@ -1936,6 +1937,152 @@ describe("match_tracking.ts", () => {
       editedEmbedFieldValue(editSpy, 1, "キル関与率"),
       "60.0%",
     );
+  });
+
+  test("OP.GG連携が無効なとき、試合結果取得時にOP.GGへ問い合わせない", async () => {
+    // Arrange
+    const originalEnabled = Deno.env.get("OPGG_ENABLED");
+    Deno.env.delete("OPGG_ENABLED");
+    try {
+      const { client } = clientWithSend();
+      using _getWatchersStub = stub(
+        apiClient,
+        "getEnabledMatchWatchers",
+        () =>
+          Promise.resolve({
+            success: true as const,
+            watchers: [watcher({
+              lastState: "FETCHING_RESULT",
+              currentMatchId: "JP1_12345",
+              currentNotificationMessageId: "message-existing",
+            })],
+          }),
+      );
+      using _getAccountStub = stub(
+        apiClient,
+        "getRiotAccount",
+        () => Promise.resolve({ success: true as const, account: account() }),
+      );
+      using _getMatchStub = stub(
+        riotApi,
+        "getMatchById",
+        () => Promise.resolve(match()),
+      );
+      using opggStub = stub(
+        opggClient,
+        "resolveMatchDetail",
+        () => Promise.resolve(null),
+      );
+      using _updateStub = stub(
+        apiClient,
+        "updateMatchWatcherState",
+        () => Promise.resolve({ success: true as const }),
+      );
+
+      // Act
+      await matchTracker.processMatchWatchers(client);
+
+      // Assert
+      assertSpyCalls(opggStub, 0);
+    } finally {
+      if (originalEnabled === undefined) {
+        Deno.env.delete("OPGG_ENABLED");
+      } else {
+        Deno.env.set("OPGG_ENABLED", originalEnabled);
+      }
+    }
+  });
+
+  test("OP.GG詳細を解決できたとき、試合結果Embedに詳細リンクと補助情報を表示し保存する", async () => {
+    // Arrange
+    const originalEnabled = Deno.env.get("OPGG_ENABLED");
+    Deno.env.set("OPGG_ENABLED", "true");
+    try {
+      const { client, editSpy } = clientWithSend();
+      using _getWatchersStub = stub(
+        apiClient,
+        "getEnabledMatchWatchers",
+        () =>
+          Promise.resolve({
+            success: true as const,
+            watchers: [watcher({
+              lastState: "FETCHING_RESULT",
+              currentMatchId: "JP1_12345",
+              currentNotificationMessageId: "message-existing",
+            })],
+          }),
+      );
+      using _getAccountStub = stub(
+        apiClient,
+        "getRiotAccount",
+        () => Promise.resolve({ success: true as const, account: account() }),
+      );
+      using _getMatchStub = stub(
+        riotApi,
+        "getMatchById",
+        () => Promise.resolve(match()),
+      );
+      using _opggStub = stub(
+        opggClient,
+        "resolveMatchDetail",
+        () =>
+          Promise.resolve({
+            provider: "opgg" as const,
+            providerRegion: "jp",
+            providerMatchId: "opgg-match-1",
+            detailUrl:
+              "https://op.gg/ja/lol/summoners/jp/Teemo-JP1/matches/opgg-match-1/1780000000000",
+            providerCreatedAt: new Date("2026-06-19T00:00:00.000Z"),
+            averageTier: "Emerald",
+            participant: {
+              puuid: "puuid-1",
+              participantId: 3,
+              laneScore: 7.2,
+            },
+          }),
+      );
+      using saveStub = stub(
+        apiClient,
+        "upsertExternalMatchDetail",
+        () => Promise.resolve({ success: true as const }),
+      );
+      using _updateStub = stub(
+        apiClient,
+        "updateMatchWatcherState",
+        () => Promise.resolve({ success: true as const }),
+      );
+
+      // Act
+      await matchTracker.processMatchWatchers(client);
+
+      // Assert
+      const opggValue = editedEmbedFieldValue(editSpy, 0, "OP.GG");
+      assertStringIncludes(opggValue ?? "", "[試合詳細](https://op.gg/");
+      assertStringIncludes(opggValue ?? "", "レーン戦: 7.2");
+      assertStringIncludes(opggValue ?? "", "平均Tier: Emerald");
+      assertSpyCall(saveStub, 0, {
+        args: ["JP1_12345", {
+          provider: "opgg",
+          providerRegion: "jp",
+          providerMatchId: "opgg-match-1",
+          detailUrl:
+            "https://op.gg/ja/lol/summoners/jp/Teemo-JP1/matches/opgg-match-1/1780000000000",
+          providerCreatedAt: new Date("2026-06-19T00:00:00.000Z"),
+          averageTier: "Emerald",
+          participant: {
+            puuid: "puuid-1",
+            participantId: 3,
+            laneScore: 7.2,
+          },
+        }],
+      });
+    } finally {
+      if (originalEnabled === undefined) {
+        Deno.env.delete("OPGG_ENABLED");
+      } else {
+        Deno.env.set("OPGG_ENABLED", originalEnabled);
+      }
+    }
   });
 
   test("ランク対象queueの試合結果EmbedにLP差分と現在ランクを表示する", async () => {

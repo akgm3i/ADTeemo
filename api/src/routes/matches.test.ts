@@ -138,6 +138,66 @@ describe("routes/matches.ts", () => {
     });
   });
 
+  describe("POST /matches/:matchId/external-details", () => {
+    test("OP.GG詳細が指定されたとき、外部試合詳細として保存し204を返す", async () => {
+      // Arrange
+      using upsertStub = stub(
+        dbActions,
+        "upsertExternalMatchDetail",
+        () => Promise.resolve(),
+      );
+      const payload = {
+        provider: "opgg" as const,
+        providerRegion: "jp",
+        providerMatchId: "opgg-match-1",
+        detailUrl:
+          "https://op.gg/ja/lol/summoners/jp/Teemo-JP1/matches/opgg-match-1/1780000000000",
+        providerCreatedAt: "2026-06-19T00:00:00.000Z",
+        averageTier: "Emerald",
+        participant: {
+          puuid: "puuid-1",
+          participantId: 3,
+          laneScore: 7.2,
+        },
+      };
+
+      // Act
+      const res = await app.request("/matches/JP1_12345/external-details", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      // Assert
+      assertEquals(res.status, 204);
+      assertSpyCall(upsertStub, 0, {
+        args: [{
+          ...payload,
+          matchId: "JP1_12345",
+          providerCreatedAt: new Date(payload.providerCreatedAt),
+        }],
+      });
+    });
+
+    test("未対応providerが指定されたとき、400を返す", async () => {
+      // Arrange / Act
+      const res = await app.request("/matches/JP1_12345/external-details", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "unknown",
+          providerRegion: "jp",
+          providerMatchId: "opgg-match-1",
+          detailUrl: "https://example.com",
+          providerCreatedAt: "2026-06-19T00:00:00.000Z",
+        }),
+      });
+
+      // Assert
+      assertEquals(res.status, 400);
+    });
+  });
+
   describe("POST /matches/:matchId/participants", () => {
     const matchId = "test-match-id";
     const participantData: {
