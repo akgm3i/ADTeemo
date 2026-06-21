@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertFalse, assertRejects } from "@std/assert";
 import { beforeEach, describe, test } from "@std/testing/bdd";
 import { assertSpyCalls, stub } from "@std/testing/mock";
 import { riotApi } from "./riot_api.ts";
@@ -203,6 +203,87 @@ describe("riot_api.ts", () => {
 
     assertEquals(account?.puuid, "puuid-1");
     assertSpyCalls(fetchStub, 2);
+  });
+
+  test("rate limit設定がないとき、Personal API Keyの上限を既定値として使う", async () => {
+    // Arrange
+    const envNames = [
+      "RIOT_RATE_LIMIT_SHORT_WINDOW_LIMIT",
+      "RIOT_RATE_LIMIT_SHORT_WINDOW_MS",
+      "RIOT_RATE_LIMIT_LONG_WINDOW_LIMIT",
+      "RIOT_RATE_LIMIT_LONG_WINDOW_MS",
+    ] as const;
+    const previousValues = new Map(
+      envNames.map((name) => [name, Deno.env.get(name)]),
+    );
+    for (const name of envNames) Deno.env.delete(name);
+    Deno.env.set("RIOT_API_KEY", "test-key");
+    using fetchStub = stub(
+      globalThis,
+      "fetch",
+      () =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              puuid: "puuid-1",
+              gameName: "Teemo",
+              tagLine: "JP1",
+            }),
+            { status: 200 },
+          ),
+        ),
+    );
+
+    try {
+      // Act
+      await riotApi.getAccountByRiotId("asia", "Teemo", "JP1");
+      const snapshot = riotApi.__testing.rateLimiterSnapshot();
+
+      // Assert
+      assertEquals(
+        snapshot.appBuckets.map(({ limit, windowMs }) => ({
+          limit,
+          windowMs,
+        })),
+        [
+          { limit: 20, windowMs: 1_000 },
+          { limit: 100, windowMs: 120_000 },
+        ],
+      );
+      assertSpyCalls(fetchStub, 1);
+    } finally {
+      for (const [name, value] of previousValues) {
+        if (value === undefined) Deno.env.delete(name);
+        else Deno.env.set(name, value);
+      }
+    }
+  });
+
+  test("Riot APIが403を返すとき、認証設定と対象endpointを確認できるエラーを返す", async () => {
+    // Arrange
+    Deno.env.set("RIOT_API_KEY", "test-key");
+    using fetchStub = stub(
+      globalThis,
+      "fetch",
+      () => Promise.resolve(new Response(null, { status: 403 })),
+    );
+
+    // Act
+    const error = await assertRejects(
+      () => riotApi.getActiveGameByPuuid("jp1", "secret-puuid"),
+      Error,
+      "Riot API request failed: 403",
+    );
+
+    // Assert
+    assertEquals(
+      error.message,
+      "Riot API request failed: 403 " +
+        "(jp1.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/:puuid); " +
+        "authorization rejected; verify RIOT_API_KEY and endpoint access",
+    );
+    assertFalse(error.message.includes("secret-puuid"));
+    assertSpyCalls(fetchStub, 1);
   });
 
   test("Account-v1を呼び出すとき、指定したRegional RoutingをURLに使う", async () => {

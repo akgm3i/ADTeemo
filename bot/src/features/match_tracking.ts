@@ -1,6 +1,5 @@
 import { type Client, EmbedBuilder } from "discord.js";
 import type { Lane, MatchWatcher, RiotAccount } from "@adteemo/api/schema";
-import { riotApi } from "@adteemo/api/riot-api";
 import { riotStaticData } from "@adteemo/api/riot-static-data";
 import {
   apiClient,
@@ -14,20 +13,22 @@ import { opggClient, type OpggMatchDetail } from "./opgg.ts";
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
 const DEFAULT_IN_GAME_NOTIFY_INTERVAL_MS = 300_000;
 const DEFAULT_RESULT_FETCH_TIMEOUT_MS = 3 * 60 * 60 * 1000;
-const DEFAULT_RIOT_LONG_WINDOW_LIMIT = 30_000;
-const RIOT_LONG_WINDOW_MS = 10 * 60 * 1000;
+const DEFAULT_RIOT_LONG_WINDOW_LIMIT = 100;
+const DEFAULT_RIOT_LONG_WINDOW_MS = 2 * 60 * 1000;
 
 type ActiveGame = NonNullable<
-  Awaited<ReturnType<typeof riotApi.getActiveGameByPuuid>>
+  Awaited<ReturnType<typeof apiClient.getActiveGameByPuuid>>
 >;
 type ActiveGameResult = Awaited<
-  ReturnType<typeof riotApi.getActiveGameByPuuid>
+  ReturnType<typeof apiClient.getActiveGameByPuuid>
 >;
 type RiotAccountResult = Awaited<ReturnType<typeof apiClient.getRiotAccount>>;
-type RiotMatch = NonNullable<Awaited<ReturnType<typeof riotApi.getMatchById>>>;
+type RiotMatch = NonNullable<
+  Awaited<ReturnType<typeof apiClient.getMatchById>>
+>;
 type RiotMatchParticipant = RiotMatch["info"]["participants"][number];
 type LeagueEntries = Awaited<
-  ReturnType<typeof riotApi.getLeagueEntriesByPuuid>
+  ReturnType<typeof apiClient.getLeagueEntriesByPuuid>
 >;
 type WatcherState = Parameters<typeof apiClient.updateMatchWatcherState>[2];
 type ActiveNotificationGroup = {
@@ -454,7 +455,10 @@ function getActiveGameForAccount(
   const cached = context.activeGamesByRiotAccount.get(cacheKey);
   if (cached) return cached;
 
-  const result = riotApi.getActiveGameByPuuid(account.platform, account.puuid);
+  const result = apiClient.getActiveGameByPuuid(
+    account.platform,
+    account.puuid,
+  );
   context.activeGamesByRiotAccount.set(cacheKey, result);
   return result;
 }
@@ -468,7 +472,7 @@ function getMatchForPendingResult(
   const cached = context.matchesByRegionAndMatchId.get(cacheKey);
   if (cached) return cached;
 
-  const result = riotApi.getMatchById(account.region, matchId);
+  const result = apiClient.getMatchById(account.region, matchId);
   context.matchesByRegionAndMatchId.set(cacheKey, result);
   return result;
 }
@@ -501,7 +505,7 @@ async function capturePendingRankSnapshots(
   if (!rankedQueueTypeByQueueId(activeGame.gameQueueConfigId)) return;
 
   try {
-    const entries = await riotApi.getLeagueEntriesByPuuid(
+    const entries = await apiClient.getLeagueEntriesByPuuid(
       account.platform,
       account.puuid,
     );
@@ -536,7 +540,7 @@ async function finalizeRankSnapshotsForResult(
   if (!queueType) return null;
 
   try {
-    const entries = await riotApi.getLeagueEntriesByPuuid(
+    const entries = await apiClient.getLeagueEntriesByPuuid(
       account.platform,
       account.puuid,
     );
@@ -1858,19 +1862,24 @@ function warnIfRiotRequestBudgetRisk(
     "RIOT_RATE_LIMIT_LONG_WINDOW_LIMIT",
     DEFAULT_RIOT_LONG_WINDOW_LIMIT,
   );
+  const longWindowMs = numberEnv(
+    "RIOT_RATE_LIMIT_LONG_WINDOW_MS",
+    DEFAULT_RIOT_LONG_WINDOW_MS,
+  );
   const estimatedRequests = watcherCount *
-    Math.ceil(RIOT_LONG_WINDOW_MS / pollIntervalMs);
+    Math.ceil(longWindowMs / pollIntervalMs);
   const now = Date.now();
   if (
     estimatedRequests >= longWindowLimit * 0.8 &&
-    now - lastBudgetWarningAt >= RIOT_LONG_WINDOW_MS
+    now - lastBudgetWarningAt >= longWindowMs
   ) {
     lastBudgetWarningAt = now;
     botLogger.warn("match_tracking.riot_request_budget_risk", {
       watcherCount,
       pollIntervalMs,
-      estimatedRequestsPer10Minutes: estimatedRequests,
-      limitPer10Minutes: longWindowLimit,
+      rateLimitWindowMs: longWindowMs,
+      estimatedRequestsPerWindow: estimatedRequests,
+      limitPerWindow: longWindowLimit,
     });
   }
 }

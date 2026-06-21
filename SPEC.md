@@ -100,10 +100,10 @@ ADTeemoは複数Discordギルドへの導入を想定する。プレイヤー本
 - `/watch-match @member` はRiot ID連携済みメンバーをギルド単位で手動監視対象にする。
 - `/unwatch-match @member` は手動監視を停止する。
 - `/watch-list` は実行ギルド内の有効な監視対象一覧を表示する。
-- BotはRiot Spectator-v5で試合開始・試合中概要・終了を検知し、Riot Match-v5で終了後の勝敗、KDA、CS、Gold、CS/min、キル関与率を通知する。
+- Backend APIはRiot Spectator-v5で試合開始・試合中概要・終了を検知し、Riot Match-v5で終了後の勝敗、KDA、CS、Gold、CS/min、キル関与率を取得する。BotはこれらをBackend API経由で取得してDiscordへ通知し、Riot APIを直接呼び出さない。
 - 同一 `guildId + channelId + Riot platform + gameId` で複数監視対象が同じ試合にいる場合、試合中通知は1投稿に統合する。Riot platformが異なる場合は numeric `gameId` が同じでも別試合として扱う。
 - 結果通知は監視対象ごとの個別通知である。共有された試合中投稿IDを結果通知へ使う場合も、上書き防止のため同一active group内で1回だけ再利用する。
-- Riot API呼び出しは共有キューで制御し、429とrate limit headersを後続呼び出しへ反映する。
+- Riot API呼び出しはBackend APIプロセス内の共有キューへ集約し、429とrate limit headersを後続呼び出しへ反映する。
 
 ## 5. 将来構想と追跡中のIssue
 
