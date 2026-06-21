@@ -1,6 +1,5 @@
 import { type Client, EmbedBuilder } from "discord.js";
 import type { Lane, MatchWatcher, RiotAccount } from "@adteemo/api/schema";
-import { riotApi } from "@adteemo/api/riot-api";
 import { riotStaticData } from "@adteemo/api/riot-static-data";
 import {
   apiClient,
@@ -18,16 +17,18 @@ const DEFAULT_RIOT_LONG_WINDOW_LIMIT = 100;
 const DEFAULT_RIOT_LONG_WINDOW_MS = 2 * 60 * 1000;
 
 type ActiveGame = NonNullable<
-  Awaited<ReturnType<typeof riotApi.getActiveGameByPuuid>>
+  Awaited<ReturnType<typeof apiClient.getActiveGameByPuuid>>
 >;
 type ActiveGameResult = Awaited<
-  ReturnType<typeof riotApi.getActiveGameByPuuid>
+  ReturnType<typeof apiClient.getActiveGameByPuuid>
 >;
 type RiotAccountResult = Awaited<ReturnType<typeof apiClient.getRiotAccount>>;
-type RiotMatch = NonNullable<Awaited<ReturnType<typeof riotApi.getMatchById>>>;
+type RiotMatch = NonNullable<
+  Awaited<ReturnType<typeof apiClient.getMatchById>>
+>;
 type RiotMatchParticipant = RiotMatch["info"]["participants"][number];
 type LeagueEntries = Awaited<
-  ReturnType<typeof riotApi.getLeagueEntriesByPuuid>
+  ReturnType<typeof apiClient.getLeagueEntriesByPuuid>
 >;
 type WatcherState = Parameters<typeof apiClient.updateMatchWatcherState>[2];
 type ActiveNotificationGroup = {
@@ -454,7 +455,10 @@ function getActiveGameForAccount(
   const cached = context.activeGamesByRiotAccount.get(cacheKey);
   if (cached) return cached;
 
-  const result = riotApi.getActiveGameByPuuid(account.platform, account.puuid);
+  const result = apiClient.getActiveGameByPuuid(
+    account.platform,
+    account.puuid,
+  );
   context.activeGamesByRiotAccount.set(cacheKey, result);
   return result;
 }
@@ -468,7 +472,7 @@ function getMatchForPendingResult(
   const cached = context.matchesByRegionAndMatchId.get(cacheKey);
   if (cached) return cached;
 
-  const result = riotApi.getMatchById(account.region, matchId);
+  const result = apiClient.getMatchById(account.region, matchId);
   context.matchesByRegionAndMatchId.set(cacheKey, result);
   return result;
 }
@@ -501,7 +505,7 @@ async function capturePendingRankSnapshots(
   if (!rankedQueueTypeByQueueId(activeGame.gameQueueConfigId)) return;
 
   try {
-    const entries = await riotApi.getLeagueEntriesByPuuid(
+    const entries = await apiClient.getLeagueEntriesByPuuid(
       account.platform,
       account.puuid,
     );
@@ -536,7 +540,7 @@ async function finalizeRankSnapshotsForResult(
   if (!queueType) return null;
 
   try {
-    const entries = await riotApi.getLeagueEntriesByPuuid(
+    const entries = await apiClient.getLeagueEntriesByPuuid(
       account.platform,
       account.puuid,
     );

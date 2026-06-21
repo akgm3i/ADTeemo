@@ -54,17 +54,17 @@ cp .env.example .env
 | `DISCORD_GUILD_ID`                                         | 指定時はguild commandとしてslash commandを登録します。未指定時はglobal commandとして登録します。 |
 | `API_URL`                                                  | Botから参照するBackend API URL                                                                   |
 | `DATABASE_URL`                                             | SQLite DB URL。例: `file:./data/sqlite.db`                                                       |
-| `RIOT_API_KEY`                                             | Riot API key                                                                                     |
+| `RIOT_API_KEY`                                             | Backend APIが使用するRiot API key                                                                |
 | `RIOT_DEFAULT_PLATFORM`                                    | Riot platform routing。例: `jp1`                                                                 |
 | `RIOT_DEFAULT_REGION`                                      | Riot regional routing。例: `asia`                                                                |
 | `MATCH_WATCH_POLL_INTERVAL_MS`                             | 試合監視のポーリング間隔                                                                         |
 | `MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS`                   | 試合中通知の更新間隔                                                                             |
 | `MATCH_WATCH_RESULT_FETCH_TIMEOUT_MS`                      | 試合終了後の結果取得タイムアウト                                                                 |
 | `MATCH_WATCH_MAX_ENABLED_PER_GUILD`                        | ギルドごとの有効監視対象数上限                                                                   |
-| `RIOT_RATE_LIMIT_SHORT_WINDOW_LIMIT`                       | Riot API呼び出し共有キューの短期window上限。Personal Key既定値: `20`                             |
-| `RIOT_RATE_LIMIT_SHORT_WINDOW_MS`                          | Riot API呼び出し共有キューの短期window。Personal Key既定値: `1000` ms                            |
-| `RIOT_RATE_LIMIT_LONG_WINDOW_LIMIT`                        | Riot API呼び出し共有キューの長期window上限。Personal Key既定値: `100`                            |
-| `RIOT_RATE_LIMIT_LONG_WINDOW_MS`                           | Riot API呼び出し共有キューの長期window。Personal Key既定値: `120000` ms                          |
+| `RIOT_RATE_LIMIT_SHORT_WINDOW_LIMIT`                       | Backend API内のRiot共有キューの短期window上限。Personal Key既定値: `20`                          |
+| `RIOT_RATE_LIMIT_SHORT_WINDOW_MS`                          | Backend API内のRiot共有キューの短期window。Personal Key既定値: `1000` ms                         |
+| `RIOT_RATE_LIMIT_LONG_WINDOW_LIMIT`                        | Backend API内のRiot共有キューの長期window上限。Personal Key既定値: `100`                         |
+| `RIOT_RATE_LIMIT_LONG_WINDOW_MS`                           | Backend API内のRiot共有キューの長期window。Personal Key既定値: `120000` ms                       |
 | `RIOT_STATIC_DATA_CACHE_TTL_MS`                            | Riot static data cacheのTTL                                                                      |
 | `API_MESSAGE_LANG` / `BOT_MESSAGE_LANG`                    | API / Botのメッセージ言語                                                                        |
 | `BOT_MESSAGE_THEME`                                        | Botメッセージテーマ                                                                              |

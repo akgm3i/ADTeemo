@@ -123,6 +123,48 @@ async function getRiotAccount(discordId: string) {
   }
 }
 
+async function getActiveGameByPuuid(
+  platform: RiotPlatform,
+  puuid: string,
+) {
+  const res = await client.riot["active-games"][":platform"][":puuid"].$get({
+    param: { platform, puuid },
+  });
+  if (!res.ok) {
+    const body = await res.json();
+    throw new Error(body.error);
+  }
+  const body = await res.json();
+  return body.activeGame;
+}
+
+async function getMatchById(region: RiotRegion, matchId: string) {
+  const res = await client.riot.matches[":region"][":matchId"].$get({
+    param: { region, matchId },
+  });
+  if (!res.ok) {
+    const body = await res.json();
+    throw new Error(body.error);
+  }
+  const body = await res.json();
+  return body.match;
+}
+
+async function getLeagueEntriesByPuuid(
+  platform: RiotPlatform,
+  puuid: string,
+) {
+  const res = await client.riot["league-entries"][":platform"][":puuid"].$get({
+    param: { platform, puuid },
+  });
+  if (!res.ok) {
+    const body = await res.json();
+    throw new Error(body.error);
+  }
+  const body = await res.json();
+  return body.entries;
+}
+
 async function checkHealth() {
   try {
     const res = await client.health.$get();
@@ -525,6 +567,9 @@ async function updateMatchWatcherState(
 export const apiClient = {
   linkAccountByRiotId,
   getRiotAccount,
+  getActiveGameByPuuid,
+  getMatchById,
+  getLeagueEntriesByPuuid,
   checkHealth,
   setMainRole,
   createCustomGameEvent,

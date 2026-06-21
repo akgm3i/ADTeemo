@@ -3,7 +3,6 @@ import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import type { Client } from "discord.js";
 import type { MatchWatcher, RiotAccount } from "@adteemo/api/schema";
-import { riotApi } from "@adteemo/api/riot-api";
 import { riotStaticData } from "@adteemo/api/riot-static-data";
 import { apiClient } from "../api_client.ts";
 import { botLogger } from "../logger.ts";
@@ -12,7 +11,9 @@ import { matchTracker } from "./match_tracking.ts";
 import { opggClient } from "./opgg.ts";
 import { afterEach, beforeEach } from "@std/testing/bdd";
 
-type RiotMatch = NonNullable<Awaited<ReturnType<typeof riotApi.getMatchById>>>;
+type RiotMatch = NonNullable<
+  Awaited<ReturnType<typeof apiClient.getMatchById>>
+>;
 
 function watcher(overrides: Partial<MatchWatcher> = {}): MatchWatcher {
   const now = new Date("2026-01-01T00:00:00.000Z");
@@ -215,7 +216,7 @@ async function resultEmbedFields(resultMatch: RiotMatch) {
     () => Promise.resolve({ success: true as const, account: account() }),
   );
   using _getMatchStub = stub(
-    riotApi,
+    apiClient,
     "getMatchById",
     () => Promise.resolve(resultMatch),
   );
@@ -277,7 +278,7 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(activeGame()),
     );
@@ -318,12 +319,12 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(activeGame()),
     );
     using _leagueStub = stub(
-      riotApi,
+      apiClient,
       "getLeagueEntriesByPuuid",
       () => Promise.resolve(leagueEntries(2)),
     );
@@ -397,7 +398,7 @@ describe("match_tracking.ts", () => {
         }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
     );
@@ -478,7 +479,7 @@ describe("match_tracking.ts", () => {
         }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
     );
@@ -543,7 +544,7 @@ describe("match_tracking.ts", () => {
         }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
     );
@@ -613,7 +614,7 @@ describe("match_tracking.ts", () => {
           }),
       );
       using _activeGameStub = stub(
-        riotApi,
+        apiClient,
         "getActiveGameByPuuid",
         () => Promise.resolve(activeGameWithParticipants(["puuid-2"])),
       );
@@ -677,7 +678,7 @@ describe("match_tracking.ts", () => {
         }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
     );
@@ -747,7 +748,7 @@ describe("match_tracking.ts", () => {
           }),
       );
       using _activeGameStub = stub(
-        riotApi,
+        apiClient,
         "getActiveGameByPuuid",
         () =>
           Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
@@ -822,7 +823,7 @@ describe("match_tracking.ts", () => {
         }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
     );
@@ -897,7 +898,7 @@ describe("match_tracking.ts", () => {
         }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       (_platform, puuid) =>
         Promise.resolve(
@@ -907,7 +908,7 @@ describe("match_tracking.ts", () => {
         ),
     );
     using _getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(null),
     );
@@ -971,7 +972,7 @@ describe("match_tracking.ts", () => {
         }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
     );
@@ -1030,7 +1031,7 @@ describe("match_tracking.ts", () => {
         }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () =>
         Promise.resolve(
@@ -1083,7 +1084,7 @@ describe("match_tracking.ts", () => {
         }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       (_platform, puuid) =>
         Promise.resolve(
@@ -1133,7 +1134,7 @@ describe("match_tracking.ts", () => {
         () => Promise.resolve({ success: true as const, account: account() }),
       );
       using _activeGameStub = stub(
-        riotApi,
+        apiClient,
         "getActiveGameByPuuid",
         () => Promise.resolve(activeGame()),
       );
@@ -1210,7 +1211,7 @@ describe("match_tracking.ts", () => {
           }),
       );
       using _activeGameStub = stub(
-        riotApi,
+        apiClient,
         "getActiveGameByPuuid",
         () =>
           Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
@@ -1284,7 +1285,7 @@ describe("match_tracking.ts", () => {
           }),
       );
       using _activeGameStub = stub(
-        riotApi,
+        apiClient,
         "getActiveGameByPuuid",
         () =>
           Promise.resolve(activeGameWithParticipants(["puuid-1", "puuid-2"])),
@@ -1371,7 +1372,7 @@ describe("match_tracking.ts", () => {
           }),
       );
       using _activeGameStub = stub(
-        riotApi,
+        apiClient,
         "getActiveGameByPuuid",
         () =>
           Promise.resolve(
@@ -1431,12 +1432,12 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(null),
     );
     using getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(match()),
     );
@@ -1497,12 +1498,12 @@ describe("match_tracking.ts", () => {
         }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(null),
     );
     using _getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(match()),
     );
@@ -1581,12 +1582,12 @@ describe("match_tracking.ts", () => {
         }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(null),
     );
     using _getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(resultMatch),
     );
@@ -1692,12 +1693,12 @@ describe("match_tracking.ts", () => {
         }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(null),
     );
     using _getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(resultMatch),
     );
@@ -1761,12 +1762,12 @@ describe("match_tracking.ts", () => {
         }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(null),
     );
     using _getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(null),
     );
@@ -1849,12 +1850,12 @@ describe("match_tracking.ts", () => {
         }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(null),
     );
     using _getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(resultMatch),
     );
@@ -1903,7 +1904,7 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using _getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(match()),
     );
@@ -1956,12 +1957,12 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(null),
     );
     using _getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(resultMatch),
     );
@@ -2127,7 +2128,7 @@ describe("match_tracking.ts", () => {
         () => Promise.resolve({ success: true as const, account: account() }),
       );
       using _getMatchStub = stub(
-        riotApi,
+        apiClient,
         "getMatchById",
         () => Promise.resolve(match()),
       );
@@ -2181,12 +2182,12 @@ describe("match_tracking.ts", () => {
         () => Promise.resolve({ success: true as const, account: account() }),
       );
       using _getMatchStub = stub(
-        riotApi,
+        apiClient,
         "getMatchById",
         () => Promise.resolve(match()),
       );
       using _leagueStub = stub(
-        riotApi,
+        apiClient,
         "getLeagueEntriesByPuuid",
         () => Promise.resolve(leagueEntries(19)),
       );
@@ -2317,17 +2318,17 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(null),
     );
     using _getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(match()),
     );
     using _leagueStub = stub(
-      riotApi,
+      apiClient,
       "getLeagueEntriesByPuuid",
       () => Promise.resolve(leagueEntries(19)),
     );
@@ -2411,17 +2412,17 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(null),
     );
     using _getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(match()),
     );
     using _leagueStub = stub(
-      riotApi,
+      apiClient,
       "getLeagueEntriesByPuuid",
       () =>
         Promise.resolve([{
@@ -2516,12 +2517,12 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(null),
     );
     using _getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(resultMatch),
     );
@@ -2571,7 +2572,7 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using _getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(match()),
     );
@@ -2621,7 +2622,7 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using _getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(match()),
     );
@@ -2660,7 +2661,7 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using _getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(match()),
     );
@@ -2705,7 +2706,7 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(match()),
     );
@@ -2778,12 +2779,12 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(activeGame(67890)),
     );
     using getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(null),
     );
@@ -2846,7 +2847,7 @@ describe("match_tracking.ts", () => {
         }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () =>
         Promise.resolve(
@@ -2854,7 +2855,7 @@ describe("match_tracking.ts", () => {
         ),
     );
     using _getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(match()),
     );
@@ -2924,7 +2925,7 @@ describe("match_tracking.ts", () => {
           }),
       );
       using _activeGameStub = stub(
-        riotApi,
+        apiClient,
         "getActiveGameByPuuid",
         () =>
           Promise.resolve(
@@ -2932,7 +2933,7 @@ describe("match_tracking.ts", () => {
           ),
       );
       using _getMatchStub = stub(
-        riotApi,
+        apiClient,
         "getMatchById",
         () => Promise.resolve(null),
       );
@@ -2991,12 +2992,12 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using getMatchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(null),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(activeGame(67890)),
     );
@@ -3031,7 +3032,7 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(null),
     );
@@ -3079,7 +3080,7 @@ describe("match_tracking.ts", () => {
         }),
     );
     using activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       (_platform, puuid) =>
         Promise.resolve(
@@ -3140,7 +3141,7 @@ describe("match_tracking.ts", () => {
       },
     );
     using activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       (_platform, puuid) => Promise.resolve(activeGameForPuuid(puuid, 67890)),
     );
@@ -3189,7 +3190,7 @@ describe("match_tracking.ts", () => {
         }),
     );
     using activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       (_platform, puuid) => {
         if (puuid === "puuid-1") {
@@ -3242,7 +3243,7 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(activeGame()),
     );
@@ -3309,7 +3310,7 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using matchStub = stub(
-      riotApi,
+      apiClient,
       "getMatchById",
       () => Promise.resolve(match()),
     );
@@ -3347,7 +3348,7 @@ describe("match_tracking.ts", () => {
       () => Promise.resolve({ success: true as const, account: account() }),
     );
     using _activeGameStub = stub(
-      riotApi,
+      apiClient,
       "getActiveGameByPuuid",
       () => Promise.resolve(activeGame()),
     );

@@ -23,15 +23,15 @@ const activeGameSchema = z.object({
       riotId: z.string().optional(),
       championId: z.number(),
       teamId: z.number(),
-    }).passthrough(),
+    }),
   ),
-}).passthrough();
+});
 
 const matchSchema = z.object({
   metadata: z.object({
     matchId: z.string(),
     participants: z.array(z.string()),
-  }).passthrough(),
+  }),
   info: z.object({
     gameId: z.number(),
     gameCreation: z.number(),
@@ -62,10 +62,10 @@ const matchSchema = z.object({
         totalEnemyJungleMinionsKilled: z.number().optional(),
         teamPosition: z.string().optional(),
         individualPosition: z.string().optional(),
-      }).passthrough(),
+      }),
     ),
-  }).passthrough(),
-}).passthrough();
+  }),
+});
 
 const leagueEntrySchema = z.object({
   queueType: z.string(),
@@ -74,7 +74,7 @@ const leagueEntrySchema = z.object({
   leaguePoints: z.number().int(),
   wins: z.number().int(),
   losses: z.number().int(),
-}).passthrough();
+});
 
 function riotApiKey() {
   const apiKey = Deno.env.get("RIOT_API_KEY");

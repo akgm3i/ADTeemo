@@ -5,6 +5,7 @@ import { eventsRoutes } from "./routes/events.ts";
 import { matchesRoutes } from "./routes/matches.ts";
 import { matchWatchersRoutes } from "./routes/match_watchers.ts";
 import { authRoutes } from "./routes/auth.ts";
+import { riotRoutes } from "./routes/riot.ts";
 import { apiLogger } from "./logger.ts";
 
 export const requestLoggingMiddleware = createMiddleware(async (c, next) => {
@@ -54,6 +55,7 @@ const app = new Hono()
   .route("/events", eventsRoutes)
   .route("/matches", matchesRoutes)
   .route("/match-watchers", matchWatchersRoutes)
+  .route("/riot", riotRoutes)
   .route("/auth", authRoutes);
 
 export default app satisfies Deno.ServeDefaultExport;

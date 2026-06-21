@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCalls, stub } from "@std/testing/mock";
 import { apiClient } from "./api_client.ts";
@@ -174,6 +174,123 @@ describe("apiClient", () => {
         fetchStub.calls[0].args[0],
         `${Deno.env.get("API_URL")}/match-watchers/enabled/guild-1`,
       );
+    });
+  });
+
+  describe("Riot API facade", () => {
+    test("進行中の試合を取得するとき、ADTeemo API経由で結果を返す", async () => {
+      // Arrange
+      const activeGame = {
+        gameId: 12345,
+        gameType: "MATCHED_GAME",
+        gameStartTime: 1_700_000_000_000,
+        mapId: 11,
+        gameMode: "CLASSIC",
+        participants: [],
+      };
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () =>
+          Promise.resolve(
+            new Response(JSON.stringify({ activeGame }), { status: 200 }),
+          ),
+      );
+
+      // Act
+      const result = await apiClient.getActiveGameByPuuid("jp1", "puuid-1");
+
+      // Assert
+      assertEquals(result?.gameId, activeGame.gameId);
+      assertEquals(result?.participants, activeGame.participants);
+      assertSpyCalls(fetchStub, 1);
+      assertEquals(
+        fetchStub.calls[0].args[0],
+        `${Deno.env.get("API_URL")}/riot/active-games/jp1/puuid-1`,
+      );
+    });
+
+    test("試合結果が未反映のとき、ADTeemo API経由でnullを返す", async () => {
+      // Arrange
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () =>
+          Promise.resolve(
+            new Response(JSON.stringify({ match: null }), { status: 200 }),
+          ),
+      );
+
+      // Act
+      const result = await apiClient.getMatchById("asia", "JP1_12345");
+
+      // Assert
+      assertEquals(result, null);
+      assertSpyCalls(fetchStub, 1);
+      assertEquals(
+        fetchStub.calls[0].args[0],
+        `${Deno.env.get("API_URL")}/riot/matches/asia/JP1_12345`,
+      );
+    });
+
+    test("ランク情報を取得するとき、ADTeemo API経由でentry一覧を返す", async () => {
+      // Arrange
+      const entries = [{
+        queueType: "RANKED_SOLO_5x5",
+        tier: "EMERALD",
+        rank: "IV",
+        leaguePoints: 19,
+        wins: 11,
+        losses: 8,
+      }];
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () =>
+          Promise.resolve(
+            new Response(JSON.stringify({ entries }), { status: 200 }),
+          ),
+      );
+
+      // Act
+      const result = await apiClient.getLeagueEntriesByPuuid(
+        "jp1",
+        "puuid-1",
+      );
+
+      // Assert
+      assertEquals(result[0].queueType, entries[0].queueType);
+      assertEquals(result[0].leaguePoints, entries[0].leaguePoints);
+      assertSpyCalls(fetchStub, 1);
+      assertEquals(
+        fetchStub.calls[0].args[0],
+        `${Deno.env.get("API_URL")}/riot/league-entries/jp1/puuid-1`,
+      );
+    });
+
+    test("Riot APIの認証が拒否されたとき、APIサーバーの診断情報をエラーとして返す", async () => {
+      // Arrange
+      const errorMessage =
+        "Riot API request failed: 403; authorization rejected; " +
+        "verify RIOT_API_KEY and endpoint access";
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () =>
+          Promise.resolve(
+            new Response(JSON.stringify({ error: errorMessage }), {
+              status: 502,
+            }),
+          ),
+      );
+
+      // Act / Assert
+      await assertRejects(
+        () => apiClient.getActiveGameByPuuid("jp1", "puuid-1"),
+        Error,
+        errorMessage,
+      );
+      assertSpyCalls(fetchStub, 1);
     });
   });
 
