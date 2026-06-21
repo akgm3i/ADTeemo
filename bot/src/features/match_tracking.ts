@@ -14,8 +14,8 @@ import { opggClient, type OpggMatchDetail } from "./opgg.ts";
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
 const DEFAULT_IN_GAME_NOTIFY_INTERVAL_MS = 300_000;
 const DEFAULT_RESULT_FETCH_TIMEOUT_MS = 3 * 60 * 60 * 1000;
-const DEFAULT_RIOT_LONG_WINDOW_LIMIT = 30_000;
-const RIOT_LONG_WINDOW_MS = 10 * 60 * 1000;
+const DEFAULT_RIOT_LONG_WINDOW_LIMIT = 100;
+const DEFAULT_RIOT_LONG_WINDOW_MS = 2 * 60 * 1000;
 
 type ActiveGame = NonNullable<
   Awaited<ReturnType<typeof riotApi.getActiveGameByPuuid>>
@@ -1858,19 +1858,24 @@ function warnIfRiotRequestBudgetRisk(
     "RIOT_RATE_LIMIT_LONG_WINDOW_LIMIT",
     DEFAULT_RIOT_LONG_WINDOW_LIMIT,
   );
+  const longWindowMs = numberEnv(
+    "RIOT_RATE_LIMIT_LONG_WINDOW_MS",
+    DEFAULT_RIOT_LONG_WINDOW_MS,
+  );
   const estimatedRequests = watcherCount *
-    Math.ceil(RIOT_LONG_WINDOW_MS / pollIntervalMs);
+    Math.ceil(longWindowMs / pollIntervalMs);
   const now = Date.now();
   if (
     estimatedRequests >= longWindowLimit * 0.8 &&
-    now - lastBudgetWarningAt >= RIOT_LONG_WINDOW_MS
+    now - lastBudgetWarningAt >= longWindowMs
   ) {
     lastBudgetWarningAt = now;
     botLogger.warn("match_tracking.riot_request_budget_risk", {
       watcherCount,
       pollIntervalMs,
-      estimatedRequestsPer10Minutes: estimatedRequests,
-      limitPer10Minutes: longWindowLimit,
+      rateLimitWindowMs: longWindowMs,
+      estimatedRequestsPerWindow: estimatedRequests,
+      limitPerWindow: longWindowLimit,
     });
   }
 }

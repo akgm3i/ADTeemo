@@ -61,10 +61,10 @@ cp .env.example .env
 | `MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS`                   | 試合中通知の更新間隔                                                                             |
 | `MATCH_WATCH_RESULT_FETCH_TIMEOUT_MS`                      | 試合終了後の結果取得タイムアウト                                                                 |
 | `MATCH_WATCH_MAX_ENABLED_PER_GUILD`                        | ギルドごとの有効監視対象数上限                                                                   |
-| `RIOT_RATE_LIMIT_SHORT_WINDOW_LIMIT`                       | Riot API呼び出し共有キューの短期window上限                                                       |
-| `RIOT_RATE_LIMIT_SHORT_WINDOW_MS`                          | Riot API呼び出し共有キューの短期window                                                           |
-| `RIOT_RATE_LIMIT_LONG_WINDOW_LIMIT`                        | Riot API呼び出し共有キューの長期window上限                                                       |
-| `RIOT_RATE_LIMIT_LONG_WINDOW_MS`                           | Riot API呼び出し共有キューの長期window                                                           |
+| `RIOT_RATE_LIMIT_SHORT_WINDOW_LIMIT`                       | Riot API呼び出し共有キューの短期window上限。Personal Key既定値: `20`                             |
+| `RIOT_RATE_LIMIT_SHORT_WINDOW_MS`                          | Riot API呼び出し共有キューの短期window。Personal Key既定値: `1000` ms                            |
+| `RIOT_RATE_LIMIT_LONG_WINDOW_LIMIT`                        | Riot API呼び出し共有キューの長期window上限。Personal Key既定値: `100`                            |
+| `RIOT_RATE_LIMIT_LONG_WINDOW_MS`                           | Riot API呼び出し共有キューの長期window。Personal Key既定値: `120000` ms                          |
 | `RIOT_STATIC_DATA_CACHE_TTL_MS`                            | Riot static data cacheのTTL                                                                      |
 | `API_MESSAGE_LANG` / `BOT_MESSAGE_LANG`                    | API / Botのメッセージ言語                                                                        |
 | `BOT_MESSAGE_THEME`                                        | Botメッセージテーマ                                                                              |

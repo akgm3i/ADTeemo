@@ -105,10 +105,10 @@ type RateBucket = {
   cooldownUntil: number;
 };
 
-const DEFAULT_SHORT_LIMIT = 500;
-const DEFAULT_SHORT_WINDOW_MS = 10_000;
-const DEFAULT_LONG_LIMIT = 30_000;
-const DEFAULT_LONG_WINDOW_MS = 600_000;
+const DEFAULT_SHORT_LIMIT = 20;
+const DEFAULT_SHORT_WINDOW_MS = 1_000;
+const DEFAULT_LONG_LIMIT = 100;
+const DEFAULT_LONG_WINDOW_MS = 120_000;
 
 const appBuckets = new Map<string, RateBucket>();
 const methodBuckets = new Map<string, RateBucket>();
@@ -339,6 +339,15 @@ function applyRetryAfterCooldown(
   });
 }
 
+function riotRequestError(status: number, methodKey: string) {
+  const guidance = status === 403
+    ? "; authorization rejected; verify RIOT_API_KEY and endpoint access"
+    : "";
+  return new Error(
+    `Riot API request failed: ${status} (${methodKey})${guidance}`,
+  );
+}
+
 async function scheduleRiotRequest<T>(task: () => Promise<T>) {
   const run = riotQueue.then(task, task);
   riotQueue = run.then(() => undefined, () => undefined);
@@ -382,7 +391,7 @@ async function fetchRiotJson(
       }
 
       await res.body?.cancel();
-      throw new Error(`Failed to fetch Riot API: ${res.status}`);
+      throw riotRequestError(res.status, methodKey);
     }
 
     throw new Error("Failed to fetch Riot API");
