@@ -178,7 +178,7 @@ describe("apiClient", () => {
   });
 
   describe("Riot API facade", () => {
-    test("進行中の試合を取得するとき、ADTeemo API経由で結果を返す", async () => {
+    test("進行中の試合を取得するとき、Backend API経由で結果を返す", async () => {
       // Arrange
       const activeGame = {
         gameId: 12345,
@@ -210,7 +210,7 @@ describe("apiClient", () => {
       );
     });
 
-    test("試合結果が未反映のとき、ADTeemo API経由でnullを返す", async () => {
+    test("試合結果が未反映のとき、Backend API経由でnullを返す", async () => {
       // Arrange
       using fetchStub = stub(
         globalThis,
@@ -233,7 +233,7 @@ describe("apiClient", () => {
       );
     });
 
-    test("ランク情報を取得するとき、ADTeemo API経由でentry一覧を返す", async () => {
+    test("ランク情報を取得するとき、Backend API経由でentry一覧を返す", async () => {
       // Arrange
       const entries = [{
         queueType: "RANKED_SOLO_5x5",
