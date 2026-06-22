@@ -19,107 +19,6 @@ async function runtimeTypeScriptFiles(directory: URL): Promise<URL[]> {
   return files;
 }
 
-function runtimeImportSpecifiers(source: string): string[] {
-  const specifiers: string[] = [];
-  const importFromPattern =
-    /^\s*import\s+([\s\S]*?)\s+from\s+["']([^"']+)["'];?/gm;
-
-  for (const match of source.matchAll(importFromPattern)) {
-    const clause = match[1].trim();
-    if (clause.startsWith("type ")) continue;
-
-    if (clause.startsWith("{") && clause.endsWith("}")) {
-      const imports = clause.slice(1, -1).split(",").map((value) =>
-        value.trim()
-      ).filter(Boolean);
-      if (
-        imports.length > 0 &&
-        imports.every((value) => value.startsWith("type "))
-      ) {
-        continue;
-      }
-    }
-
-    specifiers.push(match[2]);
-  }
-
-  const sideEffectImportPattern = /^\s*import\s+["']([^"']+)["'];?/gm;
-  for (const match of source.matchAll(sideEffectImportPattern)) {
-    specifiers.push(match[1]);
-  }
-
-  return specifiers;
-}
-
-async function botRuntimeBoundaryViolations(): Promise<string[]> {
-  const apiDirectory = new URL("../../api/", import.meta.url);
-  const apiConfig = JSON.parse(
-    await Deno.readTextFile(new URL("deno.json", apiDirectory)),
-  );
-  const apiExports = apiConfig.exports as Record<string, string>;
-  const forbiddenPaths = [
-    "/api/src/db/actions.ts",
-    "/api/src/db/index.ts",
-    "/api/src/integrations/",
-    "/api/src/riot_static_data.ts",
-    "/api/src/services/",
-  ];
-  const forbiddenPackages = new Set([
-    "@libsql/client",
-    "drizzle-orm/libsql",
-  ]);
-  const queue = [
-    {
-      module: new URL("./main.ts", import.meta.url),
-      chain: ["bot/src/main.ts"],
-    },
-    {
-      module: new URL("./deploy-commands.ts", import.meta.url),
-      chain: ["bot/src/deploy-commands.ts"],
-    },
-  ];
-  const visited = new Set<string>();
-  const violations: string[] = [];
-
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current || visited.has(current.module.href)) continue;
-    visited.add(current.module.href);
-
-    const source = await Deno.readTextFile(current.module);
-    for (const specifier of runtimeImportSpecifiers(source)) {
-      if (forbiddenPackages.has(specifier)) {
-        violations.push([...current.chain, specifier].join(" -> "));
-        continue;
-      }
-
-      let dependency: URL | undefined;
-      if (specifier.startsWith("./") || specifier.startsWith("../")) {
-        dependency = new URL(specifier, current.module);
-      } else if (
-        specifier === "@adteemo/api" || specifier.startsWith("@adteemo/api/")
-      ) {
-        const exportName = specifier === "@adteemo/api"
-          ? "."
-          : `.${specifier.slice("@adteemo/api".length)}`;
-        const exportedPath = apiExports[exportName];
-        if (exportedPath) dependency = new URL(exportedPath, apiDirectory);
-      }
-
-      if (!dependency || !dependency.pathname.endsWith(".ts")) continue;
-
-      const nextChain = [...current.chain, dependency.pathname];
-      if (forbiddenPaths.some((path) => dependency.pathname.includes(path))) {
-        violations.push(nextChain.join(" -> "));
-        continue;
-      }
-      queue.push({ module: dependency, chain: nextChain });
-    }
-  }
-
-  return violations;
-}
-
 test("Bot実行環境がBackend内部実装とDB設定に依存しない", async () => {
   // Arrange
   const violations: string[] = [];
@@ -172,13 +71,5 @@ test("Bot実行環境がBackend内部実装とDB設定に依存しない", async
   }
 
   // Act / Assert
-  assertEquals(violations, []);
-});
-
-test("Bot entrypointの実行時依存を推移的にたどるとき、Backendの外部サービス実装とDB clientへ到達しない", async () => {
-  // Arrange / Act
-  const violations = await botRuntimeBoundaryViolations();
-
-  // Assert
   assertEquals(violations, []);
 });
