@@ -1,7 +1,8 @@
 import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
-import { assertSpyCalls, stub } from "@std/testing/mock";
+import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
 import { dbActions } from "./db/actions.ts";
+import { apiLogger } from "./logger.ts";
 import { riotStaticData } from "./riot_static_data.ts";
 
 describe("riot_static_data.ts", () => {
@@ -282,6 +283,59 @@ describe("riot_static_data.ts", () => {
     });
     assertSpyCalls(getCacheStub, 4);
     assertSpyCalls(fetchStub, 0);
+  });
+
+  test("一部の静的データ取得に失敗したとき、失敗した種別だけnullにして取得済みデータを返す", async () => {
+    // Arrange
+    using _getCacheStub = stub(
+      dbActions,
+      "getRiotStaticDataCache",
+      (key) =>
+        Promise.resolve(
+          key === "champions-data:en_US"
+            ? {
+              key,
+              version: "16.12.1",
+              value: JSON.stringify({
+                "17": { name: "Teemo", imageFull: "Teemo.png" },
+              }),
+              updatedAt: new Date(),
+            }
+            : undefined,
+        ),
+    );
+    using _fetchStub = stub(
+      globalThis,
+      "fetch",
+      () => Promise.resolve(new Response(null, { status: 503 })),
+    );
+    using warnStub = stub(apiLogger, "warn", () => {});
+
+    // Act
+    const result = await riotStaticData.resolve({
+      locale: "en_US",
+      championIds: [17],
+      queueIds: [420],
+    });
+
+    // Assert
+    assertEquals(result, {
+      champions: {
+        "17": {
+          name: "Teemo",
+          iconUrl:
+            "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Teemo.png",
+        },
+      },
+      queues: { "420": null },
+      maps: {},
+      gameModes: {},
+    });
+    assertSpyCall(warnStub, 0, {
+      args: ["riot_static_data.resolve_queues_failed", {
+        error: "Failed to fetch Riot static data: 503",
+      }],
+    });
   });
 
   test("未知の識別子を含む静的データを解決するとき、対応する値をnullで返す", async () => {

@@ -309,6 +309,20 @@ function unique<T>(values: T[] | undefined) {
   return [...new Set(values ?? [])];
 }
 
+async function resolveResource<T>(
+  resource: string,
+  load: () => Promise<T>,
+): Promise<T | null> {
+  try {
+    return await load();
+  } catch (error) {
+    apiLogger.warn(`riot_static_data.resolve_${resource}_failed`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 async function resolve(
   input: RiotStaticDataResolveInput,
 ): Promise<RiotStaticDataResolveResult> {
@@ -330,11 +344,15 @@ async function resolve(
   const [championData, queueNames, mapNames, gameModeNames] = await Promise.all(
     [
       championIds.length > 0
-        ? getChampions(input.locale)
+        ? resolveResource("champions", () => getChampions(input.locale))
         : Promise.resolve(null),
-      needsQueues ? getQueues() : Promise.resolve(null),
-      needsMaps ? getMaps() : Promise.resolve(null),
-      needsGameModes ? getGameModes() : Promise.resolve(null),
+      needsQueues
+        ? resolveResource("queues", getQueues)
+        : Promise.resolve(null),
+      needsMaps ? resolveResource("maps", getMaps) : Promise.resolve(null),
+      needsGameModes
+        ? resolveResource("game_modes", getGameModes)
+        : Promise.resolve(null),
     ],
   );
 
