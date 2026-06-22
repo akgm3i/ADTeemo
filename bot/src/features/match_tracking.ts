@@ -688,6 +688,18 @@ async function championNameById(
   }
 }
 
+async function championIconUrlById(championId: number | undefined) {
+  if (championId === undefined) return null;
+  try {
+    return await riotStaticData.getChampionIconUrlById(
+      championId,
+      messageLocale(),
+    );
+  } catch {
+    return null;
+  }
+}
+
 async function queueName(queueId: number | undefined) {
   if (queueId === undefined) {
     return messageHandler.formatMessage(
@@ -1124,6 +1136,9 @@ async function buildActiveGameEmbed(
   const targets = targetDetails?.length
     ? targetDetails
     : [{ targetDiscordId: watcher.targetDiscordId, champion }];
+  const thumbnailUrl = targets.length === 1
+    ? await championIconUrlById(participant?.championId)
+    : null;
   const description = messageHandler.formatMessage(
     messageKeys.matchTracking.embed.active.description,
     {
@@ -1165,7 +1180,7 @@ async function buildActiveGameEmbed(
       },
     );
 
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setTitle(title)
     .setDescription(description)
     .setColor(kind === "started" ? 0x2ecc71 : 0x3498db)
@@ -1207,6 +1222,10 @@ async function buildActiveGameEmbed(
       text: footerText,
     })
     .setTimestamp(new Date());
+  if (thumbnailUrl) {
+    embed.setThumbnail(thumbnailUrl);
+  }
+  return embed;
 }
 
 function buildResultPendingEmbed(watcher: MatchWatcher, matchId: string) {
@@ -1295,6 +1314,7 @@ async function buildMatchResultEmbed(
     participant.championId,
     participant.championName,
   );
+  const thumbnailUrl = await championIconUrlById(participant.championId);
   const teamKills = match.info.participants
     .filter((candidate) => candidate.teamId === participant.teamId)
     .reduce((sum, candidate) => sum + candidate.kills, 0);
@@ -1401,6 +1421,9 @@ async function buildMatchResultEmbed(
       ),
     })
     .setTimestamp(new Date(match.info.gameEndTimestamp ?? Date.now()));
+  if (thumbnailUrl) {
+    embed.setThumbnail(thumbnailUrl);
+  }
   if (rankValue) {
     embed.addFields({
       name: messageHandler.formatMessage(

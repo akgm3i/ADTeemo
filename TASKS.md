@@ -6,7 +6,7 @@ ADTeemoの詳細な未実装・改善作業はGitHub Issuesを正として追跡
 
 ## Open Issues
 
-- [ ] [#28 試合結果・試合中表示の拡張](https://github.com/akgm3i/ADTeemo/issues/28)
+- [x] [#28 試合結果・試合中表示の拡張](https://github.com/akgm3i/ADTeemo/issues/28)
   - [x] `CS/min` を試合結果Embedに表示する。
   - [x] `キル関与率` を試合結果Embedに表示する。
   - [x] [#53 OP.GG試合詳細リンク解決と詳細データ取得](https://github.com/akgm3i/ADTeemo/issues/53)
@@ -14,7 +14,7 @@ ADTeemoの詳細な未実装・改善作業はGitHub Issuesを正として追跡
   - [x] [#55 試合結果・試合中Embedの追加表示項目とロール別優先順位の設計](https://github.com/akgm3i/ADTeemo/issues/55)
   - [x] [#56 OP.GG未公開Server Action依存の運用リスク整理](https://github.com/akgm3i/ADTeemo/issues/56)
   - [x] [#65 ロール別metric groupとダメージ表示](https://github.com/akgm3i/ADTeemo/issues/65)
-  - [ ] [#66 試合結果・単独試合中Embedのチャンピオンthumbnail](https://github.com/akgm3i/ADTeemo/issues/66)
+  - [x] [#66 試合結果・単独試合中Embedのチャンピオンthumbnail](https://github.com/akgm3i/ADTeemo/issues/66)
 - [ ] [#34 デフォルト監視とopt-out](https://github.com/akgm3i/ADTeemo/issues/34)
   - [ ] Riot ID連携済みユーザーを既定監視候補にする。
   - [ ] opt-out / opt-inを永続化する。

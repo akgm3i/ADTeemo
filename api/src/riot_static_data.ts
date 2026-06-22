@@ -5,6 +5,7 @@ import { apiLogger } from "./logger.ts";
 const DEFAULT_STATIC_DATA_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const DATA_DRAGON_VERSIONS_URL =
   "https://ddragon.leagueoflegends.com/api/versions.json";
+const DATA_DRAGON_CDN_BASE = "https://ddragon.leagueoflegends.com/cdn";
 const RIOT_STATIC_DOCS_BASE = "https://static.developer.riotgames.com/docs/lol";
 
 const versionsSchema = z.array(z.string()).min(1);
@@ -14,6 +15,9 @@ const championDataSchema = z.object({
     z.object({
       key: z.string(),
       name: z.string(),
+      image: z.object({
+        full: z.string(),
+      }).optional(),
     }).passthrough(),
   ),
 }).passthrough();
@@ -114,15 +118,25 @@ const stringRecordSchema: z.ZodType<Record<string, string>> = z.record(
   z.string(),
   z.string(),
 );
+const championCacheSchema = z.record(
+  z.string(),
+  z.object({
+    name: z.string(),
+    imageFull: z.string().nullable(),
+  }),
+);
 
-async function cachedJson<T>(
+async function cachedVersionedJson<T>(
   key: string,
   schema: z.ZodType<T>,
   fetcher: () => Promise<{ version: string; value: T }>,
 ) {
   const cached = await dbActions.getRiotStaticDataCache(key);
   if (cached && isFresh(cached.updatedAt)) {
-    return parseCachedValue(cached.value, schema);
+    return {
+      version: cached.version,
+      value: parseCachedValue(cached.value, schema),
+    };
   }
 
   try {
@@ -132,7 +146,7 @@ async function cachedJson<T>(
       version: fetched.version,
       value: JSON.stringify(fetched.value),
     });
-    return fetched.value;
+    return fetched;
   } catch (error) {
     if (cached) {
       apiLogger.warn("riot_static_data.cache_refresh_failed", {
@@ -140,10 +154,21 @@ async function cachedJson<T>(
         version: cached.version,
         error: error instanceof Error ? error.message : String(error),
       });
-      return parseCachedValue(cached.value, schema);
+      return {
+        version: cached.version,
+        value: parseCachedValue(cached.value, schema),
+      };
     }
     throw error;
   }
+}
+
+async function cachedJson<T>(
+  key: string,
+  schema: z.ZodType<T>,
+  fetcher: () => Promise<{ version: string; value: T }>,
+) {
+  return (await cachedVersionedJson(key, schema, fetcher)).value;
 }
 
 async function getLatestDataDragonVersion() {
@@ -153,23 +178,29 @@ async function getLatestDataDragonVersion() {
   return versions[0];
 }
 
-async function getChampionNames(locale?: string) {
+async function getChampions(locale?: string) {
   const normalizedLocale = normalizeLocale(locale);
-  return await cachedJson(
-    `champions:${normalizedLocale}`,
-    stringRecordSchema,
+  return await cachedVersionedJson(
+    `champions-data:${normalizedLocale}`,
+    championCacheSchema,
     async () => {
       const version = await getLatestDataDragonVersion();
       const data = championDataSchema.parse(
         await fetchJson(
-          `https://ddragon.leagueoflegends.com/cdn/${version}/data/${normalizedLocale}/champion.json`,
+          `${DATA_DRAGON_CDN_BASE}/${version}/data/${normalizedLocale}/champion.json`,
         ),
       );
-      const names: Record<string, string> = {};
+      const champions: Record<
+        string,
+        { name: string; imageFull: string | null }
+      > = {};
       for (const champion of Object.values(data.data)) {
-        names[champion.key] = champion.name;
+        champions[champion.key] = {
+          name: champion.name,
+          imageFull: champion.image?.full ?? null,
+        };
       }
-      return { version, value: names };
+      return { version, value: champions };
     },
   );
 }
@@ -220,8 +251,16 @@ async function getGameModes() {
 }
 
 async function getChampionNameById(championId: number, locale?: string) {
-  const names = await getChampionNames(locale);
-  return names[String(championId)] ?? null;
+  const { value: champions } = await getChampions(locale);
+  return champions[String(championId)]?.name ?? null;
+}
+
+async function getChampionIconUrlById(championId: number, locale?: string) {
+  const { version, value: champions } = await getChampions(locale);
+  const file = champions[String(championId)]?.imageFull;
+  return file
+    ? `${DATA_DRAGON_CDN_BASE}/${version}/img/champion/${file}`
+    : null;
 }
 
 async function getQueueNameById(queueId: number, locale?: string) {
@@ -250,6 +289,7 @@ async function getGameModeName(gameMode: string, locale?: string) {
 
 export const riotStaticData = {
   getChampionNameById,
+  getChampionIconUrlById,
   getQueueNameById,
   getMapNameById,
   getGameModeName,

@@ -186,6 +186,7 @@ function editedEmbedJson(
             description?: string;
             fields?: { name: string; value: string }[];
             footer?: { text: string };
+            thumbnail?: { url: string };
           };
         }[];
       },
@@ -232,36 +233,49 @@ async function resultEmbedFields(resultMatch: RiotMatch) {
 }
 
 describe("match_tracking.ts", () => {
-  const staticDataStubs: { restore(): void }[] = [];
+  const staticDataStubs: Partial<
+    Record<keyof typeof riotStaticData, { restore(): void }>
+  > = {};
+
+  function restoreStaticDataStub(method: keyof typeof riotStaticData) {
+    staticDataStubs[method]?.restore();
+    delete staticDataStubs[method];
+  }
 
   beforeEach(() => {
-    staticDataStubs.push(
-      stub(
-        riotStaticData,
-        "getChampionNameById",
-        () => Promise.resolve("ティーモ"),
-      ),
-      stub(
-        riotStaticData,
-        "getQueueNameById",
-        () => Promise.resolve("ランクソロ/デュオ"),
-      ),
-      stub(
-        riotStaticData,
-        "getMapNameById",
-        () => Promise.resolve("サモナーズリフト"),
-      ),
-      stub(
-        riotStaticData,
-        "getGameModeName",
-        () => Promise.resolve("クラシック"),
-      ),
+    staticDataStubs.getChampionNameById = stub(
+      riotStaticData,
+      "getChampionNameById",
+      () => Promise.resolve("ティーモ"),
+    );
+    staticDataStubs.getQueueNameById = stub(
+      riotStaticData,
+      "getQueueNameById",
+      () => Promise.resolve("ランクソロ/デュオ"),
+    );
+    staticDataStubs.getMapNameById = stub(
+      riotStaticData,
+      "getMapNameById",
+      () => Promise.resolve("サモナーズリフト"),
+    );
+    staticDataStubs.getGameModeName = stub(
+      riotStaticData,
+      "getGameModeName",
+      () => Promise.resolve("クラシック"),
+    );
+    staticDataStubs.getChampionIconUrlById = stub(
+      riotStaticData,
+      "getChampionIconUrlById",
+      () =>
+        Promise.resolve(
+          "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Teemo.png",
+        ),
     );
   });
 
   afterEach(() => {
-    for (const staticDataStub of staticDataStubs.splice(0)) {
-      staticDataStub.restore();
+    for (const method of Object.keys(staticDataStubs)) {
+      restoreStaticDataStub(method as keyof typeof riotStaticData);
     }
   });
 
@@ -303,6 +317,14 @@ describe("match_tracking.ts", () => {
       updateStub.calls[0].args[2].currentNotificationMessageId,
       "message-new",
     );
+    const sentOptions = sendSpy.calls[0].args[0] as {
+      embeds: { toJSON(): { thumbnail?: { url: string } } }[];
+    };
+    const sentEmbed = sentOptions.embeds[0].toJSON();
+    assertEquals(sentEmbed.thumbnail, {
+      url:
+        "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Teemo.png",
+    });
   });
 
   test("ランク対象queueの試合開始を検知したとき、試合前ランクスナップショットを一時保存する", async () => {
@@ -444,8 +466,7 @@ describe("match_tracking.ts", () => {
   });
 
   test("共有試合中通知に複数監視対象を表示するとき、対象ごとのチャンピオンを表示し単一Riot IDをfooterに出さない", async () => {
-    const [championNameStub] = staticDataStubs.splice(0, 1);
-    championNameStub.restore();
+    restoreStaticDataStub("getChampionNameById");
     using _championNameByIdStub = stub(
       riotStaticData,
       "getChampionNameById",
@@ -508,6 +529,7 @@ describe("match_tracking.ts", () => {
       false,
     );
     assertEquals(editedEmbed.footer?.text, "JP1 Game 12345");
+    assertEquals(editedEmbed.thumbnail, undefined);
   });
 
   test("後続tickで同じ投稿IDの試合に監視対象が増えたとき、既存投稿を編集して対象者一覧を更新する", async () => {
@@ -1920,6 +1942,56 @@ describe("match_tracking.ts", () => {
       editedEmbedFieldValue(editSpy, 0, "チャンピオン"),
       "ティーモ",
     );
+    assertEquals(editedEmbedJson(editSpy, 0).thumbnail, {
+      url:
+        "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Teemo.png",
+    });
+  });
+
+  test("チャンピオン画像URLの解決に失敗したとき、thumbnailなしでチャンピオン名を含む試合結果を送信する", async () => {
+    restoreStaticDataStub("getChampionIconUrlById");
+    using _iconFailureStub = stub(
+      riotStaticData,
+      "getChampionIconUrlById",
+      () => Promise.reject(new Error("Data Dragon failed")),
+    );
+    const { client, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "FETCHING_RESULT",
+            currentMatchId: "JP1_12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _getMatchStub = stub(
+      apiClient,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertEquals(editedEmbedJson(editSpy, 0).thumbnail, undefined);
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 0, "チャンピオン"),
+      "ティーモ",
+    );
   });
 
   test("試合結果EmbedにMatch-v5から計算できるCS/minとキル関与率を表示する", async () => {
@@ -2545,8 +2617,7 @@ describe("match_tracking.ts", () => {
   });
 
   test("静的データのチャンピオン名取得に失敗したとき、Match-v5の既存名で結果通知を完了する", async () => {
-    const [championNameStub] = staticDataStubs.splice(0, 1);
-    championNameStub.restore();
+    restoreStaticDataStub("getChampionNameById");
     const { client, editSpy } = clientWithSend();
     using _championNameFailureStub = stub(
       riotStaticData,
@@ -2595,8 +2666,7 @@ describe("match_tracking.ts", () => {
   });
 
   test("静的データのモード名取得に失敗したとき、Match-v5の既存モードで結果通知を完了する", async () => {
-    const gameModeStub = staticDataStubs.splice(3, 1)[0];
-    gameModeStub.restore();
+    restoreStaticDataStub("getGameModeName");
     const { client, editSpy } = clientWithSend();
     using _gameModeFailureStub = stub(
       riotStaticData,

@@ -11,9 +11,11 @@ describe("riot_static_data.ts", () => {
       "getRiotStaticDataCache",
       () =>
         Promise.resolve({
-          key: "champions:ja_JP",
+          key: "champions-data:ja_JP",
           version: "15.24.1",
-          value: JSON.stringify({ "17": "ティーモ" }),
+          value: JSON.stringify({
+            "17": { name: "ティーモ", imageFull: "Teemo.png" },
+          }),
           updatedAt: new Date(),
         }),
     );
@@ -34,6 +36,91 @@ describe("riot_static_data.ts", () => {
     assertSpyCalls(getCacheStub, 1);
     assertSpyCalls(upsertCacheStub, 0);
     assertSpyCalls(fetchStub, 0);
+  });
+
+  test("チャンピオン名と画像URLを続けて解決するとき、単一の取得結果とキャッシュを共有する", async () => {
+    let cached: Awaited<
+      ReturnType<typeof dbActions.getRiotStaticDataCache>
+    >;
+    using getCacheStub = stub(
+      dbActions,
+      "getRiotStaticDataCache",
+      () => Promise.resolve(cached),
+    );
+    using upsertCacheStub = stub(
+      dbActions,
+      "upsertRiotStaticDataCache",
+      (value) => {
+        cached = { ...value, updatedAt: new Date() };
+        return Promise.resolve();
+      },
+    );
+    using fetchStub = stub(
+      globalThis,
+      "fetch",
+      (input) => {
+        const url = String(input);
+        if (url.endsWith("/api/versions.json")) {
+          return Promise.resolve(
+            new Response(JSON.stringify(["16.12.1"]), { status: 200 }),
+          );
+        }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: {
+                Teemo: {
+                  key: "17",
+                  name: "ティーモ",
+                  image: { full: "Teemo.png" },
+                },
+              },
+            }),
+            { status: 200 },
+          ),
+        );
+      },
+    );
+
+    const name = await riotStaticData.getChampionNameById(17, "ja_JP");
+    const url = await riotStaticData.getChampionIconUrlById(17, "ja_JP");
+
+    assertEquals(name, "ティーモ");
+    assertEquals(
+      url,
+      "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Teemo.png",
+    );
+    assertSpyCalls(fetchStub, 2);
+    assertSpyCalls(getCacheStub, 2);
+    assertSpyCalls(upsertCacheStub, 1);
+    assertEquals(cached?.key, "champions-data:ja_JP");
+  });
+
+  test("チャンピオン画像のstatic data取得に失敗しキャッシュもない場合、エラーを返す", async () => {
+    using _getCacheStub = stub(
+      dbActions,
+      "getRiotStaticDataCache",
+      () => Promise.resolve(undefined),
+    );
+    using _upsertCacheStub = stub(
+      dbActions,
+      "upsertRiotStaticDataCache",
+      () => Promise.resolve(),
+    );
+    using _fetchStub = stub(
+      globalThis,
+      "fetch",
+      () => Promise.resolve(new Response(null, { status: 503 })),
+    );
+
+    let error: unknown;
+    try {
+      await riotStaticData.getChampionIconUrlById(17, "ja_JP");
+    } catch (caught) {
+      error = caught;
+    }
+
+    assertEquals(error instanceof Error, true);
   });
 
   test("キュー名が未キャッシュの場合、公式static JSONを取得してDBへ保存する", async () => {
