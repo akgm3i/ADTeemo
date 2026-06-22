@@ -294,6 +294,76 @@ describe("apiClient", () => {
     });
   });
 
+  describe("resolveRiotStaticData", () => {
+    test("静的データの解決を依頼したとき、Backend APIからバッチ解決結果を返す", async () => {
+      // Arrange
+      const payload = {
+        locale: "ja_JP",
+        championIds: [17, 18],
+        queueIds: [420],
+        mapIds: [11],
+        gameModes: ["CLASSIC"],
+      };
+      const data = {
+        champions: {
+          "17": {
+            name: "ティーモ",
+            iconUrl:
+              "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Teemo.png",
+          },
+          "18": { name: "トリスターナ", iconUrl: null },
+        },
+        queues: { "420": "ランクソロ/デュオ" },
+        maps: { "11": "サモナーズリフト" },
+        gameModes: { CLASSIC: "クラシック" },
+      };
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () =>
+          Promise.resolve(
+            new Response(JSON.stringify(data), { status: 200 }),
+          ),
+      );
+
+      // Act
+      const result = await apiClient.resolveRiotStaticData(payload);
+
+      // Assert
+      assertEquals(result, { success: true, data });
+      assertSpyCalls(fetchStub, 1);
+      const [url, init] = fetchStub.calls[0].args;
+      assertEquals(
+        url,
+        `${Deno.env.get("API_URL")}/riot/static-data/resolve`,
+      );
+      assertEquals(init?.method, "POST");
+      assertEquals(init?.body, JSON.stringify(payload));
+    });
+
+    test("Backend APIが静的データを解決できないとき、呼び出し側がfallbackできる失敗結果を返す", async () => {
+      // Arrange
+      const error = "Failed to resolve Riot static data";
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () =>
+          Promise.resolve(
+            new Response(JSON.stringify({ error }), { status: 502 }),
+          ),
+      );
+
+      // Act
+      const result = await apiClient.resolveRiotStaticData({
+        championIds: [17],
+      });
+
+      // Assert
+      assertEquals(result, { success: false, error });
+      assertSpyCalls(fetchStub, 1);
+    });
+  });
+
   describe("watchMatch", () => {
     test("監視登録APIが404を返す場合、呼び出し側で未連携を識別できるステータスを返す", async () => {
       using fetchStub = stub(

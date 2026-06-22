@@ -4,7 +4,7 @@
     ".": "./src/main.ts"
   },
   "tasks": {
-    "dev": "DATABASE_URL=file:../data/sqlite.db deno run -A --watch --env=../.env.dev src/main.ts",
+    "dev": "deno run -A --watch --env=../.env.dev src/main.ts",
     "test": "deno test -A"
   },
   "compilerOptions": {
