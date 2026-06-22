@@ -512,21 +512,31 @@ describe("apiClient", () => {
     });
   });
 
-  describe("upsertExternalMatchDetail", () => {
-    test("OP.GG詳細保存APIが204を返すと、成功ステータスを返す", async () => {
+  describe("resolveOpggMatchDetail", () => {
+    const matchId = "JP1_12345";
+    const payload = {
+      targetDiscordId: "discord-1",
+      match: {
+        gameCreation: 1_781_827_200_000,
+        gameDuration: 1_800,
+        queueId: 420,
+        participant: {
+          puuid: "puuid-1",
+          championId: 17,
+          championName: "Teemo",
+        },
+      },
+    };
+
+    test("OP.GG試合詳細が解決されたとき、providerCreatedAtをDateへ復元して返す", async () => {
       // Arrange
-      using fetchStub = stub(
-        globalThis,
-        "fetch",
-        () => Promise.resolve(new Response(null, { status: 204 })),
-      );
-      const payload = {
+      const detail = {
         provider: "opgg" as const,
         providerRegion: "jp",
         providerMatchId: "opgg-match-1",
         detailUrl:
-          "https://op.gg/ja/lol/summoners/jp/Teemo-JP1/matches/opgg-match-1/1780000000000",
-        providerCreatedAt: new Date("2026-06-19T00:00:00.000Z"),
+          "https://op.gg/ja/lol/summoners/jp/Teemo-JP1/matches/opgg-match-1/1781827200000",
+        providerCreatedAt: "2026-06-19T00:00:00.000Z",
         averageTier: "Emerald",
         participant: {
           puuid: "puuid-1",
@@ -534,23 +544,94 @@ describe("apiClient", () => {
           laneScore: 7.2,
         },
       };
-
-      // Act
-      const result = await apiClient.upsertExternalMatchDetail(
-        "JP1_12345",
-        payload,
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () =>
+          Promise.resolve(
+            new Response(JSON.stringify({ detail }), { status: 200 }),
+          ),
       );
 
+      // Act
+      const result = await apiClient.resolveOpggMatchDetail(matchId, payload);
+
       // Assert
-      assertEquals(result.success, true);
+      assertEquals(result, {
+        success: true,
+        detail: {
+          ...detail,
+          providerCreatedAt: new Date(detail.providerCreatedAt),
+        },
+      });
       assertSpyCalls(fetchStub, 1);
       const [url, init] = fetchStub.calls[0].args;
       assertEquals(
         url,
-        `${Deno.env.get("API_URL")}/matches/JP1_12345/external-details`,
+        `${
+          Deno.env.get("API_URL")
+        }/matches/${matchId}/external-details/opgg/resolve`,
       );
       assertEquals(init?.method, "POST");
       assertEquals(init?.body, JSON.stringify(payload));
+    });
+
+    test("OP.GGに対応する試合がないとき、成功結果とdetail nullを返す", async () => {
+      // Arrange
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () =>
+          Promise.resolve(
+            new Response(JSON.stringify({ detail: null }), { status: 200 }),
+          ),
+      );
+
+      // Act
+      const result = await apiClient.resolveOpggMatchDetail(matchId, payload);
+
+      // Assert
+      assertEquals(result, { success: true, detail: null });
+      assertSpyCalls(fetchStub, 1);
+    });
+
+    test("Backend APIがOP.GG試合詳細を解決できないとき、失敗結果とエラーを返す", async () => {
+      // Arrange
+      const error = "Failed to resolve OP.GG match detail";
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () =>
+          Promise.resolve(
+            new Response(JSON.stringify({ error }), { status: 500 }),
+          ),
+      );
+
+      // Act
+      const result = await apiClient.resolveOpggMatchDetail(matchId, payload);
+
+      // Assert
+      assertEquals(result, { success: false, error });
+      assertSpyCalls(fetchStub, 1);
+    });
+
+    test("Backend APIへの通信に失敗したとき、通信失敗の結果を返す", async () => {
+      // Arrange
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () => Promise.reject(new Error("Network error")),
+      );
+
+      // Act
+      const result = await apiClient.resolveOpggMatchDetail(matchId, payload);
+
+      // Assert
+      assertEquals(result, {
+        success: false,
+        error: "Failed to communicate with API",
+      });
+      assertSpyCalls(fetchStub, 1);
     });
   });
 

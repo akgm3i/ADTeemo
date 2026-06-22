@@ -1,11 +1,16 @@
 import { describe, test } from "@std/testing/bdd";
 import { assert, assertEquals } from "@std/assert";
-import { assertSpyCall, stub } from "@std/testing/mock";
+import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
 import { testClient } from "@hono/hono/testing";
 import app from "../app.ts";
 import { dbActions } from "../db/actions.ts";
 import type { Lane } from "../db/schema.ts";
-import { RecordNotFoundError } from "../errors.ts";
+import {
+  OpggMatchParticipantMismatchError,
+  RecordNotFoundError,
+} from "../errors.ts";
+import { opggMatchDetailService } from "../services/opgg_match_detail.ts";
+import { apiLogger } from "../logger.ts";
 
 describe("routes/matches.ts", () => {
   const client = testClient(app);
@@ -138,21 +143,30 @@ describe("routes/matches.ts", () => {
     });
   });
 
-  describe("POST /matches/:matchId/external-details", () => {
-    test("OP.GG詳細が指定されたとき、外部試合詳細として保存し204を返す", async () => {
+  describe("POST /matches/:matchId/external-details/opgg/resolve", () => {
+    const payload = {
+      targetDiscordId: "target-1",
+      match: {
+        gameCreation: 1_780_000_000_000,
+        gameDuration: 1800,
+        queueId: 420,
+        participant: {
+          puuid: "puuid-1",
+          championId: 17,
+          championName: "Teemo",
+        },
+      },
+    };
+
+    test("監視対象と試合情報が一致するとき、OP.GG詳細を解決して保存し200で返す", async () => {
       // Arrange
-      using upsertStub = stub(
-        dbActions,
-        "upsertExternalMatchDetail",
-        () => Promise.resolve(),
-      );
-      const payload = {
+      const detail = {
         provider: "opgg" as const,
         providerRegion: "jp",
         providerMatchId: "opgg-match-1",
         detailUrl:
           "https://op.gg/ja/lol/summoners/jp/Teemo-JP1/matches/opgg-match-1/1780000000000",
-        providerCreatedAt: "2026-06-19T00:00:00.000Z",
+        providerCreatedAt: new Date("2026-06-19T00:00:00.000Z"),
         averageTier: "Emerald",
         participant: {
           puuid: "puuid-1",
@@ -160,41 +174,183 @@ describe("routes/matches.ts", () => {
           laneScore: 7.2,
         },
       };
+      using resolveStub = stub(
+        opggMatchDetailService,
+        "resolveAndSave",
+        () => Promise.resolve(detail),
+      );
 
       // Act
-      const res = await app.request("/matches/JP1_12345/external-details", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const res = await app.request(
+        "/matches/JP1_12345/external-details/opgg/resolve",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
 
       // Assert
-      assertEquals(res.status, 204);
-      assertSpyCall(upsertStub, 0, {
-        args: [{
-          ...payload,
-          matchId: "JP1_12345",
-          providerCreatedAt: new Date(payload.providerCreatedAt),
+      assertEquals(res.status, 200);
+      assertEquals(await res.json(), {
+        detail: {
+          ...detail,
+          providerCreatedAt: "2026-06-19T00:00:00.000Z",
+        },
+      });
+      assertSpyCall(resolveStub, 0, {
+        args: [{ matchId: "JP1_12345", ...payload }],
+      });
+    });
+
+    test("OP.GG試合候補を一意に解決できないとき、保存せず200でnullを返す", async () => {
+      // Arrange
+      using _resolveStub = stub(
+        opggMatchDetailService,
+        "resolveAndSave",
+        () => Promise.resolve(null),
+      );
+
+      // Act
+      const res = await app.request(
+        "/matches/JP1_12345/external-details/opgg/resolve",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+
+      // Assert
+      assertEquals(res.status, 200);
+      assertEquals(await res.json(), { detail: null });
+    });
+
+    test("必須の試合時間が不正なとき、検証エラーを警告に記録しserviceを呼ばず400を返す", async () => {
+      // Arrange
+      using resolveStub = stub(
+        opggMatchDetailService,
+        "resolveAndSave",
+        () => Promise.resolve(null),
+      );
+      using warnStub = stub(apiLogger, "warn", () => {});
+
+      // Act
+      const res = await app.request(
+        "/matches/JP1_12345/external-details/opgg/resolve",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...payload,
+            match: { ...payload.match, gameDuration: -1 },
+          }),
+        },
+      );
+
+      // Assert
+      assertEquals(res.status, 400);
+      assertEquals(await res.json(), { error: "Invalid request body" });
+      assertSpyCalls(resolveStub, 0);
+      assertSpyCall(warnStub, 0, {
+        args: ["opgg_match_detail.invalid_request", {
+          validationIssues: [{
+            code: "too_small",
+            path: ["match", "gameDuration"],
+          }],
         }],
       });
     });
 
-    test("未対応providerが指定されたとき、400を返す", async () => {
-      // Arrange / Act
-      const res = await app.request("/matches/JP1_12345/external-details", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          provider: "unknown",
-          providerRegion: "jp",
-          providerMatchId: "opgg-match-1",
-          detailUrl: "https://example.com",
-          providerCreatedAt: "2026-06-19T00:00:00.000Z",
-        }),
+    test("監視対象のRiotアカウントが存在しないとき、404を返す", async () => {
+      // Arrange
+      using _resolveStub = stub(
+        opggMatchDetailService,
+        "resolveAndSave",
+        () =>
+          Promise.reject(
+            new RecordNotFoundError("Riot account not found: target-1"),
+          ),
+      );
+
+      // Act
+      const res = await app.request(
+        "/matches/JP1_12345/external-details/opgg/resolve",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+
+      // Assert
+      assertEquals(res.status, 404);
+      assertEquals(await res.json(), {
+        error: "Riot account not found: target-1",
       });
+    });
+
+    test("試合参加者のPUUIDがRiotアカウントと一致しないとき、400を返す", async () => {
+      // Arrange
+      using _resolveStub = stub(
+        opggMatchDetailService,
+        "resolveAndSave",
+        () =>
+          Promise.reject(
+            new OpggMatchParticipantMismatchError(
+              "Match participant does not match Riot account",
+            ),
+          ),
+      );
+
+      // Act
+      const res = await app.request(
+        "/matches/JP1_12345/external-details/opgg/resolve",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
 
       // Assert
       assertEquals(res.status, 400);
+      assertEquals(await res.json(), {
+        error: "Match participant does not match Riot account",
+      });
+    });
+
+    test("OP.GG詳細の保存で予期せぬ失敗が発生したとき、エラーを記録して500を返す", async () => {
+      // Arrange
+      const error = new Error("DB unavailable");
+      using _resolveStub = stub(
+        opggMatchDetailService,
+        "resolveAndSave",
+        () => Promise.reject(error),
+      );
+      using errorStub = stub(apiLogger, "error", () => {});
+
+      // Act
+      const res = await app.request(
+        "/matches/JP1_12345/external-details/opgg/resolve",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+
+      // Assert
+      assertEquals(res.status, 500);
+      assertEquals(await res.json(), {
+        error: "Failed to resolve OP.GG match detail",
+      });
+      assertSpyCall(errorStub, 0, {
+        args: ["opgg_match_detail.request_failed", {
+          matchId: "JP1_12345",
+          targetDiscordId: "target-1",
+        }, error],
+      });
     });
   });
 

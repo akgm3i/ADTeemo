@@ -4,10 +4,15 @@ import { dbActions } from "../db/actions.ts";
 import {
   createParticipantSchema,
   finalizeRankSnapshotsSchema,
-  upsertExternalMatchDetailSchema,
+  resolveOpggMatchDetailSchema,
   upsertPendingRankSnapshotsSchema,
 } from "../validators.ts";
-import { RecordNotFoundError } from "../errors.ts";
+import {
+  OpggMatchParticipantMismatchError,
+  RecordNotFoundError,
+} from "../errors.ts";
+import { opggMatchDetailService } from "../services/opgg_match_detail.ts";
+import { apiLogger } from "../logger.ts";
 
 export const matchesRoutes = new Hono()
   .post(
@@ -33,16 +38,45 @@ export const matchesRoutes = new Hono()
     },
   )
   .post(
-    "/:matchId/external-details",
-    zValidator("json", upsertExternalMatchDetailSchema),
+    "/:matchId/external-details/opgg/resolve",
+    zValidator("json", resolveOpggMatchDetailSchema, (result, c) => {
+      if (!result.success) {
+        apiLogger.warn("opgg_match_detail.invalid_request", {
+          validationIssues: result.error.issues.map((issue) => ({
+            code: issue.code,
+            path: issue.path,
+          })),
+        });
+        return c.json({ error: "Invalid request body" }, 400);
+      }
+    }),
     async (c) => {
       const { matchId } = c.req.param();
       const payload = c.req.valid("json");
-      await dbActions.upsertExternalMatchDetail({
-        ...payload,
-        matchId,
-      });
-      return c.body(null, 204);
+
+      try {
+        const detail = await opggMatchDetailService.resolveAndSave({
+          matchId,
+          ...payload,
+        });
+        return c.json({ detail }, 200);
+      } catch (error) {
+        if (error instanceof RecordNotFoundError) {
+          return c.json({ error: error.message }, 404);
+        }
+        if (error instanceof OpggMatchParticipantMismatchError) {
+          return c.json({ error: error.message }, 400);
+        }
+        apiLogger.error(
+          "opgg_match_detail.request_failed",
+          {
+            matchId,
+            targetDiscordId: payload.targetDiscordId,
+          },
+          error,
+        );
+        return c.json({ error: "Failed to resolve OP.GG match detail" }, 500);
+      }
     },
   )
   .post(

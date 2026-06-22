@@ -11,3 +11,10 @@ export class MatchWatcherLimitError extends Error {
     this.name = "MatchWatcherLimitError";
   }
 }
+
+export class OpggMatchParticipantMismatchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OpggMatchParticipantMismatchError";
+  }
+}

@@ -3,11 +3,11 @@ import type { Lane, MatchWatcher, RiotAccount } from "@adteemo/api/schema";
 import {
   apiClient,
   type FinalizedRankSnapshot,
+  type OpggMatchDetail,
   type RankSnapshotPayload,
 } from "../api_client.ts";
 import { botLogger } from "../logger.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
-import { opggClient, type OpggMatchDetail } from "./opgg.ts";
 
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
 const DEFAULT_IN_GAME_NOTIFY_INTERVAL_MS = 300_000;
@@ -106,12 +106,6 @@ function numberEnv(name: string, fallback: number) {
 function messageLocale() {
   return (Deno.env.get("BOT_MESSAGE_LANG") ?? Deno.env.get("LC_MESSAGES") ??
     Deno.env.get("LC_ALL") ?? "ja_JP").replace("-", "_").split(".")[0];
-}
-
-function booleanEnv(name: string) {
-  const value = Deno.env.get(name)?.toLowerCase();
-  return value === "1" || value === "true" || value === "yes" ||
-    value === "on";
 }
 
 function matchIdForGame(account: RiotAccount, gameId: string | number) {
@@ -1041,42 +1035,37 @@ async function resolveOpggMatchDetailForResult(
   account: RiotAccount,
   match: RiotMatch,
 ) {
-  if (!booleanEnv("OPGG_ENABLED")) return null;
+  const participant = match.info.participants.find((candidate) =>
+    candidate.puuid === account.puuid
+  );
+  if (!participant) return null;
 
-  try {
-    const detail = await opggClient.resolveMatchDetail(account, match);
-    if (!detail) return null;
-
-    const result = await apiClient.upsertExternalMatchDetail(
-      match.metadata.matchId,
-      {
-        provider: detail.provider,
-        providerRegion: detail.providerRegion,
-        providerMatchId: detail.providerMatchId,
-        detailUrl: detail.detailUrl,
-        providerCreatedAt: detail.providerCreatedAt,
-        averageTier: detail.averageTier,
-        participant: detail.participant,
+  const result = await apiClient.resolveOpggMatchDetail(
+    match.metadata.matchId,
+    {
+      targetDiscordId: watcher.targetDiscordId,
+      match: {
+        gameCreation: match.info.gameCreation,
+        gameDuration: match.info.gameDuration,
+        queueId: match.info.queueId,
+        participant: {
+          puuid: participant.puuid,
+          championId: participant.championId,
+          championName: participant.championName,
+        },
       },
-    );
-    if (!result.success) {
-      botLogger.warn("match_tracking.opgg_detail_save_failed", {
-        guildId: watcher.guildId,
-        targetDiscordId: watcher.targetDiscordId,
-        matchId: match.metadata.matchId,
-        error: result.error,
-      });
-    }
-    return detail;
-  } catch (error) {
+    },
+  );
+  if (!result.success) {
     botLogger.warn("match_tracking.opgg_detail_resolve_failed", {
       guildId: watcher.guildId,
       targetDiscordId: watcher.targetDiscordId,
       matchId: match.metadata.matchId,
-      error: error instanceof Error ? error.message : String(error),
+      error: result.error,
     });
     return null;
   }
+  return result.detail;
 }
 
 function currentStateFromWatcher(watcher: MatchWatcher): WatcherState {

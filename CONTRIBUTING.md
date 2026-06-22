@@ -66,6 +66,7 @@ cp .env.example .env
 | `RIOT_RATE_LIMIT_LONG_WINDOW_LIMIT`                        | Backend API内のRiot共有キューの長期window上限。Personal Key既定値: `100`                         |
 | `RIOT_RATE_LIMIT_LONG_WINDOW_MS`                           | Backend API内のRiot共有キューの長期window。Personal Key既定値: `120000` ms                       |
 | `RIOT_STATIC_DATA_CACHE_TTL_MS`                            | Riot static data cacheのTTL                                                                      |
+| `OPGG_ENABLED`                                             | Backend APIのOP.GG試合詳細連携を有効化する                                                       |
 | `API_MESSAGE_LANG` / `BOT_MESSAGE_LANG`                    | API / Botのメッセージ言語                                                                        |
 | `BOT_MESSAGE_THEME`                                        | Botメッセージテーマ                                                                              |
 | `RSO_CLIENT_ID` / `RSO_CLIENT_SECRET` / `RSO_REDIRECT_URI` | Riot Sign On連携設定                                                                             |

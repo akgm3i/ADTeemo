@@ -7,7 +7,6 @@ import { apiClient } from "../api_client.ts";
 import { botLogger } from "../logger.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import { matchTracker } from "./match_tracking.ts";
-import { opggClient } from "./opgg.ts";
 import { afterEach, beforeEach } from "@std/testing/bdd";
 
 type RiotMatch = NonNullable<
@@ -2209,135 +2208,131 @@ describe("match_tracking.ts", () => {
     assertEquals(fieldNames.includes("CS/min"), false);
   });
 
-  test("OP.GG連携が無効なとき、試合結果取得時にOP.GGへ問い合わせない", async () => {
+  test("BackendがOP.GG詳細なしを返すとき、OP.GG項目を省略して試合結果通知を継続する", async () => {
     // Arrange
-    const originalEnabled = Deno.env.get("OPGG_ENABLED");
-    Deno.env.delete("OPGG_ENABLED");
-    try {
-      const { client } = clientWithSend();
-      using _getWatchersStub = stub(
-        apiClient,
-        "getEnabledMatchWatchers",
-        () =>
-          Promise.resolve({
-            success: true as const,
-            watchers: [watcher({
-              lastState: "FETCHING_RESULT",
-              currentMatchId: "JP1_12345",
-              currentNotificationMessageId: "message-existing",
-            })],
-          }),
-      );
-      using _getAccountStub = stub(
-        apiClient,
-        "getRiotAccount",
-        () => Promise.resolve({ success: true as const, account: account() }),
-      );
-      using _getMatchStub = stub(
-        apiClient,
-        "getMatchById",
-        () => Promise.resolve(match()),
-      );
-      using opggStub = stub(
-        opggClient,
-        "resolveMatchDetail",
-        () => Promise.resolve(null),
-      );
-      using _updateStub = stub(
-        apiClient,
-        "updateMatchWatcherState",
-        () => Promise.resolve({ success: true as const }),
-      );
+    const { client, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "FETCHING_RESULT",
+            currentMatchId: "JP1_12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _getMatchStub = stub(
+      apiClient,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using resolveStub = stub(
+      apiClient,
+      "resolveOpggMatchDetail",
+      () => Promise.resolve({ success: true as const, detail: null }),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
 
-      // Act
-      await matchTracker.processMatchWatchers(client);
+    // Act
+    await matchTracker.processMatchWatchers(client);
 
-      // Assert
-      assertSpyCalls(opggStub, 0);
-    } finally {
-      if (originalEnabled === undefined) {
-        Deno.env.delete("OPGG_ENABLED");
-      } else {
-        Deno.env.set("OPGG_ENABLED", originalEnabled);
-      }
-    }
+    // Assert
+    assertSpyCalls(resolveStub, 1);
+    assertEquals(
+      editedEmbedJson(editSpy, 0).fields?.some((field) =>
+        field.name === "OP.GG"
+      ),
+      false,
+    );
   });
 
-  test("OP.GG詳細を解決できたとき、試合結果Embedに詳細リンクと補助情報を表示し保存する", async () => {
+  test("BackendがOP.GG詳細を解決したとき、試合結果Embedに詳細リンクと補助情報を表示する", async () => {
     // Arrange
-    const originalEnabled = Deno.env.get("OPGG_ENABLED");
-    Deno.env.set("OPGG_ENABLED", "true");
-    try {
-      const { client, editSpy } = clientWithSend();
-      using _getWatchersStub = stub(
-        apiClient,
-        "getEnabledMatchWatchers",
-        () =>
-          Promise.resolve({
-            success: true as const,
-            watchers: [watcher({
-              lastState: "FETCHING_RESULT",
-              currentMatchId: "JP1_12345",
-              currentNotificationMessageId: "message-existing",
-            })],
-          }),
-      );
-      using _getAccountStub = stub(
-        apiClient,
-        "getRiotAccount",
-        () => Promise.resolve({ success: true as const, account: account() }),
-      );
-      using _getMatchStub = stub(
-        apiClient,
-        "getMatchById",
-        () => Promise.resolve(match()),
-      );
-      using _leagueStub = stub(
-        apiClient,
-        "getLeagueEntriesByPuuid",
-        () => Promise.resolve(leagueEntries(19)),
-      );
-      using _finalizeRankStub = stub(
-        apiClient,
-        "finalizeRankSnapshots",
-        () =>
-          Promise.resolve({
-            success: true as const,
-            snapshots: {
-              before: [{
-                matchId: "JP1_12345",
-                platform: "jp1",
-                puuid: "puuid-1",
-                queueType: "RANKED_SOLO_5x5",
-                phase: "before",
-                tier: "EMERALD",
-                rank: "IV",
-                leaguePoints: 2,
-                wins: 10,
-                losses: 8,
-                fetchedAt: new Date("2026-01-01T00:00:00.000Z"),
-              }],
-              after: [{
-                matchId: "JP1_12345",
-                platform: "jp1",
-                puuid: "puuid-1",
-                queueType: "RANKED_SOLO_5x5",
-                phase: "after",
-                tier: "EMERALD",
-                rank: "IV",
-                leaguePoints: 19,
-                wins: 11,
-                losses: 8,
-                fetchedAt: new Date("2026-01-01T00:10:00.000Z"),
-              }],
-            },
-          }),
-      );
-      using _opggStub = stub(
-        opggClient,
-        "resolveMatchDetail",
-        () =>
-          Promise.resolve({
+    const { client, editSpy } = clientWithSend();
+    const resultMatch = match();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "FETCHING_RESULT",
+            currentMatchId: "JP1_12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _getMatchStub = stub(
+      apiClient,
+      "getMatchById",
+      () => Promise.resolve(resultMatch),
+    );
+    using _leagueStub = stub(
+      apiClient,
+      "getLeagueEntriesByPuuid",
+      () => Promise.resolve(leagueEntries(19)),
+    );
+    using _finalizeRankStub = stub(
+      apiClient,
+      "finalizeRankSnapshots",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          snapshots: {
+            before: [{
+              matchId: "JP1_12345",
+              platform: "jp1",
+              puuid: "puuid-1",
+              queueType: "RANKED_SOLO_5x5",
+              phase: "before",
+              tier: "EMERALD",
+              rank: "IV",
+              leaguePoints: 2,
+              wins: 10,
+              losses: 8,
+              fetchedAt: new Date("2026-01-01T00:00:00.000Z"),
+            }],
+            after: [{
+              matchId: "JP1_12345",
+              platform: "jp1",
+              puuid: "puuid-1",
+              queueType: "RANKED_SOLO_5x5",
+              phase: "after",
+              tier: "EMERALD",
+              rank: "IV",
+              leaguePoints: 19,
+              wins: 11,
+              losses: 8,
+              fetchedAt: new Date("2026-01-01T00:10:00.000Z"),
+            }],
+          },
+        }),
+    );
+    using resolveStub = stub(
+      apiClient,
+      "resolveOpggMatchDetail",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          detail: {
             provider: "opgg" as const,
             providerRegion: "jp",
             providerMatchId: "opgg-match-1",
@@ -2350,56 +2345,44 @@ describe("match_tracking.ts", () => {
               participantId: 3,
               laneScore: 7.2,
             },
-          }),
-      );
-      using saveStub = stub(
-        apiClient,
-        "upsertExternalMatchDetail",
-        () => Promise.resolve({ success: true as const }),
-      );
-      using _updateStub = stub(
-        apiClient,
-        "updateMatchWatcherState",
-        () => Promise.resolve({ success: true as const }),
-      );
+          },
+        }),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
 
-      // Act
-      await matchTracker.processMatchWatchers(client);
+    // Act
+    await matchTracker.processMatchWatchers(client);
 
-      // Assert
-      const opggValue = editedEmbedFieldValue(editSpy, 0, "OP.GG");
-      assertStringIncludes(opggValue ?? "", "[試合詳細](https://op.gg/");
-      assertStringIncludes(opggValue ?? "", "レーン戦: 7.2");
-      assertStringIncludes(opggValue ?? "", "平均Tier: Emerald");
-      const fields = editedEmbedJson(editSpy, 0).fields ?? [];
-      assertEquals(fields.length, 12);
-      assertEquals(
-        fields.find((field) => field.name === "ランク")?.value,
-        "LP: +17\nEmerald IV 2LP -> Emerald IV 19LP",
-      );
-      assertSpyCall(saveStub, 0, {
-        args: ["JP1_12345", {
-          provider: "opgg",
-          providerRegion: "jp",
-          providerMatchId: "opgg-match-1",
-          detailUrl:
-            "https://op.gg/ja/lol/summoners/jp/Teemo-JP1/matches/opgg-match-1/1780000000000",
-          providerCreatedAt: new Date("2026-06-19T00:00:00.000Z"),
-          averageTier: "Emerald",
+    // Assert
+    const opggValue = editedEmbedFieldValue(editSpy, 0, "OP.GG");
+    assertStringIncludes(opggValue ?? "", "[試合詳細](https://op.gg/");
+    assertStringIncludes(opggValue ?? "", "レーン戦: 7.2");
+    assertStringIncludes(opggValue ?? "", "平均Tier: Emerald");
+    const fields = editedEmbedJson(editSpy, 0).fields ?? [];
+    assertEquals(fields.length, 12);
+    assertEquals(
+      fields.find((field) => field.name === "ランク")?.value,
+      "LP: +17\nEmerald IV 2LP -> Emerald IV 19LP",
+    );
+    assertSpyCall(resolveStub, 0, {
+      args: ["JP1_12345", {
+        targetDiscordId: "target-1",
+        match: {
+          gameCreation: resultMatch.info.gameCreation,
+          gameDuration: 1800,
+          queueId: 420,
           participant: {
             puuid: "puuid-1",
-            participantId: 3,
-            laneScore: 7.2,
+            championId: 17,
+            championName: "Teemo",
           },
-        }],
-      });
-    } finally {
-      if (originalEnabled === undefined) {
-        Deno.env.delete("OPGG_ENABLED");
-      } else {
-        Deno.env.set("OPGG_ENABLED", originalEnabled);
-      }
-    }
+        },
+      }],
+    });
   });
 
   test("ランク対象queueの試合結果EmbedにLP差分と現在ランクを表示する", async () => {

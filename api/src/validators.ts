@@ -1,10 +1,5 @@
 import { z } from "zod";
-import {
-  externalMatchProviders,
-  lanes,
-  rankedQueueTypes,
-  riotPlatforms,
-} from "./db/schema.ts";
+import { lanes, rankedQueueTypes, riotPlatforms } from "./db/schema.ts";
 
 export const createParticipantSchema = z.object({
   userId: z.string(),
@@ -42,16 +37,16 @@ export const finalizeRankSnapshotsSchema = z.object({
   snapshots: z.array(rankSnapshotPayloadSchema).min(1),
 });
 
-export const upsertExternalMatchDetailSchema = z.object({
-  provider: z.enum(externalMatchProviders),
-  providerRegion: z.string().min(1),
-  providerMatchId: z.string().min(1),
-  detailUrl: z.string().url(),
-  providerCreatedAt: z.coerce.date(),
-  averageTier: z.string().nullable().default(null),
-  participant: z.object({
-    puuid: z.string().min(1),
-    participantId: z.number().int().min(0).nullable().default(null),
-    laneScore: z.number().nullable().default(null),
-  }).optional(),
+export const resolveOpggMatchDetailSchema = z.object({
+  targetDiscordId: z.string().min(1),
+  match: z.object({
+    gameCreation: z.number().int().nonnegative(),
+    gameDuration: z.number().int().nonnegative(),
+    queueId: z.number().int().nonnegative(),
+    participant: z.object({
+      puuid: z.string().min(1),
+      championId: z.number().int().nonnegative().optional(),
+      championName: z.string().min(1).optional(),
+    }),
+  }),
 });

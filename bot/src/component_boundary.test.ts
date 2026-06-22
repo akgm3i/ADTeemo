@@ -25,8 +25,21 @@ test("Bot実行環境がBackend内部実装とDB設定に依存しない", async
   const sourceDirectory = new URL("./", import.meta.url);
   for (const file of await runtimeTypeScriptFiles(sourceDirectory)) {
     const source = await Deno.readTextFile(file);
-    if (source.includes("@adteemo/api/riot-static-data")) {
+    if (
+      [
+        "@adteemo/api/riot-static-data",
+        "/db/actions",
+        "/db/index",
+        "@libsql/client",
+      ].some((forbiddenImport) => source.includes(forbiddenImport))
+    ) {
       violations.push(`Backend内部実装をimportしている: ${file.pathname}`);
+    }
+    if (source.includes("./opgg.ts") || source.includes("https://op.gg")) {
+      violations.push(`OP.GGへ直接依存している: ${file.pathname}`);
+    }
+    if (source.includes("OPGG_ENABLED")) {
+      violations.push(`BotがOP.GG設定を参照している: ${file.pathname}`);
     }
   }
 
