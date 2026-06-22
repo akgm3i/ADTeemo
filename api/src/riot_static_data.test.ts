@@ -1,7 +1,8 @@
 import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
-import { assertSpyCalls, stub } from "@std/testing/mock";
+import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
 import { dbActions } from "./db/actions.ts";
+import { apiLogger } from "./logger.ts";
 import { riotStaticData } from "./riot_static_data.ts";
 
 describe("riot_static_data.ts", () => {
@@ -224,5 +225,150 @@ describe("riot_static_data.ts", () => {
 
     assertEquals(name, "Summoner's Rift");
     assertSpyCalls(fetchStub, 1);
+  });
+
+  test("複数の静的データ識別子を解決するとき、種別ごとに単一のキャッシュ読み込みから表示データを返す", async () => {
+    // Arrange
+    using getCacheStub = stub(
+      dbActions,
+      "getRiotStaticDataCache",
+      (key) => {
+        const values: Record<string, string> = {
+          "champions-data:en_US": JSON.stringify({
+            "17": { name: "Teemo", imageFull: "Teemo.png" },
+            "18": { name: "Tristana", imageFull: null },
+          }),
+          queues: JSON.stringify({ "420": "5v5 Ranked Solo games" }),
+          maps: JSON.stringify({ "11": "Summoner's Rift" }),
+          gameModes: JSON.stringify({ CLASSIC: "Classic" }),
+        };
+        return Promise.resolve({
+          key,
+          version: key.startsWith("champions-data:")
+            ? "16.12.1"
+            : "static.developer.riotgames.com",
+          value: values[key],
+          updatedAt: new Date(),
+        });
+      },
+    );
+    using fetchStub = stub(
+      globalThis,
+      "fetch",
+      () => Promise.reject(new Error("fetch should not be called")),
+    );
+
+    // Act
+    const result = await riotStaticData.resolve({
+      locale: "en_US",
+      championIds: [17, 18, 17],
+      queueIds: [420, 420],
+      mapIds: [11],
+      gameModes: ["CLASSIC"],
+    });
+
+    // Assert
+    assertEquals(result, {
+      champions: {
+        "17": {
+          name: "Teemo",
+          iconUrl:
+            "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Teemo.png",
+        },
+        "18": { name: "Tristana", iconUrl: null },
+      },
+      queues: { "420": "5v5 Ranked Solo games" },
+      maps: { "11": "Summoner's Rift" },
+      gameModes: { CLASSIC: "Classic" },
+    });
+    assertSpyCalls(getCacheStub, 4);
+    assertSpyCalls(fetchStub, 0);
+  });
+
+  test("一部の静的データ取得に失敗したとき、失敗した種別だけnullにして取得済みデータを返す", async () => {
+    // Arrange
+    using _getCacheStub = stub(
+      dbActions,
+      "getRiotStaticDataCache",
+      (key) =>
+        Promise.resolve(
+          key === "champions-data:en_US"
+            ? {
+              key,
+              version: "16.12.1",
+              value: JSON.stringify({
+                "17": { name: "Teemo", imageFull: "Teemo.png" },
+              }),
+              updatedAt: new Date(),
+            }
+            : undefined,
+        ),
+    );
+    using _fetchStub = stub(
+      globalThis,
+      "fetch",
+      () => Promise.resolve(new Response(null, { status: 503 })),
+    );
+    using warnStub = stub(apiLogger, "warn", () => {});
+
+    // Act
+    const result = await riotStaticData.resolve({
+      locale: "en_US",
+      championIds: [17],
+      queueIds: [420],
+    });
+
+    // Assert
+    assertEquals(result, {
+      champions: {
+        "17": {
+          name: "Teemo",
+          iconUrl:
+            "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Teemo.png",
+        },
+      },
+      queues: { "420": null },
+      maps: {},
+      gameModes: {},
+    });
+    assertSpyCall(warnStub, 0, {
+      args: ["riot_static_data.resolve_queues_failed", {
+        error: "Failed to fetch Riot static data: 503",
+      }],
+    });
+  });
+
+  test("未知の識別子を含む静的データを解決するとき、対応する値をnullで返す", async () => {
+    // Arrange
+    using _getCacheStub = stub(
+      dbActions,
+      "getRiotStaticDataCache",
+      (key) =>
+        Promise.resolve({
+          key,
+          version: key.startsWith("champions-data:")
+            ? "16.12.1"
+            : "static.developer.riotgames.com",
+          value: "{}",
+          updatedAt: new Date(),
+        }),
+    );
+
+    // Act
+    const result = await riotStaticData.resolve({
+      locale: "en_US",
+      championIds: [999],
+      queueIds: [999],
+      mapIds: [999],
+      gameModes: ["UNKNOWN"],
+    });
+
+    // Assert
+    assertEquals(result, {
+      champions: { "999": { name: null, iconUrl: null } },
+      queues: { "999": null },
+      maps: { "999": null },
+      gameModes: { UNKNOWN: null },
+    });
   });
 });

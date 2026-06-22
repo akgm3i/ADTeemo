@@ -58,6 +58,24 @@ const jaGameModeNames: Record<string, string> = {
   CLASSIC: "クラシック",
 };
 
+export type RiotStaticDataResolveInput = {
+  locale?: string;
+  championIds?: number[];
+  queueIds?: number[];
+  mapIds?: number[];
+  gameModes?: string[];
+};
+
+export type RiotStaticDataResolveResult = {
+  champions: Record<
+    string,
+    { name: string | null; iconUrl: string | null }
+  >;
+  queues: Record<string, string | null>;
+  maps: Record<string, string | null>;
+  gameModes: Record<string, string | null>;
+};
+
 function numberEnv(name: string, fallback: number) {
   const value = Number(Deno.env.get(name));
   return Number.isFinite(value) && value > 0 ? value : fallback;
@@ -287,10 +305,101 @@ async function getGameModeName(gameMode: string, locale?: string) {
   return names[gameMode] ?? null;
 }
 
+function unique<T>(values: T[] | undefined) {
+  return [...new Set(values ?? [])];
+}
+
+async function resolveResource<T>(
+  resource: string,
+  load: () => Promise<T>,
+): Promise<T | null> {
+  try {
+    return await load();
+  } catch (error) {
+    apiLogger.warn(`riot_static_data.resolve_${resource}_failed`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+async function resolve(
+  input: RiotStaticDataResolveInput,
+): Promise<RiotStaticDataResolveResult> {
+  const championIds = unique(input.championIds);
+  const queueIds = unique(input.queueIds);
+  const mapIds = unique(input.mapIds);
+  const gameModes = unique(input.gameModes);
+
+  const needsQueues = queueIds.some((queueId) =>
+    localizedQueueName(queueId, input.locale) === null
+  );
+  const needsMaps = mapIds.some((mapId) =>
+    localizedMapName(mapId, input.locale) === null
+  );
+  const needsGameModes = gameModes.some((gameMode) =>
+    localizedGameModeName(gameMode, input.locale) === null
+  );
+
+  const [championData, queueNames, mapNames, gameModeNames] = await Promise.all(
+    [
+      championIds.length > 0
+        ? resolveResource("champions", () => getChampions(input.locale))
+        : Promise.resolve(null),
+      needsQueues
+        ? resolveResource("queues", getQueues)
+        : Promise.resolve(null),
+      needsMaps ? resolveResource("maps", getMaps) : Promise.resolve(null),
+      needsGameModes
+        ? resolveResource("game_modes", getGameModes)
+        : Promise.resolve(null),
+    ],
+  );
+
+  const champions: RiotStaticDataResolveResult["champions"] = {};
+  for (const championId of championIds) {
+    const champion = championData?.value[String(championId)];
+    champions[String(championId)] = {
+      name: champion?.name ?? null,
+      iconUrl: champion?.imageFull && championData
+        ? `${DATA_DRAGON_CDN_BASE}/${championData.version}/img/champion/${champion.imageFull}`
+        : null,
+    };
+  }
+
+  const queues: RiotStaticDataResolveResult["queues"] = {};
+  for (const queueId of queueIds) {
+    queues[String(queueId)] = localizedQueueName(queueId, input.locale) ??
+      queueNames?.[String(queueId)] ?? null;
+  }
+
+  const maps: RiotStaticDataResolveResult["maps"] = {};
+  for (const mapId of mapIds) {
+    maps[String(mapId)] = localizedMapName(mapId, input.locale) ??
+      mapNames?.[String(mapId)] ?? null;
+  }
+
+  const resolvedGameModes: RiotStaticDataResolveResult["gameModes"] = {};
+  for (const gameMode of gameModes) {
+    resolvedGameModes[gameMode] = localizedGameModeName(
+      gameMode,
+      input.locale,
+    ) ?? gameModeNames?.[gameMode] ?? null;
+  }
+
+  return {
+    champions,
+    queues,
+    maps,
+    gameModes: resolvedGameModes,
+  };
+}
+
 export const riotStaticData = {
   getChampionNameById,
   getChampionIconUrlById,
   getQueueNameById,
   getMapNameById,
   getGameModeName,
+  resolve,
 };

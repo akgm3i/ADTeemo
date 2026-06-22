@@ -48,6 +48,20 @@ ADTeemoの詳細な未実装・改善作業はGitHub Issuesを正として追跡
   - [ ] 参加者確定、チーム分け、VC移動までのイベント状態遷移を設計する。
   - [ ] Message Componentsでキャンセル、再マッチング、次ゲームを操作できるようにする。
   - [ ] 募集チャンネル、VC、ロールIDなどのギルド設定を永続化する。
+- [ ] [#69 Botの外部サービス・DB直接依存をBackend APIへ集約する](https://github.com/akgm3i/ADTeemo/issues/69)
+  - [ ] [#72 Riot静的データ取得をBackend APIへ集約する](https://github.com/akgm3i/ADTeemo/issues/72)
+  - [ ] [#73 OP.GG試合詳細の解決・保存をBackend APIへ集約する](https://github.com/akgm3i/ADTeemo/issues/73)
+- [ ] [#71 Backend/Botの依存注入と試合監視モジュールを段階的に整理する](https://github.com/akgm3i/ADTeemo/issues/71)
+  - [ ] [#76 DB factoryとDB actions factoryを導入する](https://github.com/akgm3i/ADTeemo/issues/76)
+  - [ ] [#78 createAppとroute factoryでBackend依存を注入する](https://github.com/akgm3i/ADTeemo/issues/78)
+  - [ ] [#79 DB actionsをドメイン別repositoryへ分割する](https://github.com/akgm3i/ADTeemo/issues/79)
+  - [ ] [#75 API client factoryと共通transport処理を導入する](https://github.com/akgm3i/ADTeemo/issues/75)
+  - [ ] [#74 API clientをBackend resource別clientへ分割する](https://github.com/akgm3i/ADTeemo/issues/74)
+  - [ ] [#77 record-match参加者取得をmatch trackingから分離する](https://github.com/akgm3i/ADTeemo/issues/77)
+  - [ ] [#80 match trackingの純粋な状態・通知判定を抽出する](https://github.com/akgm3i/ADTeemo/issues/80)
+  - [ ] [#81 match trackingのEmbed生成とDiscord通知境界を分離する](https://github.com/akgm3i/ADTeemo/issues/81)
+  - [ ] [#82 MatchTrackingServiceへ監視オーケストレーションを集約する](https://github.com/akgm3i/ADTeemo/issues/82)
+  - [ ] [#83 match tracking workerとrate-budget監視をinstance化する](https://github.com/akgm3i/ADTeemo/issues/83)
 
 ## Issue化前の技術課題
 

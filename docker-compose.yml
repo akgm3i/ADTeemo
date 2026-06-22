@@ -41,13 +41,10 @@ services:
     depends_on:
       api:
         condition: service_healthy
-    volumes:
-      - prod-db-data:/app/data
     env_file:
       - .env
     environment:
       API_URL: http://api:8000
-      DATABASE_URL: file:/app/data/sqlite.db
 
   # --- Development service (activate with --profile dev) ---
   dev:

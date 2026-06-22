@@ -308,6 +308,25 @@ export type FinalizedRankSnapshot = {
   losses: number | null;
   fetchedAt: Date;
 };
+export type RiotStaticDataResolveInput = {
+  locale?: string;
+  championIds?: number[];
+  queueIds?: number[];
+  mapIds?: number[];
+  gameModes?: string[];
+};
+export type RiotStaticDataResolveData = {
+  champions: Record<
+    string,
+    { name: string | null; iconUrl: string | null }
+  >;
+  queues: Record<string, string | null>;
+  maps: Record<string, string | null>;
+  gameModes: Record<string, string | null>;
+};
+export type RiotStaticDataResolveResult =
+  | { success: true; data: RiotStaticDataResolveData }
+  | { success: false; error: string };
 
 function parseRankSnapshot(
   snapshot: Omit<FinalizedRankSnapshot, "fetchedAt"> & {
@@ -422,6 +441,27 @@ async function upsertExternalMatchDetail(
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return { success: false as const, error: "Failed to communicate with API" };
+  }
+}
+
+async function resolveRiotStaticData(
+  payload: RiotStaticDataResolveInput,
+): Promise<RiotStaticDataResolveResult> {
+  try {
+    const res = await client.riot["static-data"].resolve.$post({
+      json: payload,
+    });
+
+    if (!res.ok) {
+      const body = await res.json();
+      return { success: false, error: body.error };
+    }
+
+    const data = await res.json();
+    return { success: true, data };
+  } catch (error) {
+    console.error("Failed to communicate with API", error);
+    return { success: false, error: "Failed to communicate with API" };
   }
 }
 
@@ -580,6 +620,7 @@ export const apiClient = {
   upsertPendingRankSnapshots,
   finalizeRankSnapshots,
   upsertExternalMatchDetail,
+  resolveRiotStaticData,
   getLoginUrl,
   watchMatch,
   unwatchMatch,

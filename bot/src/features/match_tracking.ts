@@ -1,6 +1,5 @@
 import { type Client, EmbedBuilder } from "discord.js";
 import type { Lane, MatchWatcher, RiotAccount } from "@adteemo/api/schema";
-import { riotStaticData } from "@adteemo/api/riot-static-data";
 import {
   apiClient,
   type FinalizedRankSnapshot,
@@ -61,8 +60,15 @@ type PendingResult = {
 };
 type ActiveGameTargetDetail = {
   targetDiscordId: string;
-  champion: string;
+  championId?: number;
 };
+type RiotStaticDataResult = Awaited<
+  ReturnType<typeof apiClient.resolveRiotStaticData>
+>;
+type ResolvedRiotStaticData = Extract<
+  RiotStaticDataResult,
+  { success: true }
+>["data"];
 type RankedQueueType = RankSnapshotPayload["queueType"];
 type RankSummary = {
   queueType: RankedQueueType;
@@ -671,36 +677,30 @@ function fallbackChampionName(
   );
 }
 
-async function championNameById(
+function championNameById(
+  staticData: ResolvedRiotStaticData | null,
   championId: number | undefined,
   fallbackName?: string,
 ) {
   if (championId === undefined) {
     return fallbackChampionName(championId, fallbackName);
   }
-  try {
-    return await riotStaticData.getChampionNameById(
-      championId,
-      messageLocale(),
-    ) ?? fallbackChampionName(championId, fallbackName);
-  } catch {
-    return fallbackChampionName(championId, fallbackName);
-  }
+  return staticData?.champions[String(championId)]?.name ??
+    fallbackChampionName(championId, fallbackName);
 }
 
-async function championIconUrlById(championId: number | undefined) {
+function championIconUrlById(
+  staticData: ResolvedRiotStaticData | null,
+  championId: number | undefined,
+) {
   if (championId === undefined) return null;
-  try {
-    return await riotStaticData.getChampionIconUrlById(
-      championId,
-      messageLocale(),
-    );
-  } catch {
-    return null;
-  }
+  return staticData?.champions[String(championId)]?.iconUrl ?? null;
 }
 
-async function queueName(queueId: number | undefined) {
+function queueName(
+  staticData: ResolvedRiotStaticData | null,
+  queueId: number | undefined,
+) {
   if (queueId === undefined) {
     return messageHandler.formatMessage(
       messageKeys.matchTracking.embed.fallback.unknownQueue,
@@ -710,34 +710,38 @@ async function queueName(queueId: number | undefined) {
     messageKeys.matchTracking.embed.fallback.queueId,
     { id: queueId },
   );
-  try {
-    return await riotStaticData.getQueueNameById(queueId, messageLocale()) ??
-      fallback;
-  } catch {
-    return fallback;
-  }
+  return staticData?.queues[String(queueId)] ?? fallback;
 }
 
-async function mapName(mapId: number) {
+function mapName(
+  staticData: ResolvedRiotStaticData | null,
+  mapId: number,
+) {
   const fallback = messageHandler.formatMessage(
     messageKeys.matchTracking.embed.fallback.mapId,
     { id: mapId },
   );
-  try {
-    return await riotStaticData.getMapNameById(mapId, messageLocale()) ??
-      fallback;
-  } catch {
-    return fallback;
-  }
+  return staticData?.maps[String(mapId)] ?? fallback;
 }
 
-async function gameModeName(gameMode: string) {
-  try {
-    return await riotStaticData.getGameModeName(gameMode, messageLocale()) ??
-      gameMode;
-  } catch {
-    return gameMode;
-  }
+function gameModeName(
+  staticData: ResolvedRiotStaticData | null,
+  gameMode: string,
+) {
+  return staticData?.gameModes[gameMode] ?? gameMode;
+}
+
+async function resolveRiotStaticData(input: {
+  championIds: number[];
+  queueIds: number[];
+  mapIds: number[];
+  gameModes: string[];
+}) {
+  const result = await apiClient.resolveRiotStaticData({
+    locale: messageLocale(),
+    ...input,
+  });
+  return result.success ? result.data : null;
 }
 
 async function activeGameTargetDetails(
@@ -755,7 +759,6 @@ async function activeGameTargetDetails(
     if (!accountResult.success) {
       details.push({
         targetDiscordId,
-        champion: await championNameById(undefined),
       });
       continue;
     }
@@ -765,7 +768,7 @@ async function activeGameTargetDetails(
     );
     details.push({
       targetDiscordId,
-      champion: await championNameById(participant?.championId),
+      championId: participant?.championId,
     });
   }
   return details;
@@ -1122,10 +1125,25 @@ async function buildActiveGameEmbed(
     p.puuid === account.puuid
   );
   const minutes = elapsedMinutes(activeGame);
-  const champion = await championNameById(participant?.championId);
-  const queue = await queueName(activeGame.gameQueueConfigId);
-  const map = await mapName(activeGame.mapId);
-  const mode = await gameModeName(activeGame.gameMode);
+  const championIds = [
+    participant?.championId,
+    ...(targetDetails?.map((detail) => detail.championId) ?? []),
+  ].filter((id): id is number => id !== undefined);
+  const staticData = await resolveRiotStaticData({
+    championIds: [...new Set(championIds)],
+    queueIds: activeGame.gameQueueConfigId === undefined
+      ? []
+      : [activeGame.gameQueueConfigId],
+    mapIds: [activeGame.mapId],
+    gameModes: [activeGame.gameMode],
+  });
+  const champion = championNameById(
+    staticData,
+    participant?.championId,
+  );
+  const queue = queueName(staticData, activeGame.gameQueueConfigId);
+  const map = mapName(staticData, activeGame.mapId);
+  const mode = gameModeName(staticData, activeGame.gameMode);
   const title = kind === "started"
     ? messageHandler.formatMessage(
       messageKeys.matchTracking.embed.active.startedTitle,
@@ -1134,10 +1152,13 @@ async function buildActiveGameEmbed(
       messageKeys.matchTracking.embed.active.progressTitle,
     );
   const targets = targetDetails?.length
-    ? targetDetails
+    ? targetDetails.map(({ targetDiscordId, championId }) => ({
+      targetDiscordId,
+      champion: championNameById(staticData, championId),
+    }))
     : [{ targetDiscordId: watcher.targetDiscordId, champion }];
   const thumbnailUrl = targets.length === 1
-    ? await championIconUrlById(participant?.championId)
+    ? championIconUrlById(staticData, participant?.championId)
     : null;
   const description = messageHandler.formatMessage(
     messageKeys.matchTracking.embed.active.description,
@@ -1310,11 +1331,23 @@ async function buildMatchResultEmbed(
       .setTimestamp(new Date());
   }
 
-  const champion = await championNameById(
+  const staticData = await resolveRiotStaticData({
+    championIds: participant.championId === undefined
+      ? []
+      : [participant.championId],
+    queueIds: [match.info.queueId],
+    mapIds: [match.info.mapId],
+    gameModes: [match.info.gameMode],
+  });
+  const champion = championNameById(
+    staticData,
     participant.championId,
     participant.championName,
   );
-  const thumbnailUrl = await championIconUrlById(participant.championId);
+  const thumbnailUrl = championIconUrlById(
+    staticData,
+    participant.championId,
+  );
   const teamKills = match.info.participants
     .filter((candidate) => candidate.teamId === participant.teamId)
     .reduce((sum, candidate) => sum + candidate.kills, 0);
@@ -1323,9 +1356,9 @@ async function buildMatchResultEmbed(
     participant.assists,
     teamKills,
   );
-  const queue = await queueName(match.info.queueId);
-  const map = await mapName(match.info.mapId);
-  const mode = await gameModeName(match.info.gameMode);
+  const queue = queueName(staticData, match.info.queueId);
+  const map = mapName(staticData, match.info.mapId);
+  const mode = gameModeName(staticData, match.info.gameMode);
   const result = participant.win
     ? messageHandler.formatMessage(messageKeys.matchTracking.embed.result.win)
     : messageHandler.formatMessage(messageKeys.matchTracking.embed.result.loss);

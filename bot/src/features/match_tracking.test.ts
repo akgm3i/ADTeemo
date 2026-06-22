@@ -3,7 +3,6 @@ import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import type { Client } from "discord.js";
 import type { MatchWatcher, RiotAccount } from "@adteemo/api/schema";
-import { riotStaticData } from "@adteemo/api/riot-static-data";
 import { apiClient } from "../api_client.ts";
 import { botLogger } from "../logger.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
@@ -136,6 +135,29 @@ function leagueEntries(leaguePoints = 19) {
   }];
 }
 
+function resolvedRiotStaticData() {
+  return {
+    success: true as const,
+    data: {
+      champions: {
+        "17": {
+          name: "ティーモ",
+          iconUrl:
+            "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Teemo.png",
+        },
+        "18": {
+          name: "トリスターナ",
+          iconUrl:
+            "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Tristana.png",
+        },
+      },
+      queues: { "420": "ランクソロ/デュオ" },
+      maps: { "11": "サモナーズリフト" },
+      gameModes: { CLASSIC: "クラシック" },
+    },
+  };
+}
+
 function clientWithSend(
   send: (options: unknown) => Promise<unknown> = () =>
     Promise.resolve({ id: "message-new" }),
@@ -233,53 +255,32 @@ async function resultEmbedFields(resultMatch: RiotMatch) {
 }
 
 describe("match_tracking.ts", () => {
-  const staticDataStubs: Partial<
-    Record<keyof typeof riotStaticData, { restore(): void }>
-  > = {};
+  let staticDataStub: { restore(): void } | undefined;
 
-  function restoreStaticDataStub(method: keyof typeof riotStaticData) {
-    staticDataStubs[method]?.restore();
-    delete staticDataStubs[method];
+  function restoreStaticDataStub() {
+    staticDataStub?.restore();
+    staticDataStub = undefined;
   }
 
   beforeEach(() => {
-    staticDataStubs.getChampionNameById = stub(
-      riotStaticData,
-      "getChampionNameById",
-      () => Promise.resolve("ティーモ"),
-    );
-    staticDataStubs.getQueueNameById = stub(
-      riotStaticData,
-      "getQueueNameById",
-      () => Promise.resolve("ランクソロ/デュオ"),
-    );
-    staticDataStubs.getMapNameById = stub(
-      riotStaticData,
-      "getMapNameById",
-      () => Promise.resolve("サモナーズリフト"),
-    );
-    staticDataStubs.getGameModeName = stub(
-      riotStaticData,
-      "getGameModeName",
-      () => Promise.resolve("クラシック"),
-    );
-    staticDataStubs.getChampionIconUrlById = stub(
-      riotStaticData,
-      "getChampionIconUrlById",
-      () =>
-        Promise.resolve(
-          "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Teemo.png",
-        ),
+    staticDataStub = stub(
+      apiClient,
+      "resolveRiotStaticData",
+      () => Promise.resolve(resolvedRiotStaticData()),
     );
   });
 
   afterEach(() => {
-    for (const method of Object.keys(staticDataStubs)) {
-      restoreStaticDataStub(method as keyof typeof riotStaticData);
-    }
+    restoreStaticDataStub();
   });
 
   test("idleの監視対象が試合中になったとき、開始通知を送りIN_GAMEへ更新する", async () => {
+    restoreStaticDataStub();
+    using resolveStaticDataStub = stub(
+      apiClient,
+      "resolveRiotStaticData",
+      () => Promise.resolve(resolvedRiotStaticData()),
+    );
     const { client, sendSpy } = clientWithSend();
     using getWatchersStub = stub(
       apiClient,
@@ -307,6 +308,16 @@ describe("match_tracking.ts", () => {
     assertSpyCalls(getWatchersStub, 1);
     assertSpyCalls(getAccountStub, 1);
     assertSpyCalls(activeGameStub, 1);
+    assertSpyCalls(resolveStaticDataStub, 1);
+    assertSpyCall(resolveStaticDataStub, 0, {
+      args: [{
+        locale: "ja_JP",
+        championIds: [17],
+        queueIds: [420],
+        mapIds: [11],
+        gameModes: ["CLASSIC"],
+      }],
+    });
     assertSpyCalls(sendSpy, 1);
     assertEquals(updateStub.calls[0].args[0], "guild-1");
     assertEquals(updateStub.calls[0].args[1], "target-1");
@@ -466,12 +477,11 @@ describe("match_tracking.ts", () => {
   });
 
   test("共有試合中通知に複数監視対象を表示するとき、対象ごとのチャンピオンを表示し単一Riot IDをfooterに出さない", async () => {
-    restoreStaticDataStub("getChampionNameById");
-    using _championNameByIdStub = stub(
-      riotStaticData,
-      "getChampionNameById",
-      (championId) =>
-        Promise.resolve(championId === 17 ? "ティーモ" : "トリスターナ"),
+    restoreStaticDataStub();
+    using resolveStaticDataStub = stub(
+      apiClient,
+      "resolveRiotStaticData",
+      () => Promise.resolve(resolvedRiotStaticData()),
     );
     const { client, editSpy } = clientWithSend();
     using _getWatchersStub = stub(
@@ -512,6 +522,21 @@ describe("match_tracking.ts", () => {
 
     await matchTracker.processMatchWatchers(client);
 
+    assertSpyCalls(resolveStaticDataStub, 2);
+    assertEquals(resolveStaticDataStub.calls[0].args[0].championIds, [17]);
+    const secondInput = resolveStaticDataStub.calls[1].args[0];
+    const secondChampionIds = secondInput.championIds ?? [];
+    assertEquals(
+      secondChampionIds.toSorted(),
+      [17, 18],
+    );
+    assertEquals(secondInput, {
+      locale: "ja_JP",
+      championIds: secondChampionIds,
+      queueIds: [420],
+      mapIds: [11],
+      gameModes: ["CLASSIC"],
+    });
     const editedEmbed = editedEmbedJson(editSpy, 0);
     const activeChampions = editedEmbed.fields?.find((field) =>
       field.name === messageHandler.formatMessage(
@@ -1949,11 +1974,20 @@ describe("match_tracking.ts", () => {
   });
 
   test("チャンピオン画像URLの解決に失敗したとき、thumbnailなしでチャンピオン名を含む試合結果を送信する", async () => {
-    restoreStaticDataStub("getChampionIconUrlById");
+    restoreStaticDataStub();
     using _iconFailureStub = stub(
-      riotStaticData,
-      "getChampionIconUrlById",
-      () => Promise.reject(new Error("Data Dragon failed")),
+      apiClient,
+      "resolveRiotStaticData",
+      () =>
+        Promise.resolve({
+          ...resolvedRiotStaticData(),
+          data: {
+            ...resolvedRiotStaticData().data,
+            champions: {
+              "17": { name: "ティーモ", iconUrl: null },
+            },
+          },
+        }),
     );
     const { client, editSpy } = clientWithSend();
     using _getWatchersStub = stub(
@@ -2617,12 +2651,25 @@ describe("match_tracking.ts", () => {
   });
 
   test("静的データのチャンピオン名取得に失敗したとき、Match-v5の既存名で結果通知を完了する", async () => {
-    restoreStaticDataStub("getChampionNameById");
+    restoreStaticDataStub();
     const { client, editSpy } = clientWithSend();
     using _championNameFailureStub = stub(
-      riotStaticData,
-      "getChampionNameById",
-      () => Promise.reject(new Error("Data Dragon failed")),
+      apiClient,
+      "resolveRiotStaticData",
+      () =>
+        Promise.resolve({
+          ...resolvedRiotStaticData(),
+          data: {
+            ...resolvedRiotStaticData().data,
+            champions: {
+              "17": {
+                name: null,
+                iconUrl:
+                  "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Teemo.png",
+              },
+            },
+          },
+        }),
     );
     using _getWatchersStub = stub(
       apiClient,
@@ -2666,12 +2713,19 @@ describe("match_tracking.ts", () => {
   });
 
   test("静的データのモード名取得に失敗したとき、Match-v5の既存モードで結果通知を完了する", async () => {
-    restoreStaticDataStub("getGameModeName");
+    restoreStaticDataStub();
     const { client, editSpy } = clientWithSend();
     using _gameModeFailureStub = stub(
-      riotStaticData,
-      "getGameModeName",
-      () => Promise.reject(new Error("Data Dragon failed")),
+      apiClient,
+      "resolveRiotStaticData",
+      () =>
+        Promise.resolve({
+          ...resolvedRiotStaticData(),
+          data: {
+            ...resolvedRiotStaticData().data,
+            gameModes: { CLASSIC: null },
+          },
+        }),
     );
     using _getWatchersStub = stub(
       apiClient,
