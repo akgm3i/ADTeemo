@@ -10,6 +10,7 @@ import {
   RecordNotFoundError,
 } from "../errors.ts";
 import { opggMatchDetailService } from "../services/opgg_match_detail.ts";
+import { apiLogger } from "../logger.ts";
 
 describe("routes/matches.ts", () => {
   const client = testClient(app);
@@ -225,13 +226,14 @@ describe("routes/matches.ts", () => {
       assertEquals(await res.json(), { detail: null });
     });
 
-    test("必須の試合時間が不正なとき、serviceを呼ばずsuccessを含まない400エラーを返す", async () => {
+    test("必須の試合時間が不正なとき、検証エラーを警告に記録しserviceを呼ばず400を返す", async () => {
       // Arrange
       using resolveStub = stub(
         opggMatchDetailService,
         "resolveAndSave",
         () => Promise.resolve(null),
       );
+      using warnStub = stub(apiLogger, "warn", () => {});
 
       // Act
       const res = await app.request(
@@ -250,6 +252,14 @@ describe("routes/matches.ts", () => {
       assertEquals(res.status, 400);
       assertEquals(await res.json(), { error: "Invalid request body" });
       assertSpyCalls(resolveStub, 0);
+      assertSpyCall(warnStub, 0, {
+        args: ["opgg_match_detail.invalid_request", {
+          validationIssues: [{
+            code: "too_small",
+            path: ["match", "gameDuration"],
+          }],
+        }],
+      });
     });
 
     test("監視対象のRiotアカウントが存在しないとき、404を返す", async () => {
@@ -310,13 +320,15 @@ describe("routes/matches.ts", () => {
       });
     });
 
-    test("OP.GG詳細の保存で予期せぬ失敗が発生したとき、500を返す", async () => {
+    test("OP.GG詳細の保存で予期せぬ失敗が発生したとき、エラーを記録して500を返す", async () => {
       // Arrange
+      const error = new Error("DB unavailable");
       using _resolveStub = stub(
         opggMatchDetailService,
         "resolveAndSave",
-        () => Promise.reject(new Error("DB unavailable")),
+        () => Promise.reject(error),
       );
+      using errorStub = stub(apiLogger, "error", () => {});
 
       // Act
       const res = await app.request(
@@ -332,6 +344,12 @@ describe("routes/matches.ts", () => {
       assertEquals(res.status, 500);
       assertEquals(await res.json(), {
         error: "Failed to resolve OP.GG match detail",
+      });
+      assertSpyCall(errorStub, 0, {
+        args: ["opgg_match_detail.request_failed", {
+          matchId: "JP1_12345",
+          targetDiscordId: "target-1",
+        }, error],
       });
     });
   });

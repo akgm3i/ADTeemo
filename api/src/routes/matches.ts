@@ -12,6 +12,7 @@ import {
   RecordNotFoundError,
 } from "../errors.ts";
 import { opggMatchDetailService } from "../services/opgg_match_detail.ts";
+import { apiLogger } from "../logger.ts";
 
 export const matchesRoutes = new Hono()
   .post(
@@ -40,6 +41,12 @@ export const matchesRoutes = new Hono()
     "/:matchId/external-details/opgg/resolve",
     zValidator("json", resolveOpggMatchDetailSchema, (result, c) => {
       if (!result.success) {
+        apiLogger.warn("opgg_match_detail.invalid_request", {
+          validationIssues: result.error.issues.map((issue) => ({
+            code: issue.code,
+            path: issue.path,
+          })),
+        });
         return c.json({ error: "Invalid request body" }, 400);
       }
     }),
@@ -60,6 +67,14 @@ export const matchesRoutes = new Hono()
         if (error instanceof OpggMatchParticipantMismatchError) {
           return c.json({ error: error.message }, 400);
         }
+        apiLogger.error(
+          "opgg_match_detail.request_failed",
+          {
+            matchId,
+            targetDiscordId: payload.targetDiscordId,
+          },
+          error,
+        );
         return c.json({ error: "Failed to resolve OP.GG match detail" }, 500);
       }
     },
