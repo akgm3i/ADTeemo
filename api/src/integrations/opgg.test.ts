@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
-import type { RiotAccount } from "@adteemo/api/schema";
+import type { RiotAccount } from "../db/schema.ts";
 import {
   buildOpggMatchDetailUrl,
   opggClient,

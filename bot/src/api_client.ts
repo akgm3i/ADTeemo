@@ -11,7 +11,7 @@ import { z } from "zod";
 import {
   createParticipantSchema,
   finalizeRankSnapshotsSchema,
-  upsertExternalMatchDetailSchema,
+  resolveOpggMatchDetailSchema,
   upsertPendingRankSnapshotsSchema,
 } from "@adteemo/api/validators";
 
@@ -292,9 +292,6 @@ export type MatchParticipant = z.infer<typeof createParticipantSchema>;
 export type RankSnapshotPayload = z.infer<
   typeof upsertPendingRankSnapshotsSchema
 >["snapshots"][number];
-export type ExternalMatchDetailPayload = z.infer<
-  typeof upsertExternalMatchDetailSchema
->;
 export type FinalizedRankSnapshot = {
   matchId: string;
   puuid: string;
@@ -326,6 +323,25 @@ export type RiotStaticDataResolveData = {
 };
 export type RiotStaticDataResolveResult =
   | { success: true; data: RiotStaticDataResolveData }
+  | { success: false; error: string };
+export type ResolveOpggMatchDetailPayload = z.infer<
+  typeof resolveOpggMatchDetailSchema
+>;
+export type OpggMatchDetail = {
+  provider: "opgg";
+  providerRegion: string;
+  providerMatchId: string;
+  detailUrl: string;
+  providerCreatedAt: Date;
+  averageTier: string | null;
+  participant?: {
+    puuid: string;
+    participantId: number | null;
+    laneScore: number | null;
+  };
+};
+export type ResolveOpggMatchDetailResult =
+  | { success: true; detail: OpggMatchDetail | null }
   | { success: false; error: string };
 
 function parseRankSnapshot(
@@ -423,27 +439,6 @@ async function finalizeRankSnapshots(
   }
 }
 
-async function upsertExternalMatchDetail(
-  matchId: string,
-  payload: ExternalMatchDetailPayload,
-) {
-  try {
-    const res = await client.matches[":matchId"]["external-details"].$post({
-      param: { matchId },
-      json: payload,
-    });
-
-    if (!res.ok) {
-      throw new Error(`Unexpected response: ${res}`);
-    }
-
-    return { success: true as const };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return { success: false as const, error: "Failed to communicate with API" };
-  }
-}
-
 async function resolveRiotStaticData(
   payload: RiotStaticDataResolveInput,
 ): Promise<RiotStaticDataResolveResult> {
@@ -459,6 +454,36 @@ async function resolveRiotStaticData(
 
     const data = await res.json();
     return { success: true, data };
+  } catch (error) {
+    console.error("Failed to communicate with API", error);
+    return { success: false, error: "Failed to communicate with API" };
+  }
+}
+
+async function resolveOpggMatchDetail(
+  matchId: string,
+  payload: ResolveOpggMatchDetailPayload,
+): Promise<ResolveOpggMatchDetailResult> {
+  try {
+    const res = await client.matches[":matchId"]["external-details"].opgg
+      .resolve.$post({
+        param: { matchId },
+        json: payload,
+      });
+
+    if (!res.ok) {
+      const body = await res.json();
+      return { success: false, error: body.error };
+    }
+
+    const body = await res.json();
+    return {
+      success: true,
+      detail: body.detail === null ? null : {
+        ...body.detail,
+        providerCreatedAt: new Date(body.detail.providerCreatedAt),
+      },
+    };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return { success: false, error: "Failed to communicate with API" };
@@ -619,8 +644,8 @@ export const apiClient = {
   createMatchParticipant,
   upsertPendingRankSnapshots,
   finalizeRankSnapshots,
-  upsertExternalMatchDetail,
   resolveRiotStaticData,
+  resolveOpggMatchDetail,
   getLoginUrl,
   watchMatch,
   unwatchMatch,

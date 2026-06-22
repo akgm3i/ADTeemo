@@ -1,4 +1,4 @@
-import type { RiotAccount } from "@adteemo/api/schema";
+import type { RiotAccount } from "../db/schema.ts";
 
 type RiotMatch = {
   metadata: {
