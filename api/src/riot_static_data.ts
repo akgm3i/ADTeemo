@@ -118,6 +118,13 @@ const stringRecordSchema: z.ZodType<Record<string, string>> = z.record(
   z.string(),
   z.string(),
 );
+const championCacheSchema = z.record(
+  z.string(),
+  z.object({
+    name: z.string(),
+    imageFull: z.string().nullable(),
+  }),
+);
 
 async function cachedVersionedJson<T>(
   key: string,
@@ -171,32 +178,11 @@ async function getLatestDataDragonVersion() {
   return versions[0];
 }
 
-async function getChampionNames(locale?: string) {
-  const normalizedLocale = normalizeLocale(locale);
-  return await cachedJson(
-    `champions:${normalizedLocale}`,
-    stringRecordSchema,
-    async () => {
-      const version = await getLatestDataDragonVersion();
-      const data = championDataSchema.parse(
-        await fetchJson(
-          `https://ddragon.leagueoflegends.com/cdn/${version}/data/${normalizedLocale}/champion.json`,
-        ),
-      );
-      const names: Record<string, string> = {};
-      for (const champion of Object.values(data.data)) {
-        names[champion.key] = champion.name;
-      }
-      return { version, value: names };
-    },
-  );
-}
-
-async function getChampionIconFiles(locale?: string) {
+async function getChampions(locale?: string) {
   const normalizedLocale = normalizeLocale(locale);
   return await cachedVersionedJson(
-    `champion-icons:${normalizedLocale}`,
-    stringRecordSchema,
+    `champions-data:${normalizedLocale}`,
+    championCacheSchema,
     async () => {
       const version = await getLatestDataDragonVersion();
       const data = championDataSchema.parse(
@@ -204,13 +190,17 @@ async function getChampionIconFiles(locale?: string) {
           `${DATA_DRAGON_CDN_BASE}/${version}/data/${normalizedLocale}/champion.json`,
         ),
       );
-      const files: Record<string, string> = {};
+      const champions: Record<
+        string,
+        { name: string; imageFull: string | null }
+      > = {};
       for (const champion of Object.values(data.data)) {
-        if (champion.image?.full) {
-          files[champion.key] = champion.image.full;
-        }
+        champions[champion.key] = {
+          name: champion.name,
+          imageFull: champion.image?.full ?? null,
+        };
       }
-      return { version, value: files };
+      return { version, value: champions };
     },
   );
 }
@@ -261,13 +251,13 @@ async function getGameModes() {
 }
 
 async function getChampionNameById(championId: number, locale?: string) {
-  const names = await getChampionNames(locale);
-  return names[String(championId)] ?? null;
+  const { value: champions } = await getChampions(locale);
+  return champions[String(championId)]?.name ?? null;
 }
 
 async function getChampionIconUrlById(championId: number, locale?: string) {
-  const { version, value: files } = await getChampionIconFiles(locale);
-  const file = files[String(championId)];
+  const { version, value: champions } = await getChampions(locale);
+  const file = champions[String(championId)]?.imageFull;
   return file
     ? `${DATA_DRAGON_CDN_BASE}/${version}/img/champion/${file}`
     : null;

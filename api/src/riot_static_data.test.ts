@@ -11,9 +11,11 @@ describe("riot_static_data.ts", () => {
       "getRiotStaticDataCache",
       () =>
         Promise.resolve({
-          key: "champions:ja_JP",
+          key: "champions-data:ja_JP",
           version: "15.24.1",
-          value: JSON.stringify({ "17": "ティーモ" }),
+          value: JSON.stringify({
+            "17": { name: "ティーモ", imageFull: "Teemo.png" },
+          }),
           updatedAt: new Date(),
         }),
     );
@@ -36,16 +38,22 @@ describe("riot_static_data.ts", () => {
     assertSpyCalls(fetchStub, 0);
   });
 
-  test("チャンピオン画像が未キャッシュの場合、取得したData Dragon versionと画像名からURLを返す", async () => {
-    using _getCacheStub = stub(
+  test("チャンピオン名と画像URLを続けて解決するとき、単一の取得結果とキャッシュを共有する", async () => {
+    let cached: Awaited<
+      ReturnType<typeof dbActions.getRiotStaticDataCache>
+    >;
+    using getCacheStub = stub(
       dbActions,
       "getRiotStaticDataCache",
-      () => Promise.resolve(undefined),
+      () => Promise.resolve(cached),
     );
     using upsertCacheStub = stub(
       dbActions,
       "upsertRiotStaticDataCache",
-      () => Promise.resolve(),
+      (value) => {
+        cached = { ...value, updatedAt: new Date() };
+        return Promise.resolve();
+      },
     );
     using fetchStub = stub(
       globalThis,
@@ -74,14 +82,18 @@ describe("riot_static_data.ts", () => {
       },
     );
 
+    const name = await riotStaticData.getChampionNameById(17, "ja_JP");
     const url = await riotStaticData.getChampionIconUrlById(17, "ja_JP");
 
+    assertEquals(name, "ティーモ");
     assertEquals(
       url,
       "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Teemo.png",
     );
     assertSpyCalls(fetchStub, 2);
+    assertSpyCalls(getCacheStub, 2);
     assertSpyCalls(upsertCacheStub, 1);
+    assertEquals(cached?.key, "champions-data:ja_JP");
   });
 
   test("チャンピオン画像のstatic data取得に失敗しキャッシュもない場合、エラーを返す", async () => {
