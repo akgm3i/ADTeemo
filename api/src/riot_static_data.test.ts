@@ -36,6 +36,81 @@ describe("riot_static_data.ts", () => {
     assertSpyCalls(fetchStub, 0);
   });
 
+  test("チャンピオン画像が未キャッシュの場合、取得したData Dragon versionと画像名からURLを返す", async () => {
+    using _getCacheStub = stub(
+      dbActions,
+      "getRiotStaticDataCache",
+      () => Promise.resolve(undefined),
+    );
+    using upsertCacheStub = stub(
+      dbActions,
+      "upsertRiotStaticDataCache",
+      () => Promise.resolve(),
+    );
+    using fetchStub = stub(
+      globalThis,
+      "fetch",
+      (input) => {
+        const url = String(input);
+        if (url.endsWith("/api/versions.json")) {
+          return Promise.resolve(
+            new Response(JSON.stringify(["16.12.1"]), { status: 200 }),
+          );
+        }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: {
+                Teemo: {
+                  key: "17",
+                  name: "ティーモ",
+                  image: { full: "Teemo.png" },
+                },
+              },
+            }),
+            { status: 200 },
+          ),
+        );
+      },
+    );
+
+    const url = await riotStaticData.getChampionIconUrlById(17, "ja_JP");
+
+    assertEquals(
+      url,
+      "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Teemo.png",
+    );
+    assertSpyCalls(fetchStub, 2);
+    assertSpyCalls(upsertCacheStub, 1);
+  });
+
+  test("チャンピオン画像のstatic data取得に失敗しキャッシュもない場合、エラーを返す", async () => {
+    using _getCacheStub = stub(
+      dbActions,
+      "getRiotStaticDataCache",
+      () => Promise.resolve(undefined),
+    );
+    using _upsertCacheStub = stub(
+      dbActions,
+      "upsertRiotStaticDataCache",
+      () => Promise.resolve(),
+    );
+    using _fetchStub = stub(
+      globalThis,
+      "fetch",
+      () => Promise.resolve(new Response(null, { status: 503 })),
+    );
+
+    let error: unknown;
+    try {
+      await riotStaticData.getChampionIconUrlById(17, "ja_JP");
+    } catch (caught) {
+      error = caught;
+    }
+
+    assertEquals(error instanceof Error, true);
+  });
+
   test("キュー名が未キャッシュの場合、公式static JSONを取得してDBへ保存する", async () => {
     using getCacheStub = stub(
       dbActions,

@@ -5,6 +5,7 @@ import { apiLogger } from "./logger.ts";
 const DEFAULT_STATIC_DATA_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const DATA_DRAGON_VERSIONS_URL =
   "https://ddragon.leagueoflegends.com/api/versions.json";
+const DATA_DRAGON_CDN_BASE = "https://ddragon.leagueoflegends.com/cdn";
 const RIOT_STATIC_DOCS_BASE = "https://static.developer.riotgames.com/docs/lol";
 
 const versionsSchema = z.array(z.string()).min(1);
@@ -14,6 +15,9 @@ const championDataSchema = z.object({
     z.object({
       key: z.string(),
       name: z.string(),
+      image: z.object({
+        full: z.string(),
+      }).optional(),
     }).passthrough(),
   ),
 }).passthrough();
@@ -115,14 +119,17 @@ const stringRecordSchema: z.ZodType<Record<string, string>> = z.record(
   z.string(),
 );
 
-async function cachedJson<T>(
+async function cachedVersionedJson<T>(
   key: string,
   schema: z.ZodType<T>,
   fetcher: () => Promise<{ version: string; value: T }>,
 ) {
   const cached = await dbActions.getRiotStaticDataCache(key);
   if (cached && isFresh(cached.updatedAt)) {
-    return parseCachedValue(cached.value, schema);
+    return {
+      version: cached.version,
+      value: parseCachedValue(cached.value, schema),
+    };
   }
 
   try {
@@ -132,7 +139,7 @@ async function cachedJson<T>(
       version: fetched.version,
       value: JSON.stringify(fetched.value),
     });
-    return fetched.value;
+    return fetched;
   } catch (error) {
     if (cached) {
       apiLogger.warn("riot_static_data.cache_refresh_failed", {
@@ -140,10 +147,21 @@ async function cachedJson<T>(
         version: cached.version,
         error: error instanceof Error ? error.message : String(error),
       });
-      return parseCachedValue(cached.value, schema);
+      return {
+        version: cached.version,
+        value: parseCachedValue(cached.value, schema),
+      };
     }
     throw error;
   }
+}
+
+async function cachedJson<T>(
+  key: string,
+  schema: z.ZodType<T>,
+  fetcher: () => Promise<{ version: string; value: T }>,
+) {
+  return (await cachedVersionedJson(key, schema, fetcher)).value;
 }
 
 async function getLatestDataDragonVersion() {
@@ -170,6 +188,29 @@ async function getChampionNames(locale?: string) {
         names[champion.key] = champion.name;
       }
       return { version, value: names };
+    },
+  );
+}
+
+async function getChampionIconFiles(locale?: string) {
+  const normalizedLocale = normalizeLocale(locale);
+  return await cachedVersionedJson(
+    `champion-icons:${normalizedLocale}`,
+    stringRecordSchema,
+    async () => {
+      const version = await getLatestDataDragonVersion();
+      const data = championDataSchema.parse(
+        await fetchJson(
+          `${DATA_DRAGON_CDN_BASE}/${version}/data/${normalizedLocale}/champion.json`,
+        ),
+      );
+      const files: Record<string, string> = {};
+      for (const champion of Object.values(data.data)) {
+        if (champion.image?.full) {
+          files[champion.key] = champion.image.full;
+        }
+      }
+      return { version, value: files };
     },
   );
 }
@@ -224,6 +265,14 @@ async function getChampionNameById(championId: number, locale?: string) {
   return names[String(championId)] ?? null;
 }
 
+async function getChampionIconUrlById(championId: number, locale?: string) {
+  const { version, value: files } = await getChampionIconFiles(locale);
+  const file = files[String(championId)];
+  return file
+    ? `${DATA_DRAGON_CDN_BASE}/${version}/img/champion/${file}`
+    : null;
+}
+
 async function getQueueNameById(queueId: number, locale?: string) {
   const localizedName = localizedQueueName(queueId, locale);
   if (localizedName) return localizedName;
@@ -250,6 +299,7 @@ async function getGameModeName(gameMode: string, locale?: string) {
 
 export const riotStaticData = {
   getChampionNameById,
+  getChampionIconUrlById,
   getQueueNameById,
   getMapNameById,
   getGameModeName,

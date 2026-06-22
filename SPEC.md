@@ -109,7 +109,7 @@ ADTeemoは複数Discordギルドへの導入を想定する。プレイヤー本
 
 ### 5.1. 試合結果表示の拡張 (#28)
 
-PR #39で `CS/min` と `キル関与率` は実装済みである。LP deltaと現在ランク表示は #54、OP.GG試合詳細リンクと詳細データ取得は #53 で実装済みであり、詳細は [docs/ranked-lp.md](./docs/ranked-lp.md) と [docs/opgg.md](./docs/opgg.md) を参照する。OP.GG未公開Server Action依存の運用リスクは #56 で整理済みである。Embed表示項目とロール別優先順位は #55 と [docs/match-display.md](./docs/match-display.md) で設計し、ロール別metric groupとダメージ表示は #65、チャンピオンthumbnailは #66 で追跡する。OP.GGプロフィールリンクは表示対象外とし、詳細リンクが解決できる場合だけ表示する。
+PR #39で `CS/min` と `キル関与率` は実装済みである。LP deltaと現在ランク表示は #54、OP.GG試合詳細リンクと詳細データ取得は #53 で実装済みであり、詳細は [docs/ranked-lp.md](./docs/ranked-lp.md) と [docs/opgg.md](./docs/opgg.md) を参照する。OP.GG未公開Server Action依存の運用リスクは #56 で整理済みである。Embed表示項目とロール別優先順位は #55 と [docs/match-display.md](./docs/match-display.md) で設計し、ロール別metric groupとダメージ表示は #65、試合結果・単独試合中Embedのチャンピオンthumbnailは #66 で実装済みである。複数監視対象の試合中EmbedとアイコンURL解決失敗時はthumbnailを省略する。OP.GGプロフィールリンクは表示対象外とし、詳細リンクが解決できる場合だけ表示する。
 
 ### 5.2. デフォルト監視とopt-out (#34)
 

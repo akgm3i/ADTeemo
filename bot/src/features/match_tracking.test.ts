@@ -186,6 +186,7 @@ function editedEmbedJson(
             description?: string;
             fields?: { name: string; value: string }[];
             footer?: { text: string };
+            thumbnail?: { url: string };
           };
         }[];
       },
@@ -256,6 +257,14 @@ describe("match_tracking.ts", () => {
         "getGameModeName",
         () => Promise.resolve("クラシック"),
       ),
+      stub(
+        riotStaticData,
+        "getChampionIconUrlById",
+        () =>
+          Promise.resolve(
+            "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Teemo.png",
+          ),
+      ),
     );
   });
 
@@ -303,6 +312,14 @@ describe("match_tracking.ts", () => {
       updateStub.calls[0].args[2].currentNotificationMessageId,
       "message-new",
     );
+    const sentOptions = sendSpy.calls[0].args[0] as {
+      embeds: { toJSON(): { thumbnail?: { url: string } } }[];
+    };
+    const sentEmbed = sentOptions.embeds[0].toJSON();
+    assertEquals(sentEmbed.thumbnail, {
+      url:
+        "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Teemo.png",
+    });
   });
 
   test("ランク対象queueの試合開始を検知したとき、試合前ランクスナップショットを一時保存する", async () => {
@@ -508,6 +525,7 @@ describe("match_tracking.ts", () => {
       false,
     );
     assertEquals(editedEmbed.footer?.text, "JP1 Game 12345");
+    assertEquals(editedEmbed.thumbnail, undefined);
   });
 
   test("後続tickで同じ投稿IDの試合に監視対象が増えたとき、既存投稿を編集して対象者一覧を更新する", async () => {
@@ -1916,6 +1934,57 @@ describe("match_tracking.ts", () => {
 
     await matchTracker.processMatchWatchers(client);
 
+    assertEquals(
+      editedEmbedFieldValue(editSpy, 0, "チャンピオン"),
+      "ティーモ",
+    );
+    assertEquals(editedEmbedJson(editSpy, 0).thumbnail, {
+      url:
+        "https://ddragon.leagueoflegends.com/cdn/16.12.1/img/champion/Teemo.png",
+    });
+  });
+
+  test("チャンピオン画像URLの解決に失敗したとき、thumbnailなしでチャンピオン名を含む試合結果を送信する", async () => {
+    const iconStub = staticDataStubs.splice(4, 1)[0];
+    iconStub.restore();
+    using _iconFailureStub = stub(
+      riotStaticData,
+      "getChampionIconUrlById",
+      () => Promise.reject(new Error("Data Dragon failed")),
+    );
+    const { client, editSpy } = clientWithSend();
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            lastState: "FETCHING_RESULT",
+            currentMatchId: "JP1_12345",
+            currentNotificationMessageId: "message-existing",
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using _getMatchStub = stub(
+      apiClient,
+      "getMatchById",
+      () => Promise.resolve(match()),
+    );
+    using _updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertEquals(editedEmbedJson(editSpy, 0).thumbnail, undefined);
     assertEquals(
       editedEmbedFieldValue(editSpy, 0, "チャンピオン"),
       "ティーモ",
