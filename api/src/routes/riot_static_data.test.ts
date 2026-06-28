@@ -1,10 +1,14 @@
 import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
-import app from "../app.ts";
-import { riotStaticData } from "../riot_static_data.ts";
+import { createApp } from "../app.ts";
+import { createTestDependencies } from "../test_utils.ts";
 
 describe("POST /riot/static-data/resolve", () => {
+  const deps = createTestDependencies();
+  const app = createApp(deps);
+  const { riotStaticData } = deps;
+
   test("ロケールと識別子群を指定したとき、解決した静的表示データをまとめて返す", async () => {
     // Arrange
     const resolved = {

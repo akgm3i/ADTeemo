@@ -1,7 +1,7 @@
 import { Hono } from "@hono/hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { riotStaticData } from "../riot_static_data.ts";
+import type { AppDependencies } from "../dependencies.ts";
 
 const riotStaticDataResolveSchema = z.object({
   locale: z.string().trim().min(1).max(32).optional(),
@@ -17,21 +17,29 @@ function errorMessage(error: unknown) {
     : "Failed to resolve Riot static data";
 }
 
-export const riotStaticDataRoutes = new Hono().post(
-  "/resolve",
-  zValidator("json", riotStaticDataResolveSchema, (result, c) => {
-    if (!result.success) {
-      return c.json({ error: "Invalid Riot static data resolve request" }, 400);
-    }
-  }),
-  async (c) => {
-    try {
-      const result = await riotStaticData.resolve(c.req.valid("json"));
-      return c.json(result, 200);
-    } catch (error) {
-      return c.json({ error: errorMessage(error) }, 502);
-    }
-  },
-);
+export function riotStaticDataRoutes(
+  deps: Pick<AppDependencies, "riotStaticData">,
+) {
+  const { riotStaticData } = deps;
+  return new Hono().post(
+    "/resolve",
+    zValidator("json", riotStaticDataResolveSchema, (result, c) => {
+      if (!result.success) {
+        return c.json(
+          { error: "Invalid Riot static data resolve request" },
+          400,
+        );
+      }
+    }),
+    async (c) => {
+      try {
+        const result = await riotStaticData.resolve(c.req.valid("json"));
+        return c.json(result, 200);
+      } catch (error) {
+        return c.json({ error: errorMessage(error) }, 502);
+      }
+    },
+  );
+}
 
-export type RiotStaticDataRoutes = typeof riotStaticDataRoutes;
+export type RiotStaticDataRoutes = ReturnType<typeof riotStaticDataRoutes>;
