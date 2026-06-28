@@ -16,10 +16,12 @@
         "fmt:check",
         "lint",
         "check",
+        "check:bot-boundary",
         "check:messages",
         "test:all"
       ]
     },
+    "check:bot-boundary": "deno run --allow-run=deno --allow-read=bot/src/commands bot/check-runtime-boundary.ts",
     "check:messages": "deno run --allow-read messages/src/check-messages.ts",
     "deploy-commands": "deno run --allow-net --allow-read --allow-env --allow-sys --allow-ffi --env=.env bot/src/deploy-commands.ts",
     "db:push": "deno run --allow-env --allow-read --allow-sys --allow-run --allow-ffi --node-modules-dir npm:drizzle-kit push",
