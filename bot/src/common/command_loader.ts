@@ -1,5 +1,6 @@
 import * as path from "@std/path";
 import { Command } from "../types.ts";
+import { isRuntimeCommandFile } from "./runtime_command_files.ts";
 
 export async function loadCommands(): Promise<Command[]> {
   const commands: Command[] = [];
@@ -8,9 +9,7 @@ export async function loadCommands(): Promise<Command[]> {
 
   for await (const dirEntry of Deno.readDir(commandsPath)) {
     if (
-      dirEntry.isFile && dirEntry.name.endsWith(".ts") &&
-      !dirEntry.name.endsWith(".test.ts") &&
-      !dirEntry.name.startsWith("link-riot-account")
+      dirEntry.isFile && isRuntimeCommandFile(dirEntry.name)
     ) {
       const filePath = path.join(commandsPath, dirEntry.name);
       try {
