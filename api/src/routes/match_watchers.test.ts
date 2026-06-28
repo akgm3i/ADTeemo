@@ -3,7 +3,7 @@ import { assert, assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, stub } from "@std/testing/mock";
 import app from "../app.ts";
-import { dbActions } from "../db/actions.ts";
+import { dbActions } from "../db/default_actions.ts";
 import { MatchWatcherLimitError, RecordNotFoundError } from "../errors.ts";
 
 describe("routes/match_watchers.ts", () => {

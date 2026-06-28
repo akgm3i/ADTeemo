@@ -8,7 +8,7 @@ import {
   type RiotRegion,
   riotRegions,
 } from "../db/schema.ts";
-import { dbActions } from "../db/actions.ts";
+import { dbActions } from "../db/default_actions.ts";
 import { riotApi } from "../riot_api.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 

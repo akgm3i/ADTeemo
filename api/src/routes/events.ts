@@ -1,7 +1,7 @@
 import { Hono } from "@hono/hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { dbActions } from "../db/actions.ts";
+import { dbActions } from "../db/default_actions.ts";
 
 const createEventSchema = z.object({
   name: z.string(),

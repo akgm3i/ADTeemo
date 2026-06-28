@@ -1,7 +1,7 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
-import { dbActions } from "../db/actions.ts";
+import { dbActions } from "../db/default_actions.ts";
 import type { RiotAccount } from "../db/schema.ts";
 import {
   OpggMatchParticipantMismatchError,

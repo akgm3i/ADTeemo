@@ -1,7 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
-import { dbActions } from "./db/actions.ts";
+import { dbActions } from "./db/default_actions.ts";
 import { apiLogger } from "./logger.ts";
 import { riotStaticData } from "./riot_static_data.ts";
 

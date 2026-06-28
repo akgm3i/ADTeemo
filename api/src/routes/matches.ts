@@ -1,6 +1,6 @@
 import { Hono } from "@hono/hono";
 import { zValidator } from "@hono/zod-validator";
-import { dbActions } from "../db/actions.ts";
+import { dbActions } from "../db/default_actions.ts";
 import {
   createParticipantSchema,
   finalizeRankSnapshotsSchema,

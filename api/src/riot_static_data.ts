@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { dbActions } from "./db/actions.ts";
+import { dbActions } from "./db/default_actions.ts";
 import { apiLogger } from "./logger.ts";
 
 const DEFAULT_STATIC_DATA_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
