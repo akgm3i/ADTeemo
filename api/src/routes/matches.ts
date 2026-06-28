@@ -13,8 +13,18 @@ import {
 import { apiLogger } from "../logger.ts";
 import type { AppDependencies } from "../dependencies.ts";
 
+type MatchesDbActions = Pick<
+  AppDependencies["dbActions"],
+  | "upsertPendingRankSnapshots"
+  | "finalizeMatchRankSnapshots"
+  | "createMatchParticipant"
+>;
+
 export function matchesRoutes(
-  deps: Pick<AppDependencies, "dbActions" | "opggMatchDetailService">,
+  deps: {
+    dbActions: MatchesDbActions;
+    opggMatchDetailService: AppDependencies["opggMatchDetailService"];
+  },
 ) {
   const { dbActions, opggMatchDetailService } = deps;
   return new Hono()

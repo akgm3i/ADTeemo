@@ -13,7 +13,14 @@ const loginUrlQuerySchema = z.object({
   discordId: z.string().min(1),
 });
 
-export function authRoutes(deps: Pick<AppDependencies, "dbActions" | "rso">) {
+type AuthDbActions = Pick<
+  AppDependencies["dbActions"],
+  "createAuthState" | "getAuthState" | "deleteAuthState" | "linkUserWithRiotId"
+>;
+
+export function authRoutes(
+  deps: { dbActions: AuthDbActions; rso: AppDependencies["rso"] },
+) {
   const { dbActions, rso } = deps;
   return new Hono()
     .get(

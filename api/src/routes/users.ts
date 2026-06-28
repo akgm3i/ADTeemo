@@ -38,9 +38,16 @@ function defaultRegion(env: EnvReader): RiotRegion {
     : "asia";
 }
 
-export function usersRoutes(
-  deps: Pick<AppDependencies, "dbActions" | "riotApi" | "env">,
-) {
+type UsersDbActions = Pick<
+  AppDependencies["dbActions"],
+  "upsertRiotAccount" | "getRiotAccountByDiscordId" | "setMainRole"
+>;
+
+export function usersRoutes(deps: {
+  dbActions: UsersDbActions;
+  riotApi: AppDependencies["riotApi"];
+  env: AppDependencies["env"];
+}) {
   const { dbActions, riotApi, env } = deps;
   return new Hono()
     .patch(
