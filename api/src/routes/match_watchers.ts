@@ -1,7 +1,7 @@
 import { Hono } from "@hono/hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { dbActions } from "../db/actions.ts";
+import { dbActions } from "../db/default_actions.ts";
 import { matchWatcherStates } from "../db/schema.ts";
 import { MatchWatcherLimitError, RecordNotFoundError } from "../errors.ts";
 

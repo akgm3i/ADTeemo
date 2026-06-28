@@ -3,7 +3,7 @@ import { describe, test } from "@std/testing/bdd";
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import { assertSpyCall, stub } from "@std/testing/mock";
 import app from "../app.ts";
-import { dbActions } from "../db/actions.ts";
+import { dbActions } from "../db/default_actions.ts";
 import { rso } from "../rso.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 

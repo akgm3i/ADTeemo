@@ -1,4 +1,4 @@
-import { dbActions } from "../db/actions.ts";
+import { dbActions } from "../db/default_actions.ts";
 import {
   OpggMatchParticipantMismatchError,
   RecordNotFoundError,

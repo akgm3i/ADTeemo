@@ -2,16 +2,21 @@ import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
 import * as schema from "./schema.ts";
 
-const url = Deno.env.get("DATABASE_URL");
-if (!url) {
-  // Fallback for local development if DATABASE_URL is not set
-  console.log(
-    "DATABASE_URL not set, falling back to local file './data/sqlite.db'",
-  );
+export type CreateDbOptions = {
+  url: string;
+  logger?: boolean;
+};
+
+export function createDb({ url, logger = true }: CreateDbOptions) {
+  const client = createClient({ url });
+  const db = drizzle(client, { schema, logger });
+
+  return {
+    client,
+    db,
+    close: () => client.close(),
+  };
 }
 
-const client = createClient({
-  url: url || "file:./data/sqlite.db",
-});
-
-export const db = drizzle(client, { schema, logger: true });
+export type DatabaseConnection = ReturnType<typeof createDb>;
+export type Database = DatabaseConnection["db"];

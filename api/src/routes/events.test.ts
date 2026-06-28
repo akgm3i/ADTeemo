@@ -4,7 +4,7 @@ import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, stub } from "@std/testing/mock";
 import { z } from "zod";
 import app from "../app.ts";
-import { dbActions } from "../db/actions.ts";
+import { dbActions } from "../db/default_actions.ts";
 
 describe("routes/events.ts", () => {
   const client = testClient(app);

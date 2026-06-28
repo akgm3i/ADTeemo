@@ -3,7 +3,7 @@ import { assert, assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
 import app from "../app.ts";
-import { dbActions } from "../db/actions.ts";
+import { dbActions } from "../db/default_actions.ts";
 import { riotApi } from "../riot_api.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import { z } from "zod";

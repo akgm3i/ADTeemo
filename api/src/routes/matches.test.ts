@@ -3,7 +3,7 @@ import { assert, assertEquals } from "@std/assert";
 import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
 import { testClient } from "@hono/hono/testing";
 import app from "../app.ts";
-import { dbActions } from "../db/actions.ts";
+import { dbActions } from "../db/default_actions.ts";
 import type { Lane } from "../db/schema.ts";
 import {
   OpggMatchParticipantMismatchError,

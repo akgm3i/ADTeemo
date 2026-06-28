@@ -1,7 +1,7 @@
 import { Hono } from "@hono/hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import { dbActions } from "../db/actions.ts";
+import { dbActions } from "../db/default_actions.ts";
 import { rso } from "../rso.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 
