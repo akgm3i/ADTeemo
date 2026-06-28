@@ -28,29 +28,32 @@ describe("db/actions.ts", () => {
     test("DB接続先を指定してactionsを生成するとき、指定したDBだけを更新する", async () => {
       // Arrange
       const connectionA = createDb({ url: "file::memory:", logger: false });
-      const connectionB = createDb({ url: "file::memory:", logger: false });
       try {
-        await createUsersTable(connectionA);
-        await createUsersTable(connectionB);
-        const actionsA = createDbActions(connectionA.db);
-        const actionsB = createDbActions(connectionB.db);
+        const connectionB = createDb({ url: "file::memory:", logger: false });
+        try {
+          await createUsersTable(connectionA);
+          await createUsersTable(connectionB);
+          const actionsA = createDbActions(connectionA.db);
+          const actionsB = createDbActions(connectionB.db);
 
-        // Act
-        await actionsA.upsertUser("user-a");
-        await actionsB.upsertUser("user-b");
-        const resultA = await connectionA.client.execute(
-          "SELECT discord_id FROM users ORDER BY discord_id",
-        );
-        const resultB = await connectionB.client.execute(
-          "SELECT discord_id FROM users ORDER BY discord_id",
-        );
+          // Act
+          await actionsA.upsertUser("user-a");
+          await actionsB.upsertUser("user-b");
+          const resultA = await connectionA.client.execute(
+            "SELECT discord_id FROM users ORDER BY discord_id",
+          );
+          const resultB = await connectionB.client.execute(
+            "SELECT discord_id FROM users ORDER BY discord_id",
+          );
 
-        // Assert
-        assertEquals(resultA.rows.map((row) => row.discord_id), ["user-a"]);
-        assertEquals(resultB.rows.map((row) => row.discord_id), ["user-b"]);
+          // Assert
+          assertEquals(resultA.rows.map((row) => row.discord_id), ["user-a"]);
+          assertEquals(resultB.rows.map((row) => row.discord_id), ["user-b"]);
+        } finally {
+          connectionB.close();
+        }
       } finally {
         connectionA.close();
-        connectionB.close();
       }
     });
   });
