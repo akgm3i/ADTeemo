@@ -1,5 +1,5 @@
 import { describe, test } from "@std/testing/bdd";
-import { assertEquals, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import { createDbActions } from "./actions.ts";
 import { createDb } from "./index.ts";
 import type { MatchRankSnapshot } from "./schema.ts";
@@ -218,6 +218,67 @@ describe("db/actions.ts", () => {
       assertEquals(result.before, [existingBefore]);
       assertEquals(result.after[0].phase, "after");
       assertEquals(result.after[0].leaguePoints, 19);
+    });
+  });
+
+  describe("linkUserWithRiotId", () => {
+    test("既存ユーザーへRiot IDを紐づけるとき、updatedAtも更新する", async () => {
+      // Arrange
+      let updateSet: { riotId: string; updatedAt?: Date } | undefined;
+      const fakeDb = {
+        insert: () => ({
+          values: () => ({
+            onConflictDoUpdate: (
+              config: { set: { riotId: string; updatedAt?: Date } },
+            ) => {
+              updateSet = config.set;
+              return { execute: () => Promise.resolve() };
+            },
+          }),
+        }),
+      } as never;
+      const dbActions = createDbActions(fakeDb);
+
+      // Act
+      await dbActions.linkUserWithRiotId("user-1", "riot-puuid-1");
+
+      // Assert
+      assertEquals(updateSet?.riotId, "riot-puuid-1");
+      assert(updateSet?.updatedAt instanceof Date);
+    });
+  });
+
+  describe("upsertRiotAccount", () => {
+    test("既存ユーザーへRiotアカウントを紐づけるとき、users.updatedAtも更新する", async () => {
+      // Arrange
+      const updateSets: Array<{ riotId?: string; updatedAt?: Date }> = [];
+      const fakeTx = {
+        insert: () => ({
+          values: () => ({
+            onConflictDoUpdate: (
+              config: { set: { riotId?: string; updatedAt?: Date } },
+            ) => {
+              updateSets.push(config.set);
+              return { execute: () => Promise.resolve() };
+            },
+          }),
+        }),
+      };
+      const dbActions = createDbActions(createFakeDbWithTransaction(fakeTx));
+
+      // Act
+      await dbActions.upsertRiotAccount({
+        discordId: "user-1",
+        puuid: "riot-puuid-1",
+        gameName: "Teemo",
+        tagLine: "JP1",
+        platform: "jp1",
+        region: "asia",
+      });
+
+      // Assert
+      assertEquals(updateSets[0].riotId, "riot-puuid-1");
+      assert(updateSets[0].updatedAt instanceof Date);
     });
   });
 

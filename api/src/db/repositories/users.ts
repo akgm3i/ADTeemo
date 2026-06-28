@@ -75,7 +75,10 @@ export function createUsersRepository(database: Database) {
 
     await database.insert(users).values(payload).onConflictDoUpdate({
       target: users.discordId,
-      set: { riotId },
+      set: {
+        riotId,
+        updatedAt: new Date(),
+      },
     }).execute();
   }
 
@@ -94,7 +97,10 @@ export function createUsersRepository(database: Database) {
       });
       await tx.insert(users).values(userPayload).onConflictDoUpdate({
         target: users.discordId,
-        set: { riotId: account.puuid },
+        set: {
+          riotId: account.puuid,
+          updatedAt: new Date(),
+        },
       }).execute();
 
       const payload = riotAccountInsertSchema.parse(account);

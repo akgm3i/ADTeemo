@@ -7,14 +7,15 @@ import type { Database } from "../index.ts";
 import {
   externalMatchDetails,
   externalMatchParticipantDetails,
+  type ExternalMatchProvider,
   matches,
   matchParticipants,
   matchRankSnapshots,
   pendingMatchRankSnapshots,
   type RankedQueueType,
   type RiotPlatform,
+  users,
 } from "../schema.ts";
-import { users } from "../schema.ts";
 
 const matchParticipantInsertSchema = createInsertSchema(matchParticipants);
 const externalMatchDetailInsertSchema = createInsertSchema(
@@ -246,7 +247,7 @@ export function createMatchesRepository(
 
   async function upsertExternalMatchDetail(input: {
     matchId: string;
-    provider: "opgg";
+    provider: ExternalMatchProvider;
     providerRegion: string;
     providerMatchId: string;
     detailUrl: string;
