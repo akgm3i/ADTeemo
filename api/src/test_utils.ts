@@ -1,19 +1,22 @@
 import type { AppDependencies } from "./dependencies.ts";
 
+type TestDependencyOverrides = {
+  dbActions?: Partial<AppDependencies["dbActions"]>;
+  riotApi?: Omit<Partial<AppDependencies["riotApi"]>, "__testing"> & {
+    __testing?: Partial<AppDependencies["riotApi"]["__testing"]>;
+  };
+  rso?: Partial<AppDependencies["rso"]>;
+  riotStaticData?: Partial<AppDependencies["riotStaticData"]>;
+  opggMatchDetailService?: Partial<AppDependencies["opggMatchDetailService"]>;
+  env?: Partial<AppDependencies["env"]>;
+};
+
 function unexpectedDependencyCall(name: string): never {
   throw new Error(`Unexpected dependency call: ${name}`);
 }
 
 export function createTestDependencies(
-  overrides: {
-    dbActions?: Partial<AppDependencies["dbActions"]>;
-    riotApi?: Partial<AppDependencies["riotApi"]>;
-    rso?: Partial<AppDependencies["rso"]>;
-    riotStaticData?: Partial<AppDependencies["riotStaticData"]>;
-    opggMatchDetailService?: Partial<
-      AppDependencies["opggMatchDetailService"]
-    >;
-  } = {},
+  overrides: TestDependencyOverrides = {},
 ): AppDependencies {
   const deps = {
     dbActions: {
@@ -76,13 +79,14 @@ export function createTestDependencies(
       getMatchById: () => unexpectedDependencyCall("riotApi.getMatchById"),
       getLeagueEntriesByPuuid: () =>
         unexpectedDependencyCall("riotApi.getLeagueEntriesByPuuid"),
+      ...overrides.riotApi,
       __testing: {
         resetRateLimiter: () =>
           unexpectedDependencyCall("riotApi.__testing.resetRateLimiter"),
         rateLimiterSnapshot: () =>
           unexpectedDependencyCall("riotApi.__testing.rateLimiterSnapshot"),
+        ...overrides.riotApi?.__testing,
       },
-      ...overrides.riotApi,
     },
     rso: {
       exchangeCodeForTokens: () =>
@@ -100,6 +104,10 @@ export function createTestDependencies(
       resolveAndSave: () =>
         unexpectedDependencyCall("opggMatchDetailService.resolveAndSave"),
       ...overrides.opggMatchDetailService,
+    },
+    env: {
+      get: () => undefined,
+      ...overrides.env,
     },
   };
 

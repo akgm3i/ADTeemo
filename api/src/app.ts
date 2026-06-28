@@ -9,7 +9,6 @@ import { riotRoutes } from "./routes/riot.ts";
 import { riotStaticDataRoutes } from "./routes/riot_static_data.ts";
 import { apiLogger } from "./logger.ts";
 import type { AppDependencies } from "./dependencies.ts";
-import { defaultDependencies } from "./default_dependencies.ts";
 
 export const requestLoggingMiddleware = createMiddleware(async (c, next) => {
   const start = performance.now();
@@ -64,7 +63,24 @@ export function createApp(deps: AppDependencies) {
     .route("/auth", authRoutes(deps));
 }
 
-const app = createApp(defaultDependencies);
+type CreatedApp = ReturnType<typeof createApp>;
 
-export default app satisfies Deno.ServeDefaultExport;
-export type AppType = typeof app;
+let defaultApp: CreatedApp | undefined;
+
+async function getDefaultApp() {
+  if (!defaultApp) {
+    const { defaultDependencies } = await import("./default_dependencies.ts");
+    defaultApp = createApp(defaultDependencies);
+  }
+  return defaultApp;
+}
+
+const app = {
+  fetch: async (...args: Parameters<CreatedApp["fetch"]>) => {
+    const defaultApp = await getDefaultApp();
+    return await defaultApp.fetch(...args);
+  },
+} satisfies Deno.ServeDefaultExport;
+
+export default app;
+export type AppType = CreatedApp;

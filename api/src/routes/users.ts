@@ -9,7 +9,7 @@ import {
   riotRegions,
 } from "../db/schema.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
-import type { AppDependencies } from "../dependencies.ts";
+import type { AppDependencies, EnvReader } from "../dependencies.ts";
 
 const roleSchema = z.object({
   guildId: z.string(),
@@ -24,24 +24,24 @@ const linkByRiotIdSchema = z.object({
   region: z.enum(riotRegions).optional(),
 });
 
-function defaultPlatform(): RiotPlatform {
-  const platform = Deno.env.get("RIOT_DEFAULT_PLATFORM") ?? "jp1";
+function defaultPlatform(env: EnvReader): RiotPlatform {
+  const platform = env.get("RIOT_DEFAULT_PLATFORM") ?? "jp1";
   return riotPlatforms.includes(platform as RiotPlatform)
     ? platform as RiotPlatform
     : "jp1";
 }
 
-function defaultRegion(): RiotRegion {
-  const region = Deno.env.get("RIOT_DEFAULT_REGION") ?? "asia";
+function defaultRegion(env: EnvReader): RiotRegion {
+  const region = env.get("RIOT_DEFAULT_REGION") ?? "asia";
   return riotRegions.includes(region as RiotRegion)
     ? region as RiotRegion
     : "asia";
 }
 
 export function usersRoutes(
-  deps: Pick<AppDependencies, "dbActions" | "riotApi">,
+  deps: Pick<AppDependencies, "dbActions" | "riotApi" | "env">,
 ) {
-  const { dbActions, riotApi } = deps;
+  const { dbActions, riotApi, env } = deps;
   return new Hono()
     .patch(
       "/link-by-riot-id",
@@ -50,8 +50,8 @@ export function usersRoutes(
         const { discordId, gameName, tagLine, platform, region } = c.req.valid(
           "json",
         );
-        const resolvedPlatform = platform ?? defaultPlatform();
-        const resolvedRegion = region ?? defaultRegion();
+        const resolvedPlatform = platform ?? defaultPlatform(env);
+        const resolvedRegion = region ?? defaultRegion(env);
 
         const account = await riotApi.getAccountByRiotId(
           resolvedRegion,

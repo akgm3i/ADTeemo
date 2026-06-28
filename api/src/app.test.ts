@@ -3,9 +3,11 @@ import { Hono } from "@hono/hono";
 import { assertEquals, assertMatch } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCalls, stub } from "@std/testing/mock";
-import app, { requestLoggingMiddleware } from "./app.ts";
+import { createApp, requestLoggingMiddleware } from "./app.ts";
+import { createTestDependencies } from "./test_utils.ts";
 
 describe("app.ts", () => {
+  const app = createApp(createTestDependencies());
   const client = testClient(app);
 
   describe("GET /health", () => {
