@@ -25,8 +25,17 @@ const updateMatchWatcherStateSchema = z.object({
   lastInGameNotifiedAt: z.coerce.date().nullable().optional(),
 });
 
+type MatchWatchersDbActions = Pick<
+  AppDependencies["dbActions"],
+  | "upsertMatchWatcher"
+  | "getEnabledMatchWatchers"
+  | "getEnabledMatchWatchersByGuild"
+  | "updateMatchWatcherState"
+  | "disableMatchWatcher"
+>;
+
 export function matchWatchersRoutes(
-  deps: Pick<AppDependencies, "dbActions">,
+  deps: { dbActions: MatchWatchersDbActions },
 ) {
   const { dbActions } = deps;
   return new Hono()

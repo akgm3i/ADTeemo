@@ -12,7 +12,15 @@ const createEventSchema = z.object({
   scheduledStartAt: z.coerce.date(),
 });
 
-export function eventsRoutes(deps: Pick<AppDependencies, "dbActions">) {
+type EventsDbActions = Pick<
+  AppDependencies["dbActions"],
+  | "createCustomGameEvent"
+  | "getCustomGameEventsByCreatorId"
+  | "getEventStartingTodayByCreatorId"
+  | "deleteCustomGameEventByDiscordEventId"
+>;
+
+export function eventsRoutes(deps: { dbActions: EventsDbActions }) {
   const { dbActions } = deps;
   return new Hono()
     .post("/", zValidator("json", createEventSchema), async (c) => {
