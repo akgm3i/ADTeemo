@@ -2,17 +2,19 @@ import { describe, test } from "@std/testing/bdd";
 import { assert, assertEquals } from "@std/assert";
 import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
 import { testClient } from "@hono/hono/testing";
-import app from "../app.ts";
-import { dbActions } from "../db/default_actions.ts";
+import { createApp } from "../app.ts";
+import { createTestDependencies } from "../test_utils.ts";
 import type { Lane } from "../db/schema.ts";
 import {
   OpggMatchParticipantMismatchError,
   RecordNotFoundError,
 } from "../errors.ts";
-import { opggMatchDetailService } from "../services/opgg_match_detail.ts";
 import { apiLogger } from "../logger.ts";
 
 describe("routes/matches.ts", () => {
+  const deps = createTestDependencies();
+  const app = createApp(deps);
+  const { dbActions, opggMatchDetailService } = deps;
   const client = testClient(app);
 
   describe("POST /matches/rank-snapshots/pending", () => {

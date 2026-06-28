@@ -2,14 +2,16 @@ import { testClient } from "@hono/hono/testing";
 import { assert, assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
-import app from "../app.ts";
-import { dbActions } from "../db/default_actions.ts";
-import { riotApi } from "../riot_api.ts";
+import { createApp } from "../app.ts";
+import { createTestDependencies } from "../test_utils.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import { z } from "zod";
 import type { Lane } from "../db/schema.ts";
 
 describe("routes/users.ts", () => {
+  const deps = createTestDependencies();
+  const app = createApp(deps);
+  const { dbActions, riotApi } = deps;
   const client = testClient(app);
   const errorResponseSchema = z.object({ error: z.string() });
   const discordId = "test-discord-id";

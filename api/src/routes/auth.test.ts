@@ -2,12 +2,15 @@ import { testClient } from "@hono/hono/testing";
 import { describe, test } from "@std/testing/bdd";
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import { assertSpyCall, stub } from "@std/testing/mock";
-import app from "../app.ts";
-import { dbActions } from "../db/default_actions.ts";
-import { rso } from "../rso.ts";
+import { createApp } from "../app.ts";
+import { createTestDependencies } from "../test_utils.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 
 describe("routes/auth.ts", () => {
+  const deps = createTestDependencies();
+  const app = createApp(deps);
+  const { dbActions, rso } = deps;
+
   describe("GET /rso/login-url", () => {
     describe("正常系", () => {
       test("有効なdiscordIdが提供されたとき、認証用のstateを保存し、認証URLを返す", async () => {

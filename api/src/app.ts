@@ -8,6 +8,8 @@ import { authRoutes } from "./routes/auth.ts";
 import { riotRoutes } from "./routes/riot.ts";
 import { riotStaticDataRoutes } from "./routes/riot_static_data.ts";
 import { apiLogger } from "./logger.ts";
+import type { AppDependencies } from "./dependencies.ts";
+import { defaultDependencies } from "./default_dependencies.ts";
 
 export const requestLoggingMiddleware = createMiddleware(async (c, next) => {
   const start = performance.now();
@@ -47,18 +49,22 @@ export const requestLoggingMiddleware = createMiddleware(async (c, next) => {
   }
 });
 
-const app = new Hono()
-  .use("*", requestLoggingMiddleware)
-  .get("/health", (c) => {
-    return c.json({ message: "This API is healthy!" });
-  })
-  .route("/users", usersRoutes)
-  .route("/events", eventsRoutes)
-  .route("/matches", matchesRoutes)
-  .route("/match-watchers", matchWatchersRoutes)
-  .route("/riot/static-data", riotStaticDataRoutes)
-  .route("/riot", riotRoutes)
-  .route("/auth", authRoutes);
+export function createApp(deps: AppDependencies) {
+  return new Hono()
+    .use("*", requestLoggingMiddleware)
+    .get("/health", (c) => {
+      return c.json({ message: "This API is healthy!" });
+    })
+    .route("/users", usersRoutes(deps))
+    .route("/events", eventsRoutes(deps))
+    .route("/matches", matchesRoutes(deps))
+    .route("/match-watchers", matchWatchersRoutes(deps))
+    .route("/riot/static-data", riotStaticDataRoutes(deps))
+    .route("/riot", riotRoutes(deps))
+    .route("/auth", authRoutes(deps));
+}
+
+const app = createApp(defaultDependencies);
 
 export default app satisfies Deno.ServeDefaultExport;
 export type AppType = typeof app;

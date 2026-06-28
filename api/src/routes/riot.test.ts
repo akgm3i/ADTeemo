@@ -1,10 +1,14 @@
 import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, stub } from "@std/testing/mock";
-import app from "../app.ts";
-import { riotApi } from "../riot_api.ts";
+import { createApp } from "../app.ts";
+import { createTestDependencies } from "../test_utils.ts";
 
 describe("routes/riot.ts", () => {
+  const deps = createTestDependencies();
+  const app = createApp(deps);
+  const { riotApi } = deps;
+
   test("platformとPUUIDを指定したとき、APIサーバーから進行中の試合を返す", async () => {
     // Arrange
     const activeGame = {
