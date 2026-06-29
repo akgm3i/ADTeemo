@@ -52,54 +52,59 @@ function booleanEnv(env: EnvReader, name: string) {
     value === "on";
 }
 
+async function resolveAndSave(
+  deps: OpggMatchDetailServiceDependencies,
+  input: ResolveAndSaveOpggMatchDetailInput,
+) {
+  if (!booleanEnv(deps.env, "OPGG_ENABLED")) return null;
+
+  const account = await deps.dbActions.getRiotAccountByDiscordId(
+    input.targetDiscordId,
+  );
+  if (!account) {
+    throw new RecordNotFoundError(
+      `Riot account not found for Discord user ${input.targetDiscordId}`,
+    );
+  }
+  if (account.puuid !== input.match.participant.puuid) {
+    throw new OpggMatchParticipantMismatchError(
+      `Match participant does not belong to Discord user ${input.targetDiscordId}`,
+    );
+  }
+
+  let detail;
+  try {
+    detail = await deps.opggClient.resolveMatchDetail(account, {
+      metadata: { matchId: input.matchId },
+      info: {
+        gameCreation: input.match.gameCreation,
+        gameDuration: input.match.gameDuration,
+        queueId: input.match.queueId,
+        participants: [input.match.participant],
+      },
+    });
+  } catch (error) {
+    deps.logger.warn("opgg_match_detail.resolve_failed", {
+      targetDiscordId: input.targetDiscordId,
+      matchId: input.matchId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+
+  if (!detail) return null;
+
+  await deps.dbActions.upsertExternalMatchDetail({
+    matchId: input.matchId,
+    ...detail,
+  });
+  return detail;
+}
+
 export function createOpggMatchDetailService(
   deps: OpggMatchDetailServiceDependencies,
 ): OpggMatchDetailService {
-  async function resolveAndSave(input: ResolveAndSaveOpggMatchDetailInput) {
-    if (!booleanEnv(deps.env, "OPGG_ENABLED")) return null;
-
-    const account = await deps.dbActions.getRiotAccountByDiscordId(
-      input.targetDiscordId,
-    );
-    if (!account) {
-      throw new RecordNotFoundError(
-        `Riot account not found for Discord user ${input.targetDiscordId}`,
-      );
-    }
-    if (account.puuid !== input.match.participant.puuid) {
-      throw new OpggMatchParticipantMismatchError(
-        `Match participant does not belong to Discord user ${input.targetDiscordId}`,
-      );
-    }
-
-    let detail;
-    try {
-      detail = await deps.opggClient.resolveMatchDetail(account, {
-        metadata: { matchId: input.matchId },
-        info: {
-          gameCreation: input.match.gameCreation,
-          gameDuration: input.match.gameDuration,
-          queueId: input.match.queueId,
-          participants: [input.match.participant],
-        },
-      });
-    } catch (error) {
-      deps.logger.warn("opgg_match_detail.resolve_failed", {
-        targetDiscordId: input.targetDiscordId,
-        matchId: input.matchId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
-
-    if (!detail) return null;
-
-    await deps.dbActions.upsertExternalMatchDetail({
-      matchId: input.matchId,
-      ...detail,
-    });
-    return detail;
-  }
-
-  return { resolveAndSave };
+  return {
+    resolveAndSave: (input) => resolveAndSave(deps, input),
+  };
 }
