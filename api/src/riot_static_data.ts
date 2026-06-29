@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { dbActions } from "./db/default_actions.ts";
-import { apiLogger } from "./logger.ts";
+import type { DbActions } from "./db/actions.ts";
 
 const DEFAULT_STATIC_DATA_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const DATA_DRAGON_VERSIONS_URL =
@@ -76,50 +75,92 @@ export type RiotStaticDataResolveResult = {
   gameModes: Record<string, string | null>;
 };
 
-function numberEnv(name: string, fallback: number) {
-  const value = Number(Deno.env.get(name));
+type EnvReader = {
+  get(key: string): string | undefined;
+};
+
+type Logger = {
+  warn(message: string, metadata?: Record<string, unknown>): void;
+};
+
+type RiotStaticDataDbActions = Pick<
+  DbActions,
+  "getRiotStaticDataCache" | "upsertRiotStaticDataCache"
+>;
+
+export type RiotStaticDataServiceDependencies = {
+  dbActions: RiotStaticDataDbActions;
+  env: EnvReader;
+  fetchJson: (url: string) => Promise<unknown>;
+  logger: Logger;
+};
+
+export type RiotStaticDataService = {
+  getChampionNameById(
+    championId: number,
+    locale?: string,
+  ): Promise<string | null>;
+  getChampionIconUrlById(
+    championId: number,
+    locale?: string,
+  ): Promise<string | null>;
+  getQueueNameById(queueId: number, locale?: string): Promise<string | null>;
+  getMapNameById(mapId: number, locale?: string): Promise<string | null>;
+  getGameModeName(gameMode: string, locale?: string): Promise<string | null>;
+  resolve(
+    input: RiotStaticDataResolveInput,
+  ): Promise<RiotStaticDataResolveResult>;
+};
+
+function numberEnv(env: EnvReader, name: string, fallback: number) {
+  const value = Number(env.get(name));
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-function cacheTtlMs() {
+function cacheTtlMs(env: EnvReader) {
   return numberEnv(
+    env,
     "RIOT_STATIC_DATA_CACHE_TTL_MS",
     DEFAULT_STATIC_DATA_CACHE_TTL_MS,
   );
 }
 
-function normalizeLocale(locale?: string) {
-  const raw = locale ?? Deno.env.get("BOT_MESSAGE_LANG") ??
-    Deno.env.get("API_MESSAGE_LANG") ?? "ja_JP";
+function normalizeLocale(env: EnvReader, locale?: string) {
+  const raw = locale ?? env.get("BOT_MESSAGE_LANG") ??
+    env.get("API_MESSAGE_LANG") ?? "ja_JP";
   return raw.replace("-", "_").split(".")[0];
 }
 
-function localizedQueueName(queueId: number, locale?: string) {
-  if (normalizeLocale(locale) === "ja_JP") {
+function localizedQueueName(env: EnvReader, queueId: number, locale?: string) {
+  if (normalizeLocale(env, locale) === "ja_JP") {
     return jaQueueNames[queueId] ?? null;
   }
   return null;
 }
 
-function localizedMapName(mapId: number, locale?: string) {
-  if (normalizeLocale(locale) === "ja_JP") {
+function localizedMapName(env: EnvReader, mapId: number, locale?: string) {
+  if (normalizeLocale(env, locale) === "ja_JP") {
     return jaMapNames[mapId] ?? null;
   }
   return null;
 }
 
-function localizedGameModeName(gameMode: string, locale?: string) {
-  if (normalizeLocale(locale) === "ja_JP") {
+function localizedGameModeName(
+  env: EnvReader,
+  gameMode: string,
+  locale?: string,
+) {
+  if (normalizeLocale(env, locale) === "ja_JP") {
     return jaGameModeNames[gameMode] ?? null;
   }
   return null;
 }
 
-function isFresh(updatedAt: Date, now = Date.now()) {
-  return now - updatedAt.getTime() < cacheTtlMs();
+function isFresh(env: EnvReader, updatedAt: Date, now = Date.now()) {
+  return now - updatedAt.getTime() < cacheTtlMs(env);
 }
 
-async function fetchJson(url: string) {
+export async function fetchRiotStaticDataJson(url: string) {
   const res = await fetch(url);
   if (!res.ok) {
     await res.body?.cancel();
@@ -145,12 +186,13 @@ const championCacheSchema = z.record(
 );
 
 async function cachedVersionedJson<T>(
+  deps: RiotStaticDataServiceDependencies,
   key: string,
   schema: z.ZodType<T>,
   fetcher: () => Promise<{ version: string; value: T }>,
 ) {
-  const cached = await dbActions.getRiotStaticDataCache(key);
-  if (cached && isFresh(cached.updatedAt)) {
+  const cached = await deps.dbActions.getRiotStaticDataCache(key);
+  if (cached && isFresh(deps.env, cached.updatedAt)) {
     return {
       version: cached.version,
       value: parseCachedValue(cached.value, schema),
@@ -159,7 +201,7 @@ async function cachedVersionedJson<T>(
 
   try {
     const fetched = await fetcher();
-    await dbActions.upsertRiotStaticDataCache({
+    await deps.dbActions.upsertRiotStaticDataCache({
       key,
       version: fetched.version,
       value: JSON.stringify(fetched.value),
@@ -167,7 +209,7 @@ async function cachedVersionedJson<T>(
     return fetched;
   } catch (error) {
     if (cached) {
-      apiLogger.warn("riot_static_data.cache_refresh_failed", {
+      deps.logger.warn("riot_static_data.cache_refresh_failed", {
         key,
         version: cached.version,
         error: error instanceof Error ? error.message : String(error),
@@ -182,29 +224,36 @@ async function cachedVersionedJson<T>(
 }
 
 async function cachedJson<T>(
+  deps: RiotStaticDataServiceDependencies,
   key: string,
   schema: z.ZodType<T>,
   fetcher: () => Promise<{ version: string; value: T }>,
 ) {
-  return (await cachedVersionedJson(key, schema, fetcher)).value;
+  return (await cachedVersionedJson(deps, key, schema, fetcher)).value;
 }
 
-async function getLatestDataDragonVersion() {
+async function getLatestDataDragonVersion(
+  deps: RiotStaticDataServiceDependencies,
+) {
   const versions = versionsSchema.parse(
-    await fetchJson(DATA_DRAGON_VERSIONS_URL),
+    await deps.fetchJson(DATA_DRAGON_VERSIONS_URL),
   );
   return versions[0];
 }
 
-async function getChampions(locale?: string) {
-  const normalizedLocale = normalizeLocale(locale);
+async function getChampions(
+  deps: RiotStaticDataServiceDependencies,
+  locale?: string,
+) {
+  const normalizedLocale = normalizeLocale(deps.env, locale);
   return await cachedVersionedJson(
+    deps,
     `champions-data:${normalizedLocale}`,
     championCacheSchema,
     async () => {
-      const version = await getLatestDataDragonVersion();
+      const version = await getLatestDataDragonVersion(deps);
       const data = championDataSchema.parse(
-        await fetchJson(
+        await deps.fetchJson(
           `${DATA_DRAGON_CDN_BASE}/${version}/data/${normalizedLocale}/champion.json`,
         ),
       );
@@ -223,10 +272,10 @@ async function getChampions(locale?: string) {
   );
 }
 
-async function getQueues() {
-  return await cachedJson("queues", stringRecordSchema, async () => {
+async function getQueues(deps: RiotStaticDataServiceDependencies) {
+  return await cachedJson(deps, "queues", stringRecordSchema, async () => {
     const queues = queuesSchema.parse(
-      await fetchJson(`${RIOT_STATIC_DOCS_BASE}/queues.json`),
+      await deps.fetchJson(`${RIOT_STATIC_DOCS_BASE}/queues.json`),
     );
     const names: Record<string, string> = {};
     for (const queue of queues) {
@@ -238,10 +287,10 @@ async function getQueues() {
   });
 }
 
-async function getMaps() {
-  return await cachedJson("maps", stringRecordSchema, async () => {
+async function getMaps(deps: RiotStaticDataServiceDependencies) {
+  return await cachedJson(deps, "maps", stringRecordSchema, async () => {
     const maps = mapsSchema.parse(
-      await fetchJson(`${RIOT_STATIC_DOCS_BASE}/maps.json`),
+      await deps.fetchJson(`${RIOT_STATIC_DOCS_BASE}/maps.json`),
     );
     const names: Record<string, string> = {};
     for (const map of maps) {
@@ -253,10 +302,10 @@ async function getMaps() {
   });
 }
 
-async function getGameModes() {
-  return await cachedJson("gameModes", stringRecordSchema, async () => {
+async function getGameModes(deps: RiotStaticDataServiceDependencies) {
+  return await cachedJson(deps, "gameModes", stringRecordSchema, async () => {
     const gameModes = gameModesSchema.parse(
-      await fetchJson(`${RIOT_STATIC_DOCS_BASE}/gameModes.json`),
+      await deps.fetchJson(`${RIOT_STATIC_DOCS_BASE}/gameModes.json`),
     );
     const names: Record<string, string> = {};
     for (const mode of gameModes) {
@@ -268,40 +317,60 @@ async function getGameModes() {
   });
 }
 
-async function getChampionNameById(championId: number, locale?: string) {
-  const { value: champions } = await getChampions(locale);
+async function getChampionNameById(
+  deps: RiotStaticDataServiceDependencies,
+  championId: number,
+  locale?: string,
+) {
+  const { value: champions } = await getChampions(deps, locale);
   return champions[String(championId)]?.name ?? null;
 }
 
-async function getChampionIconUrlById(championId: number, locale?: string) {
-  const { version, value: champions } = await getChampions(locale);
+async function getChampionIconUrlById(
+  deps: RiotStaticDataServiceDependencies,
+  championId: number,
+  locale?: string,
+) {
+  const { version, value: champions } = await getChampions(deps, locale);
   const file = champions[String(championId)]?.imageFull;
   return file
     ? `${DATA_DRAGON_CDN_BASE}/${version}/img/champion/${file}`
     : null;
 }
 
-async function getQueueNameById(queueId: number, locale?: string) {
-  const localizedName = localizedQueueName(queueId, locale);
+async function getQueueNameById(
+  deps: RiotStaticDataServiceDependencies,
+  queueId: number,
+  locale?: string,
+) {
+  const localizedName = localizedQueueName(deps.env, queueId, locale);
   if (localizedName) return localizedName;
 
-  const names = await getQueues();
+  const names = await getQueues(deps);
   return names[String(queueId)] ?? null;
 }
 
-async function getMapNameById(mapId: number, locale?: string) {
-  const localizedName = localizedMapName(mapId, locale);
+async function getMapNameById(
+  deps: RiotStaticDataServiceDependencies,
+  mapId: number,
+  locale?: string,
+) {
+  const localizedName = localizedMapName(deps.env, mapId, locale);
   if (localizedName) return localizedName;
 
-  const names = await getMaps();
+  const names = await getMaps(deps);
   return names[String(mapId)] ?? null;
 }
 
-async function getGameModeName(gameMode: string, locale?: string) {
-  const localizedName = localizedGameModeName(gameMode, locale);
+async function getGameModeName(
+  deps: RiotStaticDataServiceDependencies,
+  gameMode: string,
+  locale?: string,
+) {
+  const localizedName = localizedGameModeName(deps.env, gameMode, locale);
   if (localizedName) return localizedName;
 
-  const names = await getGameModes();
+  const names = await getGameModes(deps);
   return names[gameMode] ?? null;
 }
 
@@ -310,13 +379,14 @@ function unique<T>(values: T[] | undefined) {
 }
 
 async function resolveResource<T>(
+  deps: RiotStaticDataServiceDependencies,
   resource: string,
   load: () => Promise<T>,
 ): Promise<T | null> {
   try {
     return await load();
   } catch (error) {
-    apiLogger.warn(`riot_static_data.resolve_${resource}_failed`, {
+    deps.logger.warn(`riot_static_data.resolve_${resource}_failed`, {
       error: error instanceof Error ? error.message : String(error),
     });
     return null;
@@ -324,6 +394,7 @@ async function resolveResource<T>(
 }
 
 async function resolve(
+  deps: RiotStaticDataServiceDependencies,
   input: RiotStaticDataResolveInput,
 ): Promise<RiotStaticDataResolveResult> {
   const championIds = unique(input.championIds);
@@ -332,26 +403,32 @@ async function resolve(
   const gameModes = unique(input.gameModes);
 
   const needsQueues = queueIds.some((queueId) =>
-    localizedQueueName(queueId, input.locale) === null
+    localizedQueueName(deps.env, queueId, input.locale) === null
   );
   const needsMaps = mapIds.some((mapId) =>
-    localizedMapName(mapId, input.locale) === null
+    localizedMapName(deps.env, mapId, input.locale) === null
   );
   const needsGameModes = gameModes.some((gameMode) =>
-    localizedGameModeName(gameMode, input.locale) === null
+    localizedGameModeName(deps.env, gameMode, input.locale) === null
   );
 
   const [championData, queueNames, mapNames, gameModeNames] = await Promise.all(
     [
       championIds.length > 0
-        ? resolveResource("champions", () => getChampions(input.locale))
+        ? resolveResource(
+          deps,
+          "champions",
+          () => getChampions(deps, input.locale),
+        )
         : Promise.resolve(null),
       needsQueues
-        ? resolveResource("queues", getQueues)
+        ? resolveResource(deps, "queues", () => getQueues(deps))
         : Promise.resolve(null),
-      needsMaps ? resolveResource("maps", getMaps) : Promise.resolve(null),
+      needsMaps
+        ? resolveResource(deps, "maps", () => getMaps(deps))
+        : Promise.resolve(null),
       needsGameModes
-        ? resolveResource("game_modes", getGameModes)
+        ? resolveResource(deps, "game_modes", () => getGameModes(deps))
         : Promise.resolve(null),
     ],
   );
@@ -369,19 +446,24 @@ async function resolve(
 
   const queues: RiotStaticDataResolveResult["queues"] = {};
   for (const queueId of queueIds) {
-    queues[String(queueId)] = localizedQueueName(queueId, input.locale) ??
+    queues[String(queueId)] = localizedQueueName(
+      deps.env,
+      queueId,
+      input.locale,
+    ) ??
       queueNames?.[String(queueId)] ?? null;
   }
 
   const maps: RiotStaticDataResolveResult["maps"] = {};
   for (const mapId of mapIds) {
-    maps[String(mapId)] = localizedMapName(mapId, input.locale) ??
+    maps[String(mapId)] = localizedMapName(deps.env, mapId, input.locale) ??
       mapNames?.[String(mapId)] ?? null;
   }
 
   const resolvedGameModes: RiotStaticDataResolveResult["gameModes"] = {};
   for (const gameMode of gameModes) {
     resolvedGameModes[gameMode] = localizedGameModeName(
+      deps.env,
       gameMode,
       input.locale,
     ) ?? gameModeNames?.[gameMode] ?? null;
@@ -395,11 +477,19 @@ async function resolve(
   };
 }
 
-export const riotStaticData = {
-  getChampionNameById,
-  getChampionIconUrlById,
-  getQueueNameById,
-  getMapNameById,
-  getGameModeName,
-  resolve,
-};
+export function createRiotStaticData(
+  deps: RiotStaticDataServiceDependencies,
+): RiotStaticDataService {
+  return {
+    getChampionNameById: (championId, locale) =>
+      getChampionNameById(deps, championId, locale),
+    getChampionIconUrlById: (championId, locale) =>
+      getChampionIconUrlById(deps, championId, locale),
+    getQueueNameById: (queueId, locale) =>
+      getQueueNameById(deps, queueId, locale),
+    getMapNameById: (mapId, locale) => getMapNameById(deps, mapId, locale),
+    getGameModeName: (gameMode, locale) =>
+      getGameModeName(deps, gameMode, locale),
+    resolve: (input) => resolve(deps, input),
+  };
+}

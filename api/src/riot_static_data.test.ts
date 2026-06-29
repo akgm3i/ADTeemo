@@ -1,14 +1,44 @@
 import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
-import { dbActions } from "./db/default_actions.ts";
-import { apiLogger } from "./logger.ts";
-import { riotStaticData } from "./riot_static_data.ts";
+import { createRiotStaticData } from "./riot_static_data.ts";
+
+type StaticDataCache = {
+  key: string;
+  version: string;
+  value: string;
+  updatedAt: Date;
+};
+
+function dependencies() {
+  return {
+    dbActions: {
+      getRiotStaticDataCache: (
+        _key: string,
+      ): Promise<StaticDataCache | undefined> => Promise.resolve(undefined),
+      upsertRiotStaticDataCache: (_cache: {
+        key: string;
+        version: string;
+        value: string;
+      }) => Promise.resolve(),
+    },
+    env: {
+      get: (_key: string) => undefined,
+    },
+    fetchJson: (_url: string): Promise<unknown> =>
+      Promise.reject(new Error("fetch should not be called")),
+    logger: {
+      warn: (_message: string, _metadata?: Record<string, unknown>) => {},
+    },
+  };
+}
 
 describe("riot_static_data.ts", () => {
   test("チャンピオン名がキャッシュ済みかつTTL内の場合、外部取得せずDBの値を返す", async () => {
+    const deps = dependencies();
+    const riotStaticData = createRiotStaticData(deps);
     using getCacheStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotStaticDataCache",
       () =>
         Promise.resolve({
@@ -21,13 +51,13 @@ describe("riot_static_data.ts", () => {
         }),
     );
     using upsertCacheStub = stub(
-      dbActions,
+      deps.dbActions,
       "upsertRiotStaticDataCache",
       () => Promise.resolve(),
     );
     using fetchStub = stub(
-      globalThis,
-      "fetch",
+      deps,
+      "fetchJson",
       () => Promise.reject(new Error("fetch should not be called")),
     );
 
@@ -40,16 +70,16 @@ describe("riot_static_data.ts", () => {
   });
 
   test("チャンピオン名と画像URLを続けて解決するとき、単一の取得結果とキャッシュを共有する", async () => {
-    let cached: Awaited<
-      ReturnType<typeof dbActions.getRiotStaticDataCache>
-    >;
+    const deps = dependencies();
+    const riotStaticData = createRiotStaticData(deps);
+    let cached: StaticDataCache | undefined;
     using getCacheStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotStaticDataCache",
       () => Promise.resolve(cached),
     );
     using upsertCacheStub = stub(
-      dbActions,
+      deps.dbActions,
       "upsertRiotStaticDataCache",
       (value) => {
         cached = { ...value, updatedAt: new Date() };
@@ -57,28 +87,23 @@ describe("riot_static_data.ts", () => {
       },
     );
     using fetchStub = stub(
-      globalThis,
-      "fetch",
+      deps,
+      "fetchJson",
       (input) => {
         const url = String(input);
         if (url.endsWith("/api/versions.json")) {
-          return Promise.resolve(
-            new Response(JSON.stringify(["16.12.1"]), { status: 200 }),
-          );
+          return Promise.resolve(["16.12.1"]);
         }
         return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              data: {
-                Teemo: {
-                  key: "17",
-                  name: "ティーモ",
-                  image: { full: "Teemo.png" },
-                },
+          {
+            data: {
+              Teemo: {
+                key: "17",
+                name: "ティーモ",
+                image: { full: "Teemo.png" },
               },
-            }),
-            { status: 200 },
-          ),
+            },
+          },
         );
       },
     );
@@ -98,20 +123,22 @@ describe("riot_static_data.ts", () => {
   });
 
   test("チャンピオン画像のstatic data取得に失敗しキャッシュもない場合、エラーを返す", async () => {
+    const deps = dependencies();
+    const riotStaticData = createRiotStaticData(deps);
     using _getCacheStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotStaticDataCache",
       () => Promise.resolve(undefined),
     );
     using _upsertCacheStub = stub(
-      dbActions,
+      deps.dbActions,
       "upsertRiotStaticDataCache",
       () => Promise.resolve(),
     );
     using _fetchStub = stub(
-      globalThis,
-      "fetch",
-      () => Promise.resolve(new Response(null, { status: 503 })),
+      deps,
+      "fetchJson",
+      () => Promise.reject(new Error("Failed to fetch Riot static data: 503")),
     );
 
     let error: unknown;
@@ -125,28 +152,27 @@ describe("riot_static_data.ts", () => {
   });
 
   test("キュー名が未キャッシュの場合、公式static JSONを取得してDBへ保存する", async () => {
+    const deps = dependencies();
+    const riotStaticData = createRiotStaticData(deps);
     using getCacheStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotStaticDataCache",
       () => Promise.resolve(undefined),
     );
     using upsertCacheStub = stub(
-      dbActions,
+      deps.dbActions,
       "upsertRiotStaticDataCache",
       () => Promise.resolve(),
     );
     using fetchStub = stub(
-      globalThis,
-      "fetch",
+      deps,
+      "fetchJson",
       () =>
         Promise.resolve(
-          new Response(
-            JSON.stringify([{
-              queueId: 420,
-              description: "5v5 Ranked Solo games",
-            }]),
-            { status: 200 },
-          ),
+          [{
+            queueId: 420,
+            description: "5v5 Ranked Solo games",
+          }],
         ),
     );
 
@@ -159,14 +185,16 @@ describe("riot_static_data.ts", () => {
   });
 
   test("ja_JPの代表キューは日本語ユーザー向けの表示名を返す", async () => {
+    const deps = dependencies();
+    const riotStaticData = createRiotStaticData(deps);
     using getCacheStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotStaticDataCache",
       () => Promise.reject(new Error("cache should not be called")),
     );
     using fetchStub = stub(
-      globalThis,
-      "fetch",
+      deps,
+      "fetchJson",
       () => Promise.reject(new Error("fetch should not be called")),
     );
 
@@ -178,14 +206,16 @@ describe("riot_static_data.ts", () => {
   });
 
   test("ja_JPの代表マップとゲームモードは日本語ユーザー向けの表示名を返す", async () => {
+    const deps = dependencies();
+    const riotStaticData = createRiotStaticData(deps);
     using getCacheStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotStaticDataCache",
       () => Promise.reject(new Error("cache should not be called")),
     );
     using fetchStub = stub(
-      globalThis,
-      "fetch",
+      deps,
+      "fetchJson",
       () => Promise.reject(new Error("fetch should not be called")),
     );
 
@@ -199,8 +229,10 @@ describe("riot_static_data.ts", () => {
   });
 
   test("キャッシュ更新に失敗した場合、古いDB値をfallbackとして返す", async () => {
+    const deps = dependencies();
+    const riotStaticData = createRiotStaticData(deps);
     using _getCacheStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotStaticDataCache",
       () =>
         Promise.resolve({
@@ -211,14 +243,14 @@ describe("riot_static_data.ts", () => {
         }),
     );
     using _upsertCacheStub = stub(
-      dbActions,
+      deps.dbActions,
       "upsertRiotStaticDataCache",
       () => Promise.resolve(),
     );
     using fetchStub = stub(
-      globalThis,
-      "fetch",
-      () => Promise.resolve(new Response(null, { status: 500 })),
+      deps,
+      "fetchJson",
+      () => Promise.reject(new Error("Failed to fetch Riot static data: 500")),
     );
 
     const name = await riotStaticData.getMapNameById(11, "en_US");
@@ -229,8 +261,10 @@ describe("riot_static_data.ts", () => {
 
   test("複数の静的データ識別子を解決するとき、種別ごとに単一のキャッシュ読み込みから表示データを返す", async () => {
     // Arrange
+    const deps = dependencies();
+    const riotStaticData = createRiotStaticData(deps);
     using getCacheStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotStaticDataCache",
       (key) => {
         const values: Record<string, string> = {
@@ -253,8 +287,8 @@ describe("riot_static_data.ts", () => {
       },
     );
     using fetchStub = stub(
-      globalThis,
-      "fetch",
+      deps,
+      "fetchJson",
       () => Promise.reject(new Error("fetch should not be called")),
     );
 
@@ -287,8 +321,10 @@ describe("riot_static_data.ts", () => {
 
   test("一部の静的データ取得に失敗したとき、失敗した種別だけnullにして取得済みデータを返す", async () => {
     // Arrange
+    const deps = dependencies();
+    const riotStaticData = createRiotStaticData(deps);
     using _getCacheStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotStaticDataCache",
       (key) =>
         Promise.resolve(
@@ -305,11 +341,11 @@ describe("riot_static_data.ts", () => {
         ),
     );
     using _fetchStub = stub(
-      globalThis,
-      "fetch",
-      () => Promise.resolve(new Response(null, { status: 503 })),
+      deps,
+      "fetchJson",
+      () => Promise.reject(new Error("Failed to fetch Riot static data: 503")),
     );
-    using warnStub = stub(apiLogger, "warn", () => {});
+    using warnStub = stub(deps.logger, "warn", () => {});
 
     // Act
     const result = await riotStaticData.resolve({
@@ -340,8 +376,10 @@ describe("riot_static_data.ts", () => {
 
   test("未知の識別子を含む静的データを解決するとき、対応する値をnullで返す", async () => {
     // Arrange
+    const deps = dependencies();
+    const riotStaticData = createRiotStaticData(deps);
     using _getCacheStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotStaticDataCache",
       (key) =>
         Promise.resolve({

@@ -1,10 +1,9 @@
-import { dbActions } from "../db/default_actions.ts";
+import type { DbActions } from "../db/actions.ts";
 import {
   OpggMatchParticipantMismatchError,
   RecordNotFoundError,
 } from "../errors.ts";
-import { opggClient } from "../integrations/opgg.ts";
-import { apiLogger } from "../logger.ts";
+import type { opggClient, OpggMatchDetail } from "../integrations/opgg.ts";
 
 export type ResolveAndSaveOpggMatchDetailInput = {
   matchId: string;
@@ -21,18 +20,45 @@ export type ResolveAndSaveOpggMatchDetailInput = {
   };
 };
 
-function booleanEnv(name: string) {
-  const value = Deno.env.get(name)?.toLowerCase();
+type EnvReader = {
+  get(key: string): string | undefined;
+};
+
+type OpggMatchDetailDbActions = Pick<
+  DbActions,
+  "getRiotAccountByDiscordId" | "upsertExternalMatchDetail"
+>;
+
+type Logger = {
+  warn(message: string, metadata?: Record<string, unknown>): void;
+};
+
+export type OpggMatchDetailServiceDependencies = {
+  dbActions: OpggMatchDetailDbActions;
+  env: EnvReader;
+  logger: Logger;
+  opggClient: Pick<typeof opggClient, "resolveMatchDetail">;
+};
+
+export type OpggMatchDetailService = {
+  resolveAndSave(
+    input: ResolveAndSaveOpggMatchDetailInput,
+  ): Promise<OpggMatchDetail | null>;
+};
+
+function booleanEnv(env: EnvReader, name: string) {
+  const value = env.get(name)?.toLowerCase();
   return value === "1" || value === "true" || value === "yes" ||
     value === "on";
 }
 
-export async function resolveAndSaveOpggMatchDetail(
+async function resolveAndSave(
+  deps: OpggMatchDetailServiceDependencies,
   input: ResolveAndSaveOpggMatchDetailInput,
 ) {
-  if (!booleanEnv("OPGG_ENABLED")) return null;
+  if (!booleanEnv(deps.env, "OPGG_ENABLED")) return null;
 
-  const account = await dbActions.getRiotAccountByDiscordId(
+  const account = await deps.dbActions.getRiotAccountByDiscordId(
     input.targetDiscordId,
   );
   if (!account) {
@@ -48,7 +74,7 @@ export async function resolveAndSaveOpggMatchDetail(
 
   let detail;
   try {
-    detail = await opggClient.resolveMatchDetail(account, {
+    detail = await deps.opggClient.resolveMatchDetail(account, {
       metadata: { matchId: input.matchId },
       info: {
         gameCreation: input.match.gameCreation,
@@ -58,7 +84,7 @@ export async function resolveAndSaveOpggMatchDetail(
       },
     });
   } catch (error) {
-    apiLogger.warn("opgg_match_detail.resolve_failed", {
+    deps.logger.warn("opgg_match_detail.resolve_failed", {
       targetDiscordId: input.targetDiscordId,
       matchId: input.matchId,
       error: error instanceof Error ? error.message : String(error),
@@ -68,13 +94,17 @@ export async function resolveAndSaveOpggMatchDetail(
 
   if (!detail) return null;
 
-  await dbActions.upsertExternalMatchDetail({
+  await deps.dbActions.upsertExternalMatchDetail({
     matchId: input.matchId,
     ...detail,
   });
   return detail;
 }
 
-export const opggMatchDetailService = {
-  resolveAndSave: resolveAndSaveOpggMatchDetail,
-};
+export function createOpggMatchDetailService(
+  deps: OpggMatchDetailServiceDependencies,
+): OpggMatchDetailService {
+  return {
+    resolveAndSave: (input) => resolveAndSave(deps, input),
+  };
+}
