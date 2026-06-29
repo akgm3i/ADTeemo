@@ -2,7 +2,7 @@ import { testClient } from "@hono/hono/testing";
 import { Hono } from "@hono/hono";
 import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
-import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
+import { assertSpyCalls, stub } from "@std/testing/mock";
 import { createApp, createRequestLoggingMiddleware } from "./app.ts";
 import { createTestDependencies } from "./test_utils.ts";
 
@@ -31,17 +31,15 @@ describe("app.ts", () => {
         await client.health.$get();
 
         // Assert
-        assertSpyCall(infoStub, 0, {
-          args: ["request.completed", {
-            http: {
-              method: "GET",
-              path: "/health",
-              status: 200,
-            },
-            durationMs: infoStub.calls[0].args[1]?.durationMs,
-          }],
+        assertSpyCalls(infoStub, 1);
+        const [message, context] = infoStub.calls[0].args;
+        assertEquals(message, "request.completed");
+        assertEquals(context?.http, {
+          method: "GET",
+          path: "/health",
+          status: 200,
         });
-        assertEquals(typeof infoStub.calls[0].args[1]?.durationMs, "number");
+        assertEquals(typeof context?.durationMs, "number");
       });
 
       test("ハンドラ例外で500が返るとき、失敗リクエストとして注入loggerへERRORログを出力する", async () => {
@@ -60,16 +58,14 @@ describe("app.ts", () => {
         // Assert
         assertEquals(res.status, 500);
         assertSpyCalls(errorStub, 1);
-        assertEquals(errorStub.calls[0].args[0], "request.failed");
-        assertEquals(errorStub.calls[0].args[1], {
-          http: {
-            method: "GET",
-            path: "/error",
-            status: 500,
-          },
-          durationMs: errorStub.calls[0].args[1]?.durationMs,
+        const [message, context] = errorStub.calls[0].args;
+        assertEquals(message, "request.failed");
+        assertEquals(context?.http, {
+          method: "GET",
+          path: "/error",
+          status: 500,
         });
-        assertEquals(typeof errorStub.calls[0].args[1]?.durationMs, "number");
+        assertEquals(typeof context?.durationMs, "number");
         assertEquals(errorStub.calls[0].args.length, 2);
       });
     });
