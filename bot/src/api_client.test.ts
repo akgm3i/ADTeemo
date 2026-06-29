@@ -2,7 +2,7 @@ import { assertEquals, assertRejects } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCalls, stub } from "@std/testing/mock";
 import { apiClient } from "./api_client.ts";
-import { type Client } from "@adteemo/api/hc";
+import { type Client } from "@adteemo/api/contract";
 import { type InferResponseType } from "@hono/hono";
 
 type PostResponse = InferResponseType<Client["health"]["$get"]>;

@@ -3,7 +3,7 @@ import { assertEquals } from "@std/assert";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import { Message, User } from "discord.js";
 import { data, execute, splitTeamHandlers as handlers } from "./split-teams.ts";
-import { type Event, type Lane } from "@adteemo/api/schema";
+import { type Event, type Lane } from "@adteemo/api/contract";
 
 import { MockGuildBuilder, MockInteractionBuilder } from "../test_utils.ts";
 

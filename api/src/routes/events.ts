@@ -1,16 +1,7 @@
 import { Hono } from "@hono/hono";
 import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
+import { createEventSchema } from "../contract/schemas.ts";
 import type { AppDependencies } from "../dependencies.ts";
-
-const createEventSchema = z.object({
-  name: z.string(),
-  guildId: z.string(),
-  creatorId: z.string(),
-  discordScheduledEventId: z.string(),
-  recruitmentMessageId: z.string(),
-  scheduledStartAt: z.coerce.date(),
-});
 
 type EventsDbActions = Pick<
   AppDependencies["dbActions"],

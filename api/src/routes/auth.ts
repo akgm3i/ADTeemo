@@ -1,17 +1,11 @@
 import { Hono } from "@hono/hono";
-import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
+import {
+  callbackQuerySchema,
+  loginUrlQuerySchema,
+} from "../contract/schemas.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import type { AppDependencies } from "../dependencies.ts";
-
-const callbackQuerySchema = z.object({
-  code: z.string().min(1),
-  state: z.string().min(1),
-});
-
-const loginUrlQuerySchema = z.object({
-  discordId: z.string().min(1),
-});
 
 type AuthDbActions = Pick<
   AppDependencies["dbActions"],

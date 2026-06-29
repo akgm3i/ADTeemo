@@ -1,5 +1,5 @@
 // bot/src/constants.ts
-import type { Lane } from "@adteemo/api/schema";
+import type { Lane } from "@adteemo/api/contract";
 
 // Mapping from the API's internal role name (`Lane`) to the name displayed on Discord.
 export const ROLE_DISPLAY_NAMES: Record<Lane, string> = {

@@ -1,18 +1,10 @@
 import { Hono } from "@hono/hono";
 import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
-import { riotPlatforms, riotRegions } from "../db/schema.ts";
+import {
+  platformAndPuuidSchema,
+  regionAndMatchIdSchema,
+} from "../contract/schemas.ts";
 import type { AppDependencies } from "../dependencies.ts";
-
-const platformAndPuuidSchema = z.object({
-  platform: z.enum(riotPlatforms),
-  puuid: z.string().min(1),
-});
-
-const regionAndMatchIdSchema = z.object({
-  region: z.enum(riotRegions),
-  matchId: z.string().min(1),
-});
 
 function upstreamErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Riot API request failed";

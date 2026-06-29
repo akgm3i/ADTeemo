@@ -1,19 +1,19 @@
-import type { Lane } from "@adteemo/api/schema";
+import type { Lane } from "@adteemo/api/contract";
 import type {
   MatchWatcher,
   MatchWatcherState,
   RiotAccount,
   RiotPlatform,
   RiotRegion,
-} from "@adteemo/api/schema";
-import { type Client, hcWithType } from "@adteemo/api/hc";
+} from "@adteemo/api/contract";
+import { type Client, hcWithType } from "@adteemo/api/contract";
 import { z } from "zod";
 import {
   createParticipantSchema,
   finalizeRankSnapshotsSchema,
   resolveOpggMatchDetailSchema,
   upsertPendingRankSnapshotsSchema,
-} from "@adteemo/api/validators";
+} from "@adteemo/api/contract";
 
 const API_URL = Deno.env.get("API_URL");
 if (!API_URL) {
