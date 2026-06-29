@@ -1,15 +1,13 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
-import { dbActions } from "../db/default_actions.ts";
 import type { RiotAccount } from "../db/schema.ts";
 import {
   OpggMatchParticipantMismatchError,
   RecordNotFoundError,
 } from "../errors.ts";
-import { opggClient, type OpggMatchDetail } from "../integrations/opgg.ts";
-import { apiLogger } from "../logger.ts";
-import { resolveAndSaveOpggMatchDetail } from "./opgg_match_detail.ts";
+import type { OpggMatchDetail } from "../integrations/opgg.ts";
+import { createOpggMatchDetailService } from "./opgg_match_detail.ts";
 
 function account(overrides: Partial<RiotAccount> = {}): RiotAccount {
   const now = new Date("2026-01-01T00:00:00.000Z");
@@ -63,47 +61,52 @@ function detail(): OpggMatchDetail {
   };
 }
 
-async function withOpggEnabled<T>(
-  enabled: boolean,
-  action: () => Promise<T>,
-) {
-  const original = Deno.env.get("OPGG_ENABLED");
-  enabled
-    ? Deno.env.set("OPGG_ENABLED", "true")
-    : Deno.env.delete("OPGG_ENABLED");
-  try {
-    return await action();
-  } finally {
-    original === undefined
-      ? Deno.env.delete("OPGG_ENABLED")
-      : Deno.env.set("OPGG_ENABLED", original);
-  }
+function dependencies(enabled = true) {
+  const deps = {
+    dbActions: {
+      getRiotAccountByDiscordId: (
+        _discordId: string,
+      ): Promise<RiotAccount | undefined> => Promise.resolve(account()),
+      upsertExternalMatchDetail: () => Promise.resolve(),
+    },
+    env: {
+      get: (key: string) =>
+        key === "OPGG_ENABLED" && enabled ? "true" : undefined,
+    },
+    logger: {
+      warn: (_message: string, _metadata?: Record<string, unknown>) => {},
+    },
+    opggClient: {
+      resolveMatchDetail: (): Promise<OpggMatchDetail | null> =>
+        Promise.resolve(detail()),
+    },
+  };
+  return deps;
 }
 
 describe("OP.GG試合詳細service", () => {
   test("OP.GG連携が無効なとき、アカウント取得と外部解決と保存を行わずnullを返す", async () => {
     // Arrange
+    const deps = dependencies(false);
+    const service = createOpggMatchDetailService(deps);
     using accountStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotAccountByDiscordId",
       () => Promise.resolve(account()),
     );
     using resolveStub = stub(
-      opggClient,
+      deps.opggClient,
       "resolveMatchDetail",
       () => Promise.resolve(detail()),
     );
     using saveStub = stub(
-      dbActions,
+      deps.dbActions,
       "upsertExternalMatchDetail",
       () => Promise.resolve(),
     );
 
     // Act
-    const result = await withOpggEnabled(
-      false,
-      () => resolveAndSaveOpggMatchDetail(input()),
-    );
+    const result = await service.resolveAndSave(input());
 
     // Assert
     assertEquals(result, null);
@@ -114,63 +117,64 @@ describe("OP.GG試合詳細service", () => {
 
   test("対象DiscordユーザーのRiotアカウントがないとき、RecordNotFoundErrorを返す", async () => {
     // Arrange
+    const deps = dependencies();
+    const service = createOpggMatchDetailService(deps);
     using _accountStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotAccountByDiscordId",
       () => Promise.resolve(undefined),
     );
 
     // Act / Assert
-    await withOpggEnabled(true, () =>
-      assertRejects(
-        () => resolveAndSaveOpggMatchDetail(input()),
-        RecordNotFoundError,
-        "Riot account not found",
-      ));
+    await assertRejects(
+      () => service.resolveAndSave(input()),
+      RecordNotFoundError,
+      "Riot account not found",
+    );
   });
 
   test("保存対象参加者とRiotアカウントのPUUIDが異なるとき、専用errorを返す", async () => {
     // Arrange
+    const deps = dependencies();
+    const service = createOpggMatchDetailService(deps);
     using _accountStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotAccountByDiscordId",
       () => Promise.resolve(account()),
     );
 
     // Act / Assert
-    await withOpggEnabled(true, () =>
-      assertRejects(
-        () =>
-          resolveAndSaveOpggMatchDetail(
-            input({ participantPuuid: "different-puuid" }),
-          ),
-        OpggMatchParticipantMismatchError,
-      ));
+    await assertRejects(
+      () =>
+        service.resolveAndSave(
+          input({ participantPuuid: "different-puuid" }),
+        ),
+      OpggMatchParticipantMismatchError,
+    );
   });
 
   test("OP.GGに該当試合がないとき、保存を行わずnullを返す", async () => {
     // Arrange
+    const deps = dependencies();
+    const service = createOpggMatchDetailService(deps);
     using _accountStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotAccountByDiscordId",
       () => Promise.resolve(account()),
     );
     using _resolveStub = stub(
-      opggClient,
+      deps.opggClient,
       "resolveMatchDetail",
       () => Promise.resolve(null),
     );
     using saveStub = stub(
-      dbActions,
+      deps.dbActions,
       "upsertExternalMatchDetail",
       () => Promise.resolve(),
     );
 
     // Act
-    const result = await withOpggEnabled(
-      true,
-      () => resolveAndSaveOpggMatchDetail(input()),
-    );
+    const result = await service.resolveAndSave(input());
 
     // Assert
     assertEquals(result, null);
@@ -179,29 +183,28 @@ describe("OP.GG試合詳細service", () => {
 
   test("OP.GGの外部解決が失敗したとき、警告を記録して保存せずnullを返す", async () => {
     // Arrange
+    const deps = dependencies();
+    const service = createOpggMatchDetailService(deps);
     const error = new Error("OP.GG unavailable");
     using _accountStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotAccountByDiscordId",
       () => Promise.resolve(account()),
     );
     using _resolveStub = stub(
-      opggClient,
+      deps.opggClient,
       "resolveMatchDetail",
       () => Promise.reject(error),
     );
     using saveStub = stub(
-      dbActions,
+      deps.dbActions,
       "upsertExternalMatchDetail",
       () => Promise.resolve(),
     );
-    using warnStub = stub(apiLogger, "warn");
+    using warnStub = stub(deps.logger, "warn");
 
     // Act
-    const result = await withOpggEnabled(
-      true,
-      () => resolveAndSaveOpggMatchDetail(input()),
-    );
+    const result = await service.resolveAndSave(input());
 
     // Assert
     assertEquals(result, null);
@@ -217,28 +220,27 @@ describe("OP.GG試合詳細service", () => {
 
   test("OP.GG詳細を解決できたとき、外部試合詳細を保存して同じ詳細を返す", async () => {
     // Arrange
+    const deps = dependencies();
+    const service = createOpggMatchDetailService(deps);
     const resolved = detail();
     using _accountStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotAccountByDiscordId",
       () => Promise.resolve(account()),
     );
     using resolveStub = stub(
-      opggClient,
+      deps.opggClient,
       "resolveMatchDetail",
       () => Promise.resolve(resolved),
     );
     using saveStub = stub(
-      dbActions,
+      deps.dbActions,
       "upsertExternalMatchDetail",
       () => Promise.resolve(),
     );
 
     // Act
-    const result = await withOpggEnabled(
-      true,
-      () => resolveAndSaveOpggMatchDetail(input()),
-    );
+    const result = await service.resolveAndSave(input());
 
     // Assert
     assertEquals(result, resolved);
@@ -260,29 +262,30 @@ describe("OP.GG試合詳細service", () => {
 
   test("OP.GG詳細の保存が失敗したとき、保存errorを呼び出し元へ伝播する", async () => {
     // Arrange
+    const deps = dependencies();
+    const service = createOpggMatchDetailService(deps);
     const saveError = new Error("database unavailable");
     using _accountStub = stub(
-      dbActions,
+      deps.dbActions,
       "getRiotAccountByDiscordId",
       () => Promise.resolve(account()),
     );
     using _resolveStub = stub(
-      opggClient,
+      deps.opggClient,
       "resolveMatchDetail",
       () => Promise.resolve(detail()),
     );
     using _saveStub = stub(
-      dbActions,
+      deps.dbActions,
       "upsertExternalMatchDetail",
       () => Promise.reject(saveError),
     );
 
     // Act / Assert
-    await withOpggEnabled(true, () =>
-      assertRejects(
-        () => resolveAndSaveOpggMatchDetail(input()),
-        Error,
-        "database unavailable",
-      ));
+    await assertRejects(
+      () => service.resolveAndSave(input()),
+      Error,
+      "database unavailable",
+    );
   });
 });
