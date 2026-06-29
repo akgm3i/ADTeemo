@@ -7,50 +7,53 @@ import { matchWatchersRoutes } from "./routes/match_watchers.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { riotRoutes } from "./routes/riot.ts";
 import { riotStaticDataRoutes } from "./routes/riot_static_data.ts";
-import { apiLogger } from "./logger.ts";
 import type { AppDependencies } from "./dependencies.ts";
 
-export const requestLoggingMiddleware = createMiddleware(async (c, next) => {
-  const start = performance.now();
-  try {
-    await next();
-    const durationMs = Math.round(performance.now() - start);
-    const context = {
-      http: {
-        method: c.req.method,
-        path: c.req.path,
-        status: c.res.status,
-      },
-      durationMs,
-    };
-
-    if (c.res.status >= 500) {
-      apiLogger.error("request.failed", context);
-      return;
-    }
-
-    apiLogger.info("request.completed", context);
-  } catch (error) {
-    const durationMs = Math.round(performance.now() - start);
-    apiLogger.error(
-      "request.failed",
-      {
+export function createRequestLoggingMiddleware(
+  logger: AppDependencies["logger"],
+) {
+  return createMiddleware(async (c, next) => {
+    const start = performance.now();
+    try {
+      await next();
+      const durationMs = Math.round(performance.now() - start);
+      const context = {
         http: {
           method: c.req.method,
           path: c.req.path,
-          status: c.res.status >= 500 ? c.res.status : 500,
+          status: c.res.status,
         },
         durationMs,
-      },
-      error,
-    );
-    throw error;
-  }
-});
+      };
+
+      if (c.res.status >= 500) {
+        logger.error("request.failed", context);
+        return;
+      }
+
+      logger.info("request.completed", context);
+    } catch (error) {
+      const durationMs = Math.round(performance.now() - start);
+      logger.error(
+        "request.failed",
+        {
+          http: {
+            method: c.req.method,
+            path: c.req.path,
+            status: c.res.status >= 500 ? c.res.status : 500,
+          },
+          durationMs,
+        },
+        error,
+      );
+      throw error;
+    }
+  });
+}
 
 export function createApp(deps: AppDependencies) {
   return new Hono()
-    .use("*", requestLoggingMiddleware)
+    .use("*", createRequestLoggingMiddleware(deps.logger))
     .get("/health", (c) => {
       return c.json({ message: "This API is healthy!" });
     })

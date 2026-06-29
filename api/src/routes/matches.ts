@@ -10,7 +10,6 @@ import {
   OpggMatchParticipantMismatchError,
   RecordNotFoundError,
 } from "../errors.ts";
-import { apiLogger } from "../logger.ts";
 import type { AppDependencies } from "../dependencies.ts";
 
 type MatchesDbActions = Pick<
@@ -24,9 +23,10 @@ export function matchesRoutes(
   deps: {
     dbActions: MatchesDbActions;
     opggMatchDetailService: AppDependencies["opggMatchDetailService"];
+    logger: AppDependencies["logger"];
   },
 ) {
-  const { dbActions, opggMatchDetailService } = deps;
+  const { dbActions, opggMatchDetailService, logger } = deps;
   return new Hono()
     .post(
       "/rank-snapshots/pending",
@@ -54,7 +54,7 @@ export function matchesRoutes(
       "/:matchId/external-details/opgg/resolve",
       zValidator("json", resolveOpggMatchDetailSchema, (result, c) => {
         if (!result.success) {
-          apiLogger.warn("opgg_match_detail.invalid_request", {
+          logger.warn("opgg_match_detail.invalid_request", {
             validationIssues: result.error.issues.map((issue) => ({
               code: issue.code,
               path: issue.path,
@@ -80,7 +80,7 @@ export function matchesRoutes(
           if (error instanceof OpggMatchParticipantMismatchError) {
             return c.json({ error: error.message }, 400);
           }
-          apiLogger.error(
+          logger.error(
             "opgg_match_detail.request_failed",
             {
               matchId,

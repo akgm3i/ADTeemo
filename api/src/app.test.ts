@@ -1,13 +1,14 @@
 import { testClient } from "@hono/hono/testing";
 import { Hono } from "@hono/hono";
-import { assertEquals, assertMatch } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
-import { assertSpyCalls, stub } from "@std/testing/mock";
-import { createApp, requestLoggingMiddleware } from "./app.ts";
+import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
+import { createApp, createRequestLoggingMiddleware } from "./app.ts";
 import { createTestDependencies } from "./test_utils.ts";
 
 describe("app.ts", () => {
-  const app = createApp(createTestDependencies());
+  const deps = createTestDependencies();
+  const app = createApp(deps);
   const client = testClient(app);
 
   describe("GET /health", () => {
@@ -22,33 +23,33 @@ describe("app.ts", () => {
         assertEquals(body.message, "This API is healthy!");
       });
 
-      test("リクエストを送信したとき、HTTPメソッドとパス、ステータスを含む構造化ログを出力する", async () => {
+      test("リクエストを送信したとき、HTTPメソッドとパス、ステータスを含むログを注入loggerへ出力する", async () => {
         // Arrange
-        using consoleLogStub = stub(console, "log");
+        using infoStub = stub(deps.logger, "info", () => {});
 
         // Act
         await client.health.$get();
 
         // Assert
-        assertSpyCalls(consoleLogStub, 1);
-        const [firstCall] = consoleLogStub.calls;
-        const [logPayload] = firstCall.args;
-        assertEquals(typeof logPayload, "string");
-        const parsed = JSON.parse(logPayload as string);
-        assertEquals(parsed.component, "api");
-        assertEquals(parsed.level, "INFO");
-        assertEquals(parsed.message, "request.completed");
-        assertEquals(parsed.http.method, "GET");
-        assertEquals(parsed.http.path, "/health");
-        assertEquals(parsed.http.status, 200);
-        assertMatch(parsed.timestamp, /^\d{4}-\d{2}-\d{2}T/);
+        assertSpyCall(infoStub, 0, {
+          args: ["request.completed", {
+            http: {
+              method: "GET",
+              path: "/health",
+              status: 200,
+            },
+            durationMs: infoStub.calls[0].args[1]?.durationMs,
+          }],
+        });
+        assertEquals(typeof infoStub.calls[0].args[1]?.durationMs, "number");
       });
 
-      test("ハンドラ例外で500が返るとき、失敗リクエストとしてERRORログを出力する", async () => {
+      test("ハンドラ例外で500が返るとき、失敗リクエストとして注入loggerへERRORログを出力する", async () => {
         // Arrange
-        using consoleLogStub = stub(console, "log");
+        const logger = createTestDependencies().logger;
+        using errorStub = stub(logger, "error", () => {});
         const failingApp = new Hono()
-          .use("*", requestLoggingMiddleware)
+          .use("*", createRequestLoggingMiddleware(logger))
           .get("/error", () => {
             throw new Error("Unexpected failure");
           });
@@ -58,17 +59,18 @@ describe("app.ts", () => {
 
         // Assert
         assertEquals(res.status, 500);
-        assertSpyCalls(consoleLogStub, 1);
-        const [firstCall] = consoleLogStub.calls;
-        const [logPayload] = firstCall.args;
-        assertEquals(typeof logPayload, "string");
-        const parsed = JSON.parse(logPayload as string);
-        assertEquals(parsed.component, "api");
-        assertEquals(parsed.level, "ERROR");
-        assertEquals(parsed.message, "request.failed");
-        assertEquals(parsed.http.method, "GET");
-        assertEquals(parsed.http.path, "/error");
-        assertEquals(parsed.http.status, 500);
+        assertSpyCalls(errorStub, 1);
+        assertEquals(errorStub.calls[0].args[0], "request.failed");
+        assertEquals(errorStub.calls[0].args[1], {
+          http: {
+            method: "GET",
+            path: "/error",
+            status: 500,
+          },
+          durationMs: errorStub.calls[0].args[1]?.durationMs,
+        });
+        assertEquals(typeof errorStub.calls[0].args[1]?.durationMs, "number");
+        assertEquals(errorStub.calls[0].args.length, 2);
       });
     });
   });

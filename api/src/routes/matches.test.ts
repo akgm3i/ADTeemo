@@ -9,12 +9,11 @@ import {
   OpggMatchParticipantMismatchError,
   RecordNotFoundError,
 } from "../errors.ts";
-import { apiLogger } from "../logger.ts";
 
 describe("routes/matches.ts", () => {
   const deps = createTestDependencies();
   const app = createApp(deps);
-  const { dbActions, opggMatchDetailService } = deps;
+  const { dbActions, opggMatchDetailService, logger } = deps;
   const client = testClient(app);
 
   describe("POST /matches/rank-snapshots/pending", () => {
@@ -235,7 +234,7 @@ describe("routes/matches.ts", () => {
         "resolveAndSave",
         () => Promise.resolve(null),
       );
-      using warnStub = stub(apiLogger, "warn", () => {});
+      using warnStub = stub(logger, "warn", () => {});
 
       // Act
       const res = await app.request(
@@ -330,7 +329,7 @@ describe("routes/matches.ts", () => {
         "resolveAndSave",
         () => Promise.reject(error),
       );
-      using errorStub = stub(apiLogger, "error", () => {});
+      using errorStub = stub(logger, "error", () => {});
 
       // Act
       const res = await app.request(
