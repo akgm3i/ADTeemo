@@ -1,13 +1,14 @@
 import { testClient } from "@hono/hono/testing";
 import { Hono } from "@hono/hono";
-import { assertEquals, assertMatch } from "@std/assert";
+import { assertEquals, assertRejects, assertStrictEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCalls, stub } from "@std/testing/mock";
-import { createApp, requestLoggingMiddleware } from "./app.ts";
+import { createApp, createRequestLoggingMiddleware } from "./app.ts";
 import { createTestDependencies } from "./test_utils.ts";
 
 describe("app.ts", () => {
-  const app = createApp(createTestDependencies());
+  const deps = createTestDependencies();
+  const app = createApp(deps);
   const client = testClient(app);
 
   describe("GET /health", () => {
@@ -22,33 +23,31 @@ describe("app.ts", () => {
         assertEquals(body.message, "This API is healthy!");
       });
 
-      test("リクエストを送信したとき、HTTPメソッドとパス、ステータスを含む構造化ログを出力する", async () => {
+      test("リクエストを送信したとき、HTTPメソッドとパス、ステータスを含むログを注入loggerへ出力する", async () => {
         // Arrange
-        using consoleLogStub = stub(console, "log");
+        using infoStub = stub(deps.logger, "info", () => {});
 
         // Act
         await client.health.$get();
 
         // Assert
-        assertSpyCalls(consoleLogStub, 1);
-        const [firstCall] = consoleLogStub.calls;
-        const [logPayload] = firstCall.args;
-        assertEquals(typeof logPayload, "string");
-        const parsed = JSON.parse(logPayload as string);
-        assertEquals(parsed.component, "api");
-        assertEquals(parsed.level, "INFO");
-        assertEquals(parsed.message, "request.completed");
-        assertEquals(parsed.http.method, "GET");
-        assertEquals(parsed.http.path, "/health");
-        assertEquals(parsed.http.status, 200);
-        assertMatch(parsed.timestamp, /^\d{4}-\d{2}-\d{2}T/);
+        assertSpyCalls(infoStub, 1);
+        const [message, context] = infoStub.calls[0].args;
+        assertEquals(message, "request.completed");
+        assertEquals(context?.http, {
+          method: "GET",
+          path: "/health",
+          status: 200,
+        });
+        assertEquals(typeof context?.durationMs, "number");
       });
 
-      test("ハンドラ例外で500が返るとき、失敗リクエストとしてERRORログを出力する", async () => {
+      test("ハンドラ例外で500が返るとき、失敗リクエストとして注入loggerへERRORログを出力する", async () => {
         // Arrange
-        using consoleLogStub = stub(console, "log");
+        const logger = createTestDependencies().logger;
+        using errorStub = stub(logger, "error", () => {});
         const failingApp = new Hono()
-          .use("*", requestLoggingMiddleware)
+          .use("*", createRequestLoggingMiddleware(logger))
           .get("/error", () => {
             throw new Error("Unexpected failure");
           });
@@ -58,17 +57,49 @@ describe("app.ts", () => {
 
         // Assert
         assertEquals(res.status, 500);
-        assertSpyCalls(consoleLogStub, 1);
-        const [firstCall] = consoleLogStub.calls;
-        const [logPayload] = firstCall.args;
-        assertEquals(typeof logPayload, "string");
-        const parsed = JSON.parse(logPayload as string);
-        assertEquals(parsed.component, "api");
-        assertEquals(parsed.level, "ERROR");
-        assertEquals(parsed.message, "request.failed");
-        assertEquals(parsed.http.method, "GET");
-        assertEquals(parsed.http.path, "/error");
-        assertEquals(parsed.http.status, 500);
+        assertSpyCalls(errorStub, 1);
+        const [message, context] = errorStub.calls[0].args;
+        assertEquals(message, "request.failed");
+        assertEquals(context?.http, {
+          method: "GET",
+          path: "/error",
+          status: 500,
+        });
+        assertEquals(typeof context?.durationMs, "number");
+      });
+
+      test("下流middlewareが例外を再throwしたとき、失敗リクエストと例外を注入loggerへERRORログ出力する", async () => {
+        // Arrange
+        const logger = createTestDependencies().logger;
+        using errorStub = stub(logger, "error", () => {});
+        const middleware = createRequestLoggingMiddleware(logger);
+        const error = new Error("Unexpected failure");
+        const context = {
+          req: {
+            method: "POST",
+            path: "/error",
+          },
+          res: new Response(null, { status: 200 }),
+        } as unknown as Parameters<typeof middleware>[0];
+
+        // Act
+        await assertRejects(
+          () => middleware(context, () => Promise.reject(error)),
+          Error,
+          error.message,
+        );
+
+        // Assert
+        assertSpyCalls(errorStub, 1);
+        const [message, logContext, loggedError] = errorStub.calls[0].args;
+        assertEquals(message, "request.failed");
+        assertEquals(logContext?.http, {
+          method: "POST",
+          path: "/error",
+          status: 500,
+        });
+        assertEquals(typeof logContext?.durationMs, "number");
+        assertStrictEquals(loggedError, error);
       });
     });
   });

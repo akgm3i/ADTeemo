@@ -9,6 +9,7 @@ type TestDependencyOverrides = {
   riotStaticData?: Partial<AppDependencies["riotStaticData"]>;
   opggMatchDetailService?: Partial<AppDependencies["opggMatchDetailService"]>;
   env?: Partial<AppDependencies["env"]>;
+  logger?: Partial<AppDependencies["logger"]>;
 };
 
 function unexpectedDependencyCall(name: string): never {
@@ -108,6 +109,12 @@ export function createTestDependencies(
     env: {
       get: () => undefined,
       ...overrides.env,
+    },
+    logger: {
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+      ...overrides.logger,
     },
   };
 

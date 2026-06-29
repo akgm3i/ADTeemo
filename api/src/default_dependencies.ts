@@ -31,4 +31,5 @@ export const defaultDependencies = {
   riotStaticData,
   opggMatchDetailService,
   env: Deno.env,
+  logger: apiLogger,
 } satisfies AppDependencies;
