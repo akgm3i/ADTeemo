@@ -6,9 +6,14 @@ import {
   Interaction,
   MessageFlags,
 } from "discord.js";
+import { hcWithType } from "@adteemo/api/contract";
 import { ensureRoles } from "./features/role-management.ts";
 import { loadCommands } from "./common/command_loader.ts";
-import { apiClient } from "./api_client.ts";
+import {
+  apiClient,
+  configureApiClient,
+  createApiClient,
+} from "./api_client.ts";
 import { matchTracker } from "./features/match_tracking.ts";
 import { messageHandler, messageKeys } from "./messages.ts";
 import { botLogger } from "./logger.ts";
@@ -248,6 +253,13 @@ async function startBot() {
     botLogger.error("bot.start.missing_token");
     Deno.exit(1);
   }
+  const apiUrl = Deno.env.get("API_URL");
+  if (!apiUrl) {
+    botLogger.error("bot.start.missing_api_url");
+    Deno.exit(1);
+  }
+  configureApiClient(createApiClient({ rpcClient: hcWithType(apiUrl) }));
+
   const commands = await loadCommands();
   for (const command of commands) {
     client.commands.set(command.data.name, command);
