@@ -255,10 +255,24 @@ async function resultEmbedFields(resultMatch: RiotMatch) {
 
 describe("match_tracking.ts", () => {
   let staticDataStub: { restore(): void } | undefined;
+  let opggDetailStub: { restore(): void } | undefined;
+  let rankSnapshotStubs: { restore(): void }[] = [];
 
   function restoreStaticDataStub() {
     staticDataStub?.restore();
     staticDataStub = undefined;
+  }
+
+  function restoreOpggDetailStub() {
+    opggDetailStub?.restore();
+    opggDetailStub = undefined;
+  }
+
+  function restoreRankSnapshotStubs() {
+    for (const rankSnapshotStub of rankSnapshotStubs) {
+      rankSnapshotStub.restore();
+    }
+    rankSnapshotStubs = [];
   }
 
   beforeEach(() => {
@@ -267,10 +281,38 @@ describe("match_tracking.ts", () => {
       "resolveRiotStaticData",
       () => Promise.resolve(resolvedRiotStaticData()),
     );
+    opggDetailStub = stub(
+      apiClient,
+      "resolveOpggMatchDetail",
+      () => Promise.resolve({ success: true as const, detail: null }),
+    );
+    rankSnapshotStubs = [
+      stub(
+        apiClient,
+        "getLeagueEntriesByPuuid",
+        () => Promise.resolve([]),
+      ),
+      stub(
+        apiClient,
+        "upsertPendingRankSnapshots",
+        () => Promise.resolve({ success: true as const }),
+      ),
+      stub(
+        apiClient,
+        "finalizeRankSnapshots",
+        () =>
+          Promise.resolve({
+            success: true as const,
+            snapshots: { before: [], after: [] },
+          }),
+      ),
+    ];
   });
 
   afterEach(() => {
     restoreStaticDataStub();
+    restoreOpggDetailStub();
+    restoreRankSnapshotStubs();
   });
 
   test("idleの監視対象が試合中になったとき、開始通知を送りIN_GAMEへ更新する", async () => {
@@ -355,6 +397,7 @@ describe("match_tracking.ts", () => {
       "getActiveGameByPuuid",
       () => Promise.resolve(activeGame()),
     );
+    restoreRankSnapshotStubs();
     using _leagueStub = stub(
       apiClient,
       "getLeagueEntriesByPuuid",
@@ -2210,6 +2253,7 @@ describe("match_tracking.ts", () => {
 
   test("BackendがOP.GG詳細なしを返すとき、OP.GG項目を省略して試合結果通知を継続する", async () => {
     // Arrange
+    restoreOpggDetailStub();
     const { client, editSpy } = clientWithSend();
     using _getWatchersStub = stub(
       apiClient,
@@ -2260,6 +2304,7 @@ describe("match_tracking.ts", () => {
 
   test("BackendがOP.GG詳細を解決したとき、試合結果Embedに詳細リンクと補助情報を表示する", async () => {
     // Arrange
+    restoreOpggDetailStub();
     const { client, editSpy } = clientWithSend();
     const resultMatch = match();
     using _getWatchersStub = stub(
@@ -2285,6 +2330,7 @@ describe("match_tracking.ts", () => {
       "getMatchById",
       () => Promise.resolve(resultMatch),
     );
+    restoreRankSnapshotStubs();
     using _leagueStub = stub(
       apiClient,
       "getLeagueEntriesByPuuid",
@@ -2416,6 +2462,7 @@ describe("match_tracking.ts", () => {
       "getMatchById",
       () => Promise.resolve(match()),
     );
+    restoreRankSnapshotStubs();
     using _leagueStub = stub(
       apiClient,
       "getLeagueEntriesByPuuid",
@@ -2510,6 +2557,7 @@ describe("match_tracking.ts", () => {
       "getMatchById",
       () => Promise.resolve(match()),
     );
+    restoreRankSnapshotStubs();
     using _leagueStub = stub(
       apiClient,
       "getLeagueEntriesByPuuid",

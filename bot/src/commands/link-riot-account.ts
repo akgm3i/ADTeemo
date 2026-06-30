@@ -11,15 +11,27 @@ export async function execute(interaction: CommandInteraction) {
 
   const result = await apiClient.getLoginUrl(discordId);
 
-  if (!result.success || !result.url) {
+  if (!result.success) {
     await interaction.reply({
       content: messageHandler.formatMessage(
         messageKeys.riotAccount.link.error.generic,
         {
-          error: result.error ||
-            messageHandler.formatMessage(
-              messageKeys.riotAccount.link.error.urlNotFound,
-            ),
+          error: result.error,
+        },
+      ),
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (!result.url) {
+    await interaction.reply({
+      content: messageHandler.formatMessage(
+        messageKeys.riotAccount.link.error.generic,
+        {
+          error: messageHandler.formatMessage(
+            messageKeys.riotAccount.link.error.urlNotFound,
+          ),
         },
       ),
       ephemeral: true,

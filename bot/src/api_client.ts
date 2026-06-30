@@ -7,7 +7,7 @@ import type {
   RiotPlatform,
   RiotRegion,
 } from "@adteemo/api/contract";
-import { type Client, hcWithType } from "@adteemo/api/contract";
+import type { Client } from "@adteemo/api/contract";
 import { z } from "zod";
 import {
   createParticipantSchema,
@@ -16,12 +16,16 @@ import {
   upsertPendingRankSnapshotsSchema,
 } from "@adteemo/api/contract";
 
-const API_URL = Deno.env.get("API_URL");
-if (!API_URL) {
-  throw new Error("API_URL environment variable must be set");
-}
+const COMMUNICATION_ERROR = "Failed to communicate with API";
 
-export const client: Client = hcWithType(API_URL);
+type ApiRpcClient = Client;
+type FailureResult = { success: false; error: string };
+type ApiResponse<T = unknown> = {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  json(): Promise<T>;
+};
 
 function dateOrNull(value: string | Date | null) {
   return value === null ? null : new Date(value);
@@ -82,224 +86,6 @@ function parseMatchWatcher(
     lastInGameNotifiedAt: dateOrNull(watcher.lastInGameNotifiedAt),
     pendingResultStartedAt: dateOrNull(watcher.pendingResultStartedAt),
   };
-}
-
-async function linkAccountByRiotId(
-  discordId: string,
-  gameName: string,
-  tagLine: string,
-  platform?: RiotPlatform,
-  region?: RiotRegion,
-) {
-  try {
-    const res = await client.users["link-by-riot-id"].$patch({
-      json: { discordId, gameName, tagLine, platform, region },
-    });
-
-    if (!res.ok) {
-      if (res.status === 404) {
-        const body = await res.json();
-        return { success: false as const, error: body.error };
-      }
-
-      throw new Error(`Unexpected response: ${res}`);
-    }
-
-    return { success: true as const };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return {
-      success: false as const,
-      error: "Failed to communicate with API",
-    };
-  }
-}
-
-async function getRiotAccount(discordId: string) {
-  try {
-    const res = await client.users[":userId"]["riot-account"].$get({
-      param: { userId: discordId },
-    });
-
-    if (!res.ok) {
-      if (res.status === 404) {
-        const body = await res.json();
-        return { success: false as const, error: body.error };
-      }
-      throw new Error(`Unexpected response: ${res}`);
-    }
-
-    const body = await res.json();
-    return { success: true as const, account: parseRiotAccount(body.account) };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return { success: false as const, error: "Failed to communicate with API" };
-  }
-}
-
-async function getActiveGameByPuuid(
-  platform: RiotPlatform,
-  puuid: string,
-) {
-  const res = await client.riot["active-games"][":platform"][":puuid"].$get({
-    param: { platform, puuid },
-  });
-  if (!res.ok) {
-    const body = await res.json();
-    throw new Error(body.error);
-  }
-  const body = await res.json();
-  return body.activeGame;
-}
-
-async function getMatchById(region: RiotRegion, matchId: string) {
-  const res = await client.riot.matches[":region"][":matchId"].$get({
-    param: { region, matchId },
-  });
-  if (!res.ok) {
-    const body = await res.json();
-    throw new Error(body.error);
-  }
-  const body = await res.json();
-  return body.match;
-}
-
-async function getLeagueEntriesByPuuid(
-  platform: RiotPlatform,
-  puuid: string,
-) {
-  const res = await client.riot["league-entries"][":platform"][":puuid"].$get({
-    param: { platform, puuid },
-  });
-  if (!res.ok) {
-    const body = await res.json();
-    throw new Error(body.error);
-  }
-  const body = await res.json();
-  return body.entries;
-}
-
-async function checkHealth() {
-  try {
-    const res = await client.health.$get();
-
-    if (!res.ok) {
-      throw new Error(`Unexpected response: ${res}`);
-    }
-
-    const body = await res.json();
-    return { success: true as const, message: body.message };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return {
-      success: false as const,
-      error: "Failed to communicate with API",
-    };
-  }
-}
-
-async function setMainRole(userId: string, guildId: string, role: Lane) {
-  try {
-    const res = await client.users[":userId"]["main-role"].$put({
-      param: { userId: userId },
-      json: { guildId, role },
-    });
-
-    if (!res.ok) {
-      throw new Error(`Unexpected response: ${res}`);
-    }
-
-    return { success: true as const };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return { success: false as const, error: "Failed to communicate with API" };
-  }
-}
-
-async function createCustomGameEvent(event: {
-  name: string;
-  guildId: string;
-  creatorId: string;
-  discordScheduledEventId: string;
-  recruitmentMessageId: string;
-  scheduledStartAt: Date;
-}) {
-  try {
-    const res = await client.events.$post({ json: event });
-
-    if (!res.ok) {
-      throw new Error(`Unexpected response: ${res}`);
-    }
-
-    return { success: true as const };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return { success: false as const, error: "Failed to communicate with API" };
-  }
-}
-
-async function getCustomGameEventsByCreatorId(creatorId: string) {
-  try {
-    const res = await client.events["by-creator"][":creatorId"].$get({
-      param: { creatorId },
-    });
-
-    if (!res.ok) {
-      throw new Error(`Unexpected response: ${res}`);
-    }
-
-    const body = await res.json();
-    return { success: true as const, events: body.events.map(parseEvent) };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return { success: false as const, error: "Failed to communicate with API" };
-  }
-}
-
-async function deleteCustomGameEvent(discordEventId: string) {
-  try {
-    const res = await client.events[":discordEventId"].$delete({
-      param: { discordEventId },
-    });
-
-    if (!res.ok) {
-      throw new Error(`Unexpected response: ${res}`);
-    }
-
-    return { success: true as const };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return { success: false as const, error: "Failed to communicate with API" };
-  }
-}
-
-async function getEventStartingTodayByCreatorId(creatorId: string) {
-  try {
-    const res = await client.events.today["by-creator"][":creatorId"].$get({
-      param: { creatorId },
-    });
-
-    if (!res.ok) {
-      if (res.status === 404) {
-        const body = await res.json();
-        return { success: false as const, error: body.error };
-      }
-
-      throw new Error(`Unexpected response: ${res}`);
-    }
-
-    const data = await res.json();
-    return {
-      success: true as const,
-      event: parseEvent(data.event),
-    };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return {
-      success: false as const,
-      error: "Failed to communicate with API",
-    };
-  }
 }
 
 export type MatchParticipant = z.infer<typeof createParticipantSchema>;
@@ -369,301 +155,558 @@ function parseRankSnapshot(
   };
 }
 
-async function createMatchParticipant(
-  matchId: string,
-  participant: MatchParticipant,
-) {
+async function readErrorMessage(res: ApiResponse): Promise<string> {
+  const body = await res.json() as { error?: string };
+  return body.error ?? COMMUNICATION_ERROR;
+}
+
+function logCommunicationError(error: unknown) {
+  console.error(COMMUNICATION_ERROR, error);
+}
+
+async function resultFromRequest<
+  T extends Record<string, unknown>,
+  F extends FailureResult = FailureResult,
+>(
+  request: () => Promise<ApiResponse>,
+  parseSuccess: (res: ApiResponse) => Promise<T> | T,
+  handleHttpError?: (
+    res: ApiResponse,
+  ) => Promise<F> | F,
+): Promise<({ success: true } & T) | F | FailureResult> {
   try {
-    const res = await client.matches[":matchId"].participants.$post({
-      param: { matchId },
-      json: participant,
-    });
+    const res = await request();
 
     if (!res.ok) {
-      if (res.status === 404) {
-        const body = await res.json();
-        console.error(`API Error: ${res.status} ${res.statusText}`, body);
-        return { success: false as const, error: body.error };
+      if (handleHttpError) {
+        return await handleHttpError(res);
       }
 
       throw new Error(`Unexpected response: ${res}`);
     }
 
-    const data = await res.json();
-    if (typeof data.id !== "number") {
-      console.error("API response missing participant id", data);
-      return {
-        success: false as const,
-        error: "API response missing participant id",
-      };
-    }
-
-    return { success: true as const, id: data.id };
+    return { success: true, ...await parseSuccess(res) };
   } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return { success: false as const, error: "Failed to communicate with API" };
+    logCommunicationError(error);
+    return { success: false, error: COMMUNICATION_ERROR };
   }
 }
 
-async function upsertPendingRankSnapshots(
-  payload: z.infer<typeof upsertPendingRankSnapshotsSchema>,
-) {
-  try {
-    const res = await client.matches["rank-snapshots"].pending.$post({
-      json: payload,
-    });
-
-    if (!res.ok) {
-      throw new Error(`Unexpected response: ${res}`);
-    }
-
-    return { success: true as const };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return { success: false as const, error: "Failed to communicate with API" };
-  }
+function successOnly() {
+  return {};
 }
 
-async function finalizeRankSnapshots(
-  matchId: string,
-  payload: z.infer<typeof finalizeRankSnapshotsSchema>,
-) {
-  try {
-    const res = await client.matches[":matchId"]["rank-snapshots"].finalize
-      .$post({
-        param: { matchId },
-        json: payload,
-      });
+export function createApiClient({ rpcClient }: { rpcClient: ApiRpcClient }) {
+  async function linkAccountByRiotId(
+    discordId: string,
+    gameName: string,
+    tagLine: string,
+    platform?: RiotPlatform,
+    region?: RiotRegion,
+  ) {
+    return await resultFromRequest(
+      () =>
+        rpcClient.users["link-by-riot-id"].$patch({
+          json: { discordId, gameName, tagLine, platform, region },
+        }),
+      successOnly,
+      async (res) => {
+        if (res.status === 404) {
+          return { success: false, error: await readErrorMessage(res) };
+        }
 
-    if (!res.ok) {
-      throw new Error(`Unexpected response: ${res}`);
-    }
-
-    const body = await res.json();
-    return {
-      success: true as const,
-      snapshots: {
-        before: body.snapshots.before.map(parseRankSnapshot),
-        after: body.snapshots.after.map(parseRankSnapshot),
+        throw new Error(`Unexpected response: ${res}`);
       },
-    };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return { success: false as const, error: "Failed to communicate with API" };
+    );
   }
-}
 
-async function resolveRiotStaticData(
-  payload: RiotStaticDataResolveInput,
-): Promise<RiotStaticDataResolveResult> {
-  try {
-    const res = await client.riot["static-data"].resolve.$post({
-      json: payload,
-    });
+  async function getRiotAccount(discordId: string) {
+    return await resultFromRequest(
+      () =>
+        rpcClient.users[":userId"]["riot-account"].$get({
+          param: { userId: discordId },
+        }),
+      async (res) => {
+        const body = await res.json() as {
+          account: Parameters<
+            typeof parseRiotAccount
+          >[0];
+        };
+        return { account: parseRiotAccount(body.account) };
+      },
+      async (res) => {
+        if (res.status === 404) {
+          return { success: false, error: await readErrorMessage(res) };
+        }
 
+        throw new Error(`Unexpected response: ${res}`);
+      },
+    );
+  }
+
+  async function getActiveGameByPuuid(
+    platform: RiotPlatform,
+    puuid: string,
+  ) {
+    const res = await rpcClient.riot["active-games"][":platform"][":puuid"]
+      .$get({
+        param: { platform, puuid },
+      });
     if (!res.ok) {
       const body = await res.json();
-      return { success: false, error: body.error };
+      throw new Error(body.error);
     }
-
-    const data = await res.json();
-    return { success: true, data };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return { success: false, error: "Failed to communicate with API" };
+    const body = await res.json();
+    return body.activeGame;
   }
-}
 
-async function resolveOpggMatchDetail(
-  matchId: string,
-  payload: ResolveOpggMatchDetailPayload,
-): Promise<ResolveOpggMatchDetailResult> {
-  try {
-    const res = await client.matches[":matchId"]["external-details"].opgg
-      .resolve.$post({
-        param: { matchId },
-        json: payload,
-      });
-
+  async function getMatchById(region: RiotRegion, matchId: string) {
+    const res = await rpcClient.riot.matches[":region"][":matchId"].$get({
+      param: { region, matchId },
+    });
     if (!res.ok) {
       const body = await res.json();
-      return { success: false, error: body.error };
+      throw new Error(body.error);
     }
-
     const body = await res.json();
-    return {
-      success: true,
-      detail: body.detail === null ? null : {
-        ...body.detail,
-        providerCreatedAt: new Date(body.detail.providerCreatedAt),
+    return body.match;
+  }
+
+  async function getLeagueEntriesByPuuid(
+    platform: RiotPlatform,
+    puuid: string,
+  ) {
+    const res = await rpcClient.riot["league-entries"][":platform"][":puuid"]
+      .$get({
+        param: { platform, puuid },
+      });
+    if (!res.ok) {
+      const body = await res.json();
+      throw new Error(body.error);
+    }
+    const body = await res.json();
+    return body.entries;
+  }
+
+  async function checkHealth() {
+    return await resultFromRequest(
+      () => rpcClient.health.$get(),
+      async (res) => {
+        const body = await res.json() as { message: string };
+        return { message: body.message };
       },
-    };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return { success: false, error: "Failed to communicate with API" };
+    );
   }
-}
 
-async function getLoginUrl(discordId: string) {
-  try {
-    const res = await client.auth.rso["login-url"].$get({
-      query: { discordId },
-    });
-
-    if (!res.ok) {
-      throw new Error(`Unexpected response: ${res}`);
-    }
-
-    const body = await res.json();
-    return { success: true as const, url: body.url };
-  } catch (e) {
-    console.error("Failed to communicate with API", e);
-    return { success: false as const, error: "Failed to communicate with API" };
+  async function setMainRole(userId: string, guildId: string, role: Lane) {
+    return await resultFromRequest(
+      () =>
+        rpcClient.users[":userId"]["main-role"].$put({
+          param: { userId },
+          json: { guildId, role },
+        }),
+      successOnly,
+    );
   }
-}
 
-async function watchMatch(watcher: {
-  guildId: string;
-  targetDiscordId: string;
-  requesterId: string;
-  channelId: string;
-}) {
-  try {
-    const res = await client["match-watchers"].$post({ json: watcher });
+  async function createCustomGameEvent(event: {
+    name: string;
+    guildId: string;
+    creatorId: string;
+    discordScheduledEventId: string;
+    recruitmentMessageId: string;
+    scheduledStartAt: Date;
+  }) {
+    return await resultFromRequest(
+      () => rpcClient.events.$post({ json: event }),
+      successOnly,
+    );
+  }
 
-    if (!res.ok) {
-      if (res.status === 404 || res.status === 409) {
-        const body = await res.json();
+  async function getCustomGameEventsByCreatorId(creatorId: string) {
+    return await resultFromRequest(
+      () =>
+        rpcClient.events["by-creator"][":creatorId"].$get({
+          param: { creatorId },
+        }),
+      async (res) => {
+        const body = await res.json() as {
+          events: Parameters<typeof parseEvent>[0][];
+        };
+        return { events: body.events.map(parseEvent) };
+      },
+    );
+  }
+
+  async function deleteCustomGameEvent(discordEventId: string) {
+    return await resultFromRequest(
+      () =>
+        rpcClient.events[":discordEventId"].$delete({
+          param: { discordEventId },
+        }),
+      successOnly,
+    );
+  }
+
+  async function getEventStartingTodayByCreatorId(creatorId: string) {
+    return await resultFromRequest(
+      () =>
+        rpcClient.events.today["by-creator"][":creatorId"].$get({
+          param: { creatorId },
+        }),
+      async (res) => {
+        const data = await res.json() as {
+          event: Parameters<
+            typeof parseEvent
+          >[0];
+        };
+        return { event: parseEvent(data.event) };
+      },
+      async (res) => {
+        if (res.status === 404) {
+          return { success: false, error: await readErrorMessage(res) };
+        }
+
+        throw new Error(`Unexpected response: ${res}`);
+      },
+    );
+  }
+
+  async function createMatchParticipant(
+    matchId: string,
+    participant: MatchParticipant,
+  ) {
+    try {
+      const res = await rpcClient.matches[":matchId"].participants.$post({
+        param: { matchId },
+        json: participant,
+      });
+
+      if (!res.ok) {
+        if (res.status === 404) {
+          return { success: false, error: await readErrorMessage(res) };
+        }
+
+        throw new Error(`Unexpected response: ${res}`);
+      }
+
+      const data = await res.json() as { id?: unknown };
+      if (typeof data.id !== "number") {
+        console.error("API response missing participant id", data);
         return {
-          success: false as const,
-          error: body.error,
-          status: res.status,
+          success: false,
+          error: "API response missing participant id",
         };
       }
-      throw new Error(`Unexpected response: ${res}`);
-    }
 
-    return { success: true as const };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return { success: false as const, error: "Failed to communicate with API" };
+      return { success: true, id: data.id };
+    } catch (error) {
+      logCommunicationError(error);
+      return { success: false, error: COMMUNICATION_ERROR };
+    }
   }
+
+  async function upsertPendingRankSnapshots(
+    payload: z.infer<typeof upsertPendingRankSnapshotsSchema>,
+  ) {
+    return await resultFromRequest(
+      () =>
+        rpcClient.matches["rank-snapshots"].pending.$post({
+          json: payload,
+        }),
+      successOnly,
+    );
+  }
+
+  async function finalizeRankSnapshots(
+    matchId: string,
+    payload: z.infer<typeof finalizeRankSnapshotsSchema>,
+  ) {
+    return await resultFromRequest(
+      () =>
+        rpcClient.matches[":matchId"]["rank-snapshots"].finalize.$post({
+          param: { matchId },
+          json: payload,
+        }),
+      async (res) => {
+        const body = await res.json() as {
+          snapshots: {
+            before: Parameters<typeof parseRankSnapshot>[0][];
+            after: Parameters<typeof parseRankSnapshot>[0][];
+          };
+        };
+        return {
+          snapshots: {
+            before: body.snapshots.before.map(parseRankSnapshot),
+            after: body.snapshots.after.map(parseRankSnapshot),
+          },
+        };
+      },
+    );
+  }
+
+  async function resolveRiotStaticData(
+    payload: RiotStaticDataResolveInput,
+  ): Promise<RiotStaticDataResolveResult> {
+    return await resultFromRequest(
+      () =>
+        rpcClient.riot["static-data"].resolve.$post({
+          json: payload,
+        }),
+      async (res) => {
+        const data = await res.json() as RiotStaticDataResolveData;
+        return { data };
+      },
+      async (res) => ({
+        success: false,
+        error: await readErrorMessage(res),
+      }),
+    );
+  }
+
+  async function resolveOpggMatchDetail(
+    matchId: string,
+    payload: ResolveOpggMatchDetailPayload,
+  ): Promise<ResolveOpggMatchDetailResult> {
+    return await resultFromRequest(
+      () =>
+        rpcClient.matches[":matchId"]["external-details"].opgg.resolve.$post({
+          param: { matchId },
+          json: payload,
+        }),
+      async (res) => {
+        const body = await res.json() as {
+          detail:
+            | (Omit<OpggMatchDetail, "providerCreatedAt"> & {
+              providerCreatedAt: string | Date;
+            })
+            | null;
+        };
+        return {
+          detail: body.detail === null ? null : {
+            ...body.detail,
+            providerCreatedAt: new Date(body.detail.providerCreatedAt),
+          },
+        };
+      },
+      async (res) => ({
+        success: false,
+        error: await readErrorMessage(res),
+      }),
+    );
+  }
+
+  async function getLoginUrl(discordId: string) {
+    return await resultFromRequest(
+      () =>
+        rpcClient.auth.rso["login-url"].$get({
+          query: { discordId },
+        }),
+      async (res) => {
+        const body = await res.json() as { url: string };
+        return { url: body.url };
+      },
+    );
+  }
+
+  async function watchMatch(watcher: {
+    guildId: string;
+    targetDiscordId: string;
+    requesterId: string;
+    channelId: string;
+  }) {
+    return await resultFromRequest(
+      () => rpcClient["match-watchers"].$post({ json: watcher }),
+      successOnly,
+      async (res) => {
+        if (res.status === 404 || res.status === 409) {
+          return {
+            success: false,
+            error: await readErrorMessage(res),
+            status: res.status,
+          };
+        }
+
+        throw new Error(`Unexpected response: ${res}`);
+      },
+    );
+  }
+
+  async function unwatchMatch(guildId: string, targetDiscordId: string) {
+    return await resultFromRequest(
+      () =>
+        rpcClient["match-watchers"][":guildId"][":targetDiscordId"].$delete({
+          param: { guildId, targetDiscordId },
+        }),
+      successOnly,
+    );
+  }
+
+  async function getEnabledMatchWatchers() {
+    return await resultFromRequest(
+      () => rpcClient["match-watchers"].enabled.$get(),
+      async (res) => {
+        const body = await res.json() as {
+          watchers: Parameters<typeof parseMatchWatcher>[0][];
+        };
+        return {
+          watchers: body.watchers.map(parseMatchWatcher),
+        };
+      },
+    );
+  }
+
+  async function getEnabledMatchWatchersByGuild(guildId: string) {
+    return await resultFromRequest(
+      () =>
+        rpcClient["match-watchers"].enabled[":guildId"].$get({
+          param: { guildId },
+        }),
+      async (res) => {
+        const body = await res.json() as {
+          watchers: Parameters<typeof parseMatchWatcher>[0][];
+        };
+        return {
+          watchers: body.watchers.map(parseMatchWatcher),
+        };
+      },
+    );
+  }
+
+  async function updateMatchWatcherState(
+    guildId: string,
+    targetDiscordId: string,
+    state: {
+      lastState: MatchWatcherState;
+      currentGameId?: string | null;
+      currentMatchId?: string | null;
+      currentNotificationMessageId?: string | null;
+      pendingResultMatchId?: string | null;
+      pendingResultNotificationMessageId?: string | null;
+      pendingResultStartedAt?: Date | null;
+      gameStartedAt?: Date | null;
+      lastCheckedAt?: Date | null;
+      lastInGameNotifiedAt?: Date | null;
+    },
+  ) {
+    return await resultFromRequest(
+      () =>
+        rpcClient["match-watchers"][":guildId"][":targetDiscordId"].state
+          .$patch({
+            param: { guildId, targetDiscordId },
+            json: state,
+          }),
+      successOnly,
+    );
+  }
+
+  return {
+    linkAccountByRiotId,
+    getRiotAccount,
+    getActiveGameByPuuid,
+    getMatchById,
+    getLeagueEntriesByPuuid,
+    checkHealth,
+    setMainRole,
+    createCustomGameEvent,
+    getCustomGameEventsByCreatorId,
+    deleteCustomGameEvent,
+    getEventStartingTodayByCreatorId,
+    createMatchParticipant,
+    upsertPendingRankSnapshots,
+    finalizeRankSnapshots,
+    resolveRiotStaticData,
+    resolveOpggMatchDetail,
+    getLoginUrl,
+    watchMatch,
+    unwatchMatch,
+    getEnabledMatchWatchers,
+    getEnabledMatchWatchersByGuild,
+    updateMatchWatcherState,
+  };
 }
 
-async function unwatchMatch(guildId: string, targetDiscordId: string) {
-  try {
-    const res = await client["match-watchers"][":guildId"][
-      ":targetDiscordId"
-    ].$delete({
-      param: { guildId, targetDiscordId },
-    });
+export type ApiClient = ReturnType<typeof createApiClient>;
 
-    if (!res.ok) {
-      throw new Error(`Unexpected response: ${res}`);
-    }
+let configuredApiClient: ApiClient | null = null;
 
-    return { success: true as const };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return { success: false as const, error: "Failed to communicate with API" };
-  }
+export function configureApiClient(apiClientInstance: ApiClient) {
+  configuredApiClient = apiClientInstance;
 }
 
-async function getEnabledMatchWatchers() {
-  try {
-    const res = await client["match-watchers"].enabled.$get();
-
-    if (!res.ok) {
-      throw new Error(`Unexpected response: ${res}`);
-    }
-
-    const body = await res.json();
-    return {
-      success: true as const,
-      watchers: body.watchers.map(parseMatchWatcher),
-    };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return { success: false as const, error: "Failed to communicate with API" };
+function getConfiguredApiClient(): ApiClient {
+  if (configuredApiClient === null) {
+    throw new Error("apiClient is not configured");
   }
+
+  return configuredApiClient;
 }
 
-async function getEnabledMatchWatchersByGuild(guildId: string) {
-  try {
-    const res = await client["match-watchers"].enabled[":guildId"].$get({
-      param: { guildId },
-    });
-
-    if (!res.ok) {
-      throw new Error(`Unexpected response: ${res}`);
-    }
-
-    const body = await res.json();
-    return {
-      success: true as const,
-      watchers: body.watchers.map(parseMatchWatcher),
-    };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return { success: false as const, error: "Failed to communicate with API" };
-  }
-}
-
-async function updateMatchWatcherState(
-  guildId: string,
-  targetDiscordId: string,
-  state: {
-    lastState: MatchWatcherState;
-    currentGameId?: string | null;
-    currentMatchId?: string | null;
-    currentNotificationMessageId?: string | null;
-    pendingResultMatchId?: string | null;
-    pendingResultNotificationMessageId?: string | null;
-    pendingResultStartedAt?: Date | null;
-    gameStartedAt?: Date | null;
-    lastCheckedAt?: Date | null;
-    lastInGameNotifiedAt?: Date | null;
+export const apiClient: ApiClient = {
+  linkAccountByRiotId(...args) {
+    return getConfiguredApiClient().linkAccountByRiotId(...args);
   },
-) {
-  try {
-    const res = await client["match-watchers"][":guildId"][":targetDiscordId"]
-      .state.$patch({
-        param: { guildId, targetDiscordId },
-        json: state,
-      });
-
-    if (!res.ok) {
-      throw new Error(`Unexpected response: ${res}`);
-    }
-
-    return { success: true as const };
-  } catch (error) {
-    console.error("Failed to communicate with API", error);
-    return { success: false as const, error: "Failed to communicate with API" };
-  }
-}
-
-export const apiClient = {
-  linkAccountByRiotId,
-  getRiotAccount,
-  getActiveGameByPuuid,
-  getMatchById,
-  getLeagueEntriesByPuuid,
-  checkHealth,
-  setMainRole,
-  createCustomGameEvent,
-  getCustomGameEventsByCreatorId,
-  deleteCustomGameEvent,
-  getEventStartingTodayByCreatorId,
-  createMatchParticipant,
-  upsertPendingRankSnapshots,
-  finalizeRankSnapshots,
-  resolveRiotStaticData,
-  resolveOpggMatchDetail,
-  getLoginUrl,
-  watchMatch,
-  unwatchMatch,
-  getEnabledMatchWatchers,
-  getEnabledMatchWatchersByGuild,
-  updateMatchWatcherState,
+  getRiotAccount(...args) {
+    return getConfiguredApiClient().getRiotAccount(...args);
+  },
+  getActiveGameByPuuid(...args) {
+    return getConfiguredApiClient().getActiveGameByPuuid(...args);
+  },
+  getMatchById(...args) {
+    return getConfiguredApiClient().getMatchById(...args);
+  },
+  getLeagueEntriesByPuuid(...args) {
+    return getConfiguredApiClient().getLeagueEntriesByPuuid(...args);
+  },
+  checkHealth(...args) {
+    return getConfiguredApiClient().checkHealth(...args);
+  },
+  setMainRole(...args) {
+    return getConfiguredApiClient().setMainRole(...args);
+  },
+  createCustomGameEvent(...args) {
+    return getConfiguredApiClient().createCustomGameEvent(...args);
+  },
+  getCustomGameEventsByCreatorId(...args) {
+    return getConfiguredApiClient().getCustomGameEventsByCreatorId(...args);
+  },
+  deleteCustomGameEvent(...args) {
+    return getConfiguredApiClient().deleteCustomGameEvent(...args);
+  },
+  getEventStartingTodayByCreatorId(...args) {
+    return getConfiguredApiClient().getEventStartingTodayByCreatorId(...args);
+  },
+  createMatchParticipant(...args) {
+    return getConfiguredApiClient().createMatchParticipant(...args);
+  },
+  upsertPendingRankSnapshots(...args) {
+    return getConfiguredApiClient().upsertPendingRankSnapshots(...args);
+  },
+  finalizeRankSnapshots(...args) {
+    return getConfiguredApiClient().finalizeRankSnapshots(...args);
+  },
+  resolveRiotStaticData(...args) {
+    return getConfiguredApiClient().resolveRiotStaticData(...args);
+  },
+  resolveOpggMatchDetail(...args) {
+    return getConfiguredApiClient().resolveOpggMatchDetail(...args);
+  },
+  getLoginUrl(...args) {
+    return getConfiguredApiClient().getLoginUrl(...args);
+  },
+  watchMatch(...args) {
+    return getConfiguredApiClient().watchMatch(...args);
+  },
+  unwatchMatch(...args) {
+    return getConfiguredApiClient().unwatchMatch(...args);
+  },
+  getEnabledMatchWatchers(...args) {
+    return getConfiguredApiClient().getEnabledMatchWatchers(...args);
+  },
+  getEnabledMatchWatchersByGuild(...args) {
+    return getConfiguredApiClient().getEnabledMatchWatchersByGuild(...args);
+  },
+  updateMatchWatcherState(...args) {
+    return getConfiguredApiClient().updateMatchWatcherState(...args);
+  },
 };
