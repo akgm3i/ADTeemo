@@ -11,8 +11,8 @@ export type ApiResponse<T = unknown> = {
   json(): Promise<T>;
 };
 
-export function dateOrNull(value: string | Date | null) {
-  return value === null ? null : new Date(value);
+export function dateOrNull(value: string | Date | null | undefined) {
+  return value == null ? null : new Date(value);
 }
 
 export async function readErrorMessage(res: ApiResponse): Promise<string> {

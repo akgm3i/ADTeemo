@@ -1,5 +1,12 @@
-import type { RiotPlatform, RiotRegion } from "@adteemo/api/contract";
+import type {
+  ActiveGame,
+  LeagueEntry,
+  RiotMatch,
+  RiotPlatform,
+  RiotRegion,
+} from "@adteemo/api/contract";
 import {
+  type ApiResponse,
   type ApiRpcClient,
   readErrorMessage,
   resultFromRequest,
@@ -25,6 +32,19 @@ export type RiotStaticDataResolveResult =
   | { success: true; data: RiotStaticDataResolveData }
   | { success: false; error: string };
 
+async function readRiotApiErrorMessage(res: ApiResponse): Promise<string> {
+  try {
+    const body = await res.json() as { error?: string } | null;
+    return body?.error ?? "Unknown error";
+  } catch {
+    return `HTTP ${res.status} ${res.statusText}`;
+  }
+}
+
+async function throwRiotApiError(res: ApiResponse): Promise<never> {
+  throw new Error(await readRiotApiErrorMessage(res));
+}
+
 export function createRiotApiClient(
   { rpcClient }: { rpcClient: ApiRpcClient },
 ) {
@@ -37,11 +57,10 @@ export function createRiotApiClient(
         param: { platform, puuid },
       });
     if (!res.ok) {
-      const body = await res.json();
-      throw new Error(body.error);
+      await throwRiotApiError(res);
     }
-    const body = await res.json();
-    return body.activeGame;
+    const body = await res.json() as { activeGame?: ActiveGame | null } | null;
+    return body?.activeGame ?? null;
   }
 
   async function getMatchById(region: RiotRegion, matchId: string) {
@@ -49,11 +68,10 @@ export function createRiotApiClient(
       param: { region, matchId },
     });
     if (!res.ok) {
-      const body = await res.json();
-      throw new Error(body.error);
+      await throwRiotApiError(res);
     }
-    const body = await res.json();
-    return body.match;
+    const body = await res.json() as { match?: RiotMatch | null } | null;
+    return body?.match ?? null;
   }
 
   async function getLeagueEntriesByPuuid(
@@ -65,11 +83,10 @@ export function createRiotApiClient(
         param: { platform, puuid },
       });
     if (!res.ok) {
-      const body = await res.json();
-      throw new Error(body.error);
+      await throwRiotApiError(res);
     }
-    const body = await res.json();
-    return body.entries;
+    const body = await res.json() as { entries?: LeagueEntry[] } | null;
+    return body?.entries ?? [];
   }
 
   async function resolveRiotStaticData(

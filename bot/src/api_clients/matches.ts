@@ -85,8 +85,8 @@ export function createMatchesApiClient(
         throw unexpectedResponseError(res);
       }
 
-      const data = await res.json() as { id?: unknown };
-      if (typeof data.id !== "number") {
+      const data = await res.json() as { id?: unknown } | null;
+      if (typeof data?.id !== "number") {
         console.error("API response missing participant id", data);
         return {
           success: false,
