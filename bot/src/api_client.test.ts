@@ -70,6 +70,106 @@ describe("apiClient", () => {
     });
   });
 
+  describe("getCustomGameEventsByCreatorId", () => {
+    test("APIがイベント一覧の日付フィールドを文字列で返すとき、イベント一覧を取得するとDateへ変換して返す", async () => {
+      // Arrange
+      const event = {
+        id: 1,
+        name: "週末カスタム",
+        guildId: "guild-1",
+        creatorId: "creator-1",
+        discordScheduledEventId: "discord-event-1",
+        recruitmentMessageId: "message-1",
+        scheduledStartAt: "2026-07-04T12:00:00.000Z",
+        createdAt: "2026-07-01T00:00:00.000Z",
+      };
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () =>
+          Promise.resolve(
+            new Response(JSON.stringify({ events: [event] }), {
+              status: 200,
+            }),
+          ),
+      );
+
+      // Act
+      const result = await apiClient.getCustomGameEventsByCreatorId(
+        "creator-1",
+      );
+
+      // Assert
+      assertEquals(result.success, true);
+      if (!result.success) return;
+      assertEquals(
+        result.events[0].scheduledStartAt,
+        new Date(
+          "2026-07-04T12:00:00.000Z",
+        ),
+      );
+      assertEquals(
+        result.events[0].createdAt,
+        new Date("2026-07-01T00:00:00.000Z"),
+      );
+      assertSpyCalls(fetchStub, 1);
+      assertEquals(
+        fetchStub.calls[0].args[0],
+        `${Deno.env.get("API_URL")}/events/by-creator/creator-1`,
+      );
+    });
+  });
+
+  describe("getEventStartingTodayByCreatorId", () => {
+    test("APIが今日開始イベントの日付フィールドを文字列で返すとき、イベントを取得するとDateへ変換して返す", async () => {
+      // Arrange
+      const event = {
+        id: 2,
+        name: "今日のカスタム",
+        guildId: "guild-1",
+        creatorId: "creator-1",
+        discordScheduledEventId: "discord-event-2",
+        recruitmentMessageId: "message-2",
+        scheduledStartAt: "2026-07-05T11:00:00.000Z",
+        createdAt: "2026-07-01T01:00:00.000Z",
+      };
+      using fetchStub = stub(
+        globalThis,
+        "fetch",
+        () =>
+          Promise.resolve(
+            new Response(JSON.stringify({ event }), {
+              status: 200,
+            }),
+          ),
+      );
+
+      // Act
+      const result = await apiClient.getEventStartingTodayByCreatorId(
+        "creator-1",
+      );
+
+      // Assert
+      assertEquals(result.success, true);
+      if (!result.success) return;
+      assertEquals(
+        result.event.scheduledStartAt,
+        new Date(
+          "2026-07-05T11:00:00.000Z",
+        ),
+      );
+      assertEquals(
+        result.event.createdAt,
+        new Date("2026-07-01T01:00:00.000Z"),
+      );
+      assertSpyCalls(fetchStub, 1);
+      assertEquals(
+        fetchStub.calls[0].args[0],
+        `${Deno.env.get("API_URL")}/events/today/by-creator/creator-1`,
+      );
+    });
+  });
+
   describe("getEnabledMatchWatchers", () => {
     test("監視設定の日付フィールドをDateまたはnullへ変換する", async () => {
       using fetchStub = stub(

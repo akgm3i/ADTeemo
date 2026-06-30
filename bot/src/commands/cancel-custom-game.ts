@@ -7,7 +7,6 @@ import {
   StringSelectMenuBuilder,
 } from "discord.js";
 import { apiClient } from "../api_client.ts";
-import { CustomGameEvent } from "../types.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 
 export const data = new SlashCommandBuilder()
@@ -43,8 +42,8 @@ export async function execute(interaction: CommandInteraction) {
   }
 
   const discordEvents = await interaction.guild.scheduledEvents.fetch();
-  const activeEvents = (dbEventsResult.events as CustomGameEvent[]).filter(
-    (dbEvent: CustomGameEvent) => {
+  const activeEvents = dbEventsResult.events.filter(
+    (dbEvent) => {
       const discordEvent = discordEvents.get(dbEvent.discordScheduledEventId);
       return discordEvent &&
         discordEvent.status !== GuildScheduledEventStatus.Completed &&
@@ -61,7 +60,7 @@ export async function execute(interaction: CommandInteraction) {
     return;
   }
 
-  const options = activeEvents.map((event: CustomGameEvent) => ({
+  const options = activeEvents.map((event) => ({
     label: event.name,
     value: `${event.discordScheduledEventId}:${event.recruitmentMessageId}`,
   }));
