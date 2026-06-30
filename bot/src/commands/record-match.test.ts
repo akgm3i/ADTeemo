@@ -9,7 +9,7 @@ import { apiClient, type MatchParticipant } from "../api_client.ts";
 import { data, execute } from "./record-match.ts";
 import { MockInteractionBuilder } from "../test_utils.ts";
 import { assertEquals } from "@std/assert";
-import type { Lane } from "@adteemo/api/schema";
+import type { Lane } from "@adteemo/api/contract";
 import { matchTracker } from "../features/match_tracking.ts";
 import { statCollector } from "../features/stat_collector.ts";
 

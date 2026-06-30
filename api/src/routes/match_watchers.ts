@@ -1,29 +1,11 @@
 import { Hono } from "@hono/hono";
 import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
-import { matchWatcherStates } from "../db/schema.ts";
+import {
+  createMatchWatcherSchema,
+  updateMatchWatcherStateSchema,
+} from "../contract/schemas.ts";
 import { MatchWatcherLimitError, RecordNotFoundError } from "../errors.ts";
 import type { AppDependencies } from "../dependencies.ts";
-
-const createMatchWatcherSchema = z.object({
-  guildId: z.string(),
-  targetDiscordId: z.string(),
-  requesterId: z.string(),
-  channelId: z.string(),
-});
-
-const updateMatchWatcherStateSchema = z.object({
-  lastState: z.enum(matchWatcherStates),
-  currentGameId: z.string().nullable().optional(),
-  currentMatchId: z.string().nullable().optional(),
-  currentNotificationMessageId: z.string().nullable().optional(),
-  pendingResultMatchId: z.string().nullable().optional(),
-  pendingResultNotificationMessageId: z.string().nullable().optional(),
-  pendingResultStartedAt: z.coerce.date().nullable().optional(),
-  gameStartedAt: z.coerce.date().nullable().optional(),
-  lastCheckedAt: z.coerce.date().nullable().optional(),
-  lastInGameNotifiedAt: z.coerce.date().nullable().optional(),
-});
 
 type MatchWatchersDbActions = Pick<
   AppDependencies["dbActions"],

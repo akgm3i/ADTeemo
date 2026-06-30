@@ -1,19 +1,20 @@
-import type { Lane } from "@adteemo/api/schema";
+import type { Lane } from "@adteemo/api/contract";
 import type {
+  Event,
   MatchWatcher,
   MatchWatcherState,
   RiotAccount,
   RiotPlatform,
   RiotRegion,
-} from "@adteemo/api/schema";
-import { type Client, hcWithType } from "@adteemo/api/hc";
+} from "@adteemo/api/contract";
+import { type Client, hcWithType } from "@adteemo/api/contract";
 import { z } from "zod";
 import {
   createParticipantSchema,
   finalizeRankSnapshotsSchema,
   resolveOpggMatchDetailSchema,
   upsertPendingRankSnapshotsSchema,
-} from "@adteemo/api/validators";
+} from "@adteemo/api/contract";
 
 const API_URL = Deno.env.get("API_URL");
 if (!API_URL) {
@@ -36,6 +37,19 @@ function parseRiotAccount(
     ...account,
     createdAt: new Date(account.createdAt),
     updatedAt: dateOrNull(account.updatedAt),
+  };
+}
+
+function parseEvent(
+  event: {
+    scheduledStartAt: string | Date;
+    createdAt: string | Date;
+  } & Omit<Event, "scheduledStartAt" | "createdAt">,
+): Event {
+  return {
+    ...event,
+    scheduledStartAt: new Date(event.scheduledStartAt),
+    createdAt: new Date(event.createdAt),
   };
 }
 
@@ -235,7 +249,7 @@ async function getCustomGameEventsByCreatorId(creatorId: string) {
     }
 
     const body = await res.json();
-    return { success: true as const, events: body.events };
+    return { success: true as const, events: body.events.map(parseEvent) };
   } catch (error) {
     console.error("Failed to communicate with API", error);
     return { success: false as const, error: "Failed to communicate with API" };
@@ -277,7 +291,7 @@ async function getEventStartingTodayByCreatorId(creatorId: string) {
     const data = await res.json();
     return {
       success: true as const,
-      event: data.event,
+      event: parseEvent(data.event),
     };
   } catch (error) {
     console.error("Failed to communicate with API", error);

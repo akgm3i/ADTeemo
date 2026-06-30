@@ -2,7 +2,7 @@ import { assertEquals, assertStringIncludes } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import type { Client } from "discord.js";
-import type { MatchWatcher, RiotAccount } from "@adteemo/api/schema";
+import type { MatchWatcher, RiotAccount } from "@adteemo/api/contract";
 import { apiClient } from "../api_client.ts";
 import { botLogger } from "../logger.ts";
 import { messageHandler, messageKeys } from "../messages.ts";

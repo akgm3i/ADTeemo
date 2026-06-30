@@ -6,7 +6,7 @@ import {
   InteractionEditReplyOptions,
   Message,
 } from "discord.js";
-import { type MatchWatcher } from "@adteemo/api/schema";
+import { type MatchWatcher } from "@adteemo/api/contract";
 import { apiClient } from "../api_client.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import { MockInteractionBuilder } from "../test_utils.ts";

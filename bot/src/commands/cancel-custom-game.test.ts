@@ -26,7 +26,7 @@ describe("Command: cancel-custom-game", () => {
     });
   });
 
-  const FIXED_DATE = "2025-09-28T00:00:00.000Z";
+  const FIXED_DATE = new Date("2025-09-28T00:00:00.000Z");
 
   test("アクティブなイベントが存在する場合、イベント選択用のセレクトメニューを表示する", async () => {
     // Arrange

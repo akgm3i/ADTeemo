@@ -3,7 +3,7 @@ import {
   MessageFlags,
   SlashCommandBuilder,
 } from "discord.js";
-import { type Lane, lanes } from "@adteemo/api/schema";
+import { type Lane, lanes } from "@adteemo/api/contract";
 import { ROLE_DISPLAY_NAMES } from "../constants.ts";
 import { apiClient } from "../api_client.ts";
 import { messageHandler, messageKeys } from "../messages.ts";

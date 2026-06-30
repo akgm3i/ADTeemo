@@ -12,8 +12,8 @@ export interface CustomGameEvent {
   creatorId: string;
   discordScheduledEventId: string;
   recruitmentMessageId: string;
-  createdAt: string;
-  scheduledStartAt: string;
+  createdAt: Date;
+  scheduledStartAt: Date;
 }
 
 export type Result = { success: true; error: null } | {

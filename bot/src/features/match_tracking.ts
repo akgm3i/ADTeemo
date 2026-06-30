@@ -1,5 +1,5 @@
 import { type Client, EmbedBuilder } from "discord.js";
-import type { Lane, MatchWatcher, RiotAccount } from "@adteemo/api/schema";
+import type { Lane, MatchWatcher, RiotAccount } from "@adteemo/api/contract";
 import {
   apiClient,
   type FinalizedRankSnapshot,

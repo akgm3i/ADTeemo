@@ -1,15 +1,7 @@
 import { Hono } from "@hono/hono";
 import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
+import { riotStaticDataResolveSchema } from "../contract/schemas.ts";
 import type { AppDependencies } from "../dependencies.ts";
-
-const riotStaticDataResolveSchema = z.object({
-  locale: z.string().trim().min(1).max(32).optional(),
-  championIds: z.array(z.number().int().nonnegative()).max(20).default([]),
-  queueIds: z.array(z.number().int().nonnegative()).max(10).default([]),
-  mapIds: z.array(z.number().int().nonnegative()).max(10).default([]),
-  gameModes: z.array(z.string().trim().min(1).max(64)).max(10).default([]),
-});
 
 function errorMessage(error: unknown) {
   return error instanceof Error

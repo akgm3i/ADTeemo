@@ -2,9 +2,10 @@
   "name": "@adteemo/api",
   "exports": {
     ".": "./src/app.ts",
-    "./hc": "./src/hc.ts",
-    "./schema": "./src/db/schema.ts",
-    "./validators": "./src/validators.ts"
+    "./contract": "./src/contract/mod.ts",
+    "./hc": "./src/contract/hc.ts",
+    "./schema": "./src/contract/mod.ts",
+    "./validators": "./src/contract/schemas.ts"
   },
   "tasks": {
     "dev": "DATABASE_URL=file:../data/sqlite.db deno serve -A --watch --env=../.env.dev src/app.ts",

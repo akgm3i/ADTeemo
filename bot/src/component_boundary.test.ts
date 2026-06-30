@@ -19,6 +19,23 @@ async function runtimeTypeScriptFiles(directory: URL): Promise<URL[]> {
   return files;
 }
 
+const forbiddenBackendRuntimeImportPatterns = [
+  /from\s+["']@adteemo\/api["']/,
+  /from\s+["']@adteemo\/api\/hc["']/,
+  /from\s+["']@adteemo\/api\/schema["']/,
+  /from\s+["']@adteemo\/api\/validators["']/,
+  /from\s+["']@adteemo\/api\/riot-static-data["']/,
+  /from\s+["'][^"']*\/api\/src\//,
+  /from\s+["'][^"']*\/db\/actions(?:\.ts)?["']/,
+  /from\s+["'][^"']*\/db\/default_actions(?:\.ts)?["']/,
+  /from\s+["'][^"']*\/db\/default_connection(?:\.ts)?["']/,
+  /from\s+["'][^"']*\/db\/index(?:\.ts)?["']/,
+  /from\s+["'][^"']*\/db\/repositories\//,
+  /from\s+["'][^"']*\/db\/schema(?:\.ts)?["']/,
+  /from\s+["']@libsql\/client["']/,
+  /from\s+["']drizzle-orm\/sqlite-core["']/,
+];
+
 test("Bot実行環境がBackend内部実装とDB設定に依存しない", async () => {
   // Arrange
   const violations: string[] = [];
@@ -26,14 +43,13 @@ test("Bot実行環境がBackend内部実装とDB設定に依存しない", async
   for (const file of await runtimeTypeScriptFiles(sourceDirectory)) {
     const source = await Deno.readTextFile(file);
     if (
-      [
-        "@adteemo/api/riot-static-data",
-        "/db/actions",
-        "/db/index",
-        "@libsql/client",
-      ].some((forbiddenImport) => source.includes(forbiddenImport))
+      forbiddenBackendRuntimeImportPatterns.some((forbiddenImport) =>
+        forbiddenImport.test(source)
+      )
     ) {
-      violations.push(`Backend内部実装をimportしている: ${file.pathname}`);
+      violations.push(
+        `Backend内部実装またはDB schemaをimportしている: ${file.pathname}`,
+      );
     }
     if (source.includes("./opgg.ts") || source.includes("https://op.gg")) {
       violations.push(`OP.GGへ直接依存している: ${file.pathname}`);

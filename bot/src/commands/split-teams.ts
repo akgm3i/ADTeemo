@@ -17,7 +17,7 @@ import {
   TEAM_A_VC_NAME,
   TEAM_B_VC_NAME,
 } from "../constants.ts";
-import { type Event, type Lane, lanes } from "@adteemo/api/schema";
+import { type Event, type Lane, lanes } from "@adteemo/api/contract";
 
 export const data = new SlashCommandBuilder()
   .setName("split-teams")

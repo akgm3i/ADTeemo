@@ -1,16 +1,16 @@
 import * as path from "@std/path";
 import { isRuntimeCommandFile } from "./src/common/runtime_command_files.ts";
 
-type Dependency = {
+export type Dependency = {
   code?: { specifier: string };
 };
 
-type Module = {
+export type Module = {
   specifier: string;
   dependencies?: Dependency[];
 };
 
-type ModuleGraph = {
+export type ModuleGraph = {
   roots: string[];
   modules: Module[];
 };
@@ -24,12 +24,18 @@ const defaultCommandsDirectory = new URL("./src/commands/", import.meta.url);
 const forbiddenModulePatterns = [
   /\/api\/src\/app\.ts$/,
   /\/api\/src\/routes\//,
-  /\/api\/src\/db\/(actions|index)\.ts$/,
+  /\/api\/src\/db\/(actions|default_actions|default_connection|index|schema)\.ts$/,
+  /\/api\/src\/db\/repositories\//,
   /\/api\/src\/(integrations|services)\//,
   /\/api\/src\/(riot_api|riot_static_data|rso)\.ts$/,
   /@libsql\/client/,
   /drizzle-orm.*\/libsql/,
+  /drizzle-orm.*\/sqlite-core/,
 ];
+
+export function isForbiddenRuntimeModule(specifier: string): boolean {
+  return forbiddenModulePatterns.some((pattern) => pattern.test(specifier));
+}
 
 export function runtimeCommandEntrypoints(
   commandsDirectory: URL,
@@ -102,6 +108,15 @@ function runtimeModules(graph: ModuleGraph): Set<string> {
   return visited;
 }
 
+export function moduleGraphBoundaryViolations(
+  entrypoint: string,
+  graph: ModuleGraph,
+): string[] {
+  return Array.from(runtimeModules(graph))
+    .filter(isForbiddenRuntimeModule)
+    .map((specifier) => `${entrypoint}: ${specifier}`);
+}
+
 export async function checkRuntimeBoundary(
   entrypoints: string[],
 ): Promise<string[]> {
@@ -109,11 +124,7 @@ export async function checkRuntimeBoundary(
 
   for (const entrypoint of entrypoints) {
     const graph = await loadModuleGraph(entrypoint);
-    for (const specifier of runtimeModules(graph)) {
-      if (forbiddenModulePatterns.some((pattern) => pattern.test(specifier))) {
-        violations.push(`${entrypoint}: ${specifier}`);
-      }
-    }
+    violations.push(...moduleGraphBoundaryViolations(entrypoint, graph));
   }
 
   return violations;

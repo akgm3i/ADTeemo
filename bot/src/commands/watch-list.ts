@@ -3,7 +3,7 @@ import {
   MessageFlags,
   SlashCommandBuilder,
 } from "discord.js";
-import type { MatchWatcher } from "@adteemo/api/schema";
+import type { MatchWatcher } from "@adteemo/api/contract";
 import { apiClient } from "../api_client.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 

@@ -1,28 +1,14 @@
 import { Hono } from "@hono/hono";
 import { zValidator } from "@hono/zod-validator";
-import { z } from "zod";
 import {
-  lanes,
   type RiotPlatform,
   riotPlatforms,
   type RiotRegion,
   riotRegions,
-} from "../db/schema.ts";
+} from "../contract/domain.ts";
+import { linkByRiotIdSchema, roleSchema } from "../contract/schemas.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import type { AppDependencies, EnvReader } from "../dependencies.ts";
-
-const roleSchema = z.object({
-  guildId: z.string(),
-  role: z.enum(lanes),
-});
-
-const linkByRiotIdSchema = z.object({
-  discordId: z.string(),
-  gameName: z.string(),
-  tagLine: z.string(),
-  platform: z.enum(riotPlatforms).optional(),
-  region: z.enum(riotRegions).optional(),
-});
 
 function defaultPlatform(env: EnvReader): RiotPlatform {
   const platform = env.get("RIOT_DEFAULT_PLATFORM") ?? "jp1";
