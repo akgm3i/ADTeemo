@@ -1,7 +1,7 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { type Client } from "@adteemo/api/contract";
-import { createApiClient } from "./api_client.ts";
+import { createApiClient, createApiResourceClients } from "./api_client.ts";
 
 type RpcCall = {
   method: string;
@@ -96,6 +96,41 @@ describe("apiClient", () => {
           Deno.env.set("API_URL", originalApiUrl);
         }
       }
+    });
+  });
+
+  describe("createApiResourceClients", () => {
+    test("resource clientを生成すると、利用側は必要なresourceだけを参照して既存と同じRPC呼び出しを行える", async () => {
+      const rpc = createRpcClientStub([
+        response({ message: "Healthy" }),
+        response(null, 204),
+      ]);
+      const resources = createApiResourceClients({ rpcClient: rpc.rpcClient });
+
+      const healthResult = await resources.health.checkHealth();
+      const usersResult = await resources.users.setMainRole(
+        "user-1",
+        "guild-1",
+        "Top",
+      );
+
+      assertEquals(healthResult, { success: true, message: "Healthy" });
+      assertEquals(usersResult.success, true);
+      assertEquals(rpc.calls, [
+        {
+          method: "$get",
+          path: "/health",
+          args: [],
+        },
+        {
+          method: "$put",
+          path: "/users/:userId/main-role",
+          args: [{
+            param: { userId: "user-1" },
+            json: { guildId: "guild-1", role: "Top" },
+          }],
+        },
+      ]);
     });
   });
 
