@@ -164,6 +164,10 @@ function logCommunicationError(error: unknown) {
   console.error(COMMUNICATION_ERROR, error);
 }
 
+function unexpectedResponseError(res: ApiResponse): Error {
+  return new Error(`Unexpected response: ${res.status} ${res.statusText}`);
+}
+
 async function resultFromRequest<
   T extends Record<string, unknown>,
   F extends FailureResult = FailureResult,
@@ -182,7 +186,7 @@ async function resultFromRequest<
         return await handleHttpError(res);
       }
 
-      throw new Error(`Unexpected response: ${res}`);
+      throw unexpectedResponseError(res);
     }
 
     return { success: true, ...await parseSuccess(res) };
@@ -215,7 +219,7 @@ export function createApiClient({ rpcClient }: { rpcClient: ApiRpcClient }) {
           return { success: false, error: await readErrorMessage(res) };
         }
 
-        throw new Error(`Unexpected response: ${res}`);
+        throw unexpectedResponseError(res);
       },
     );
   }
@@ -239,7 +243,7 @@ export function createApiClient({ rpcClient }: { rpcClient: ApiRpcClient }) {
           return { success: false, error: await readErrorMessage(res) };
         }
 
-        throw new Error(`Unexpected response: ${res}`);
+        throw unexpectedResponseError(res);
       },
     );
   }
@@ -367,7 +371,7 @@ export function createApiClient({ rpcClient }: { rpcClient: ApiRpcClient }) {
           return { success: false, error: await readErrorMessage(res) };
         }
 
-        throw new Error(`Unexpected response: ${res}`);
+        throw unexpectedResponseError(res);
       },
     );
   }
@@ -387,7 +391,7 @@ export function createApiClient({ rpcClient }: { rpcClient: ApiRpcClient }) {
           return { success: false, error: await readErrorMessage(res) };
         }
 
-        throw new Error(`Unexpected response: ${res}`);
+        throw unexpectedResponseError(res);
       }
 
       const data = await res.json() as { id?: unknown };
@@ -476,14 +480,14 @@ export function createApiClient({ rpcClient }: { rpcClient: ApiRpcClient }) {
         }),
       async (res) => {
         const body = await res.json() as {
-          detail:
+          detail?:
             | (Omit<OpggMatchDetail, "providerCreatedAt"> & {
               providerCreatedAt: string | Date;
             })
             | null;
         };
         return {
-          detail: body.detail === null ? null : {
+          detail: body.detail == null ? null : {
             ...body.detail,
             providerCreatedAt: new Date(body.detail.providerCreatedAt),
           },
@@ -527,7 +531,7 @@ export function createApiClient({ rpcClient }: { rpcClient: ApiRpcClient }) {
           };
         }
 
-        throw new Error(`Unexpected response: ${res}`);
+        throw unexpectedResponseError(res);
       },
     );
   }

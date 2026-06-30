@@ -581,6 +581,15 @@ describe("apiClient", () => {
       assertEquals(result, { success: true, detail: null });
     });
 
+    test("OP.GG試合詳細レスポンスにdetailがないとき、成功結果とdetail nullを返す", async () => {
+      const rpc = createRpcClientStub([response({})]);
+      const client = createApiClient({ rpcClient: rpc.rpcClient });
+
+      const result = await client.resolveOpggMatchDetail(matchId, payload);
+
+      assertEquals(result, { success: true, detail: null });
+    });
+
     test("Backend APIがOP.GG試合詳細を解決できないとき、失敗結果とエラーを返す", async () => {
       const error = "Failed to resolve OP.GG match detail";
       const rpc = createRpcClientStub([response({ error }, 500)]);
