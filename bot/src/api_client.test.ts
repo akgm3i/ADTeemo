@@ -1,7 +1,8 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { type Client } from "@adteemo/api/contract";
-import { createApiClient } from "./api_client.ts";
+import { createApiClient, createApiResourceClients } from "./api_client.ts";
+import { dateOrNull } from "./api_clients/transport.ts";
 
 type RpcCall = {
   method: string;
@@ -24,6 +25,15 @@ function response(body: unknown, status = 200): RpcResponse {
     status,
     statusText: status === 200 ? "OK" : "Error",
     json: () => Promise.resolve(body),
+  };
+}
+
+function invalidJsonResponse(status = 502, statusText = "Bad Gateway") {
+  return {
+    ok: false,
+    status,
+    statusText,
+    json: () => Promise.reject(new SyntaxError("Unexpected token <")),
   };
 }
 
@@ -69,6 +79,12 @@ function createRpcClientStub(results: QueuedRpcResult[]) {
 }
 
 describe("apiClient", () => {
+  describe("transport", () => {
+    test("任意の日付フィールドがundefinedのとき、Date変換せずnullとして扱う", () => {
+      assertEquals(dateOrNull(undefined), null);
+    });
+  });
+
   describe("createApiClient", () => {
     test("API_URLが未設定でもmodule importとclient生成ができ、環境変数を要求しない", async () => {
       // Arrange
@@ -96,6 +112,41 @@ describe("apiClient", () => {
           Deno.env.set("API_URL", originalApiUrl);
         }
       }
+    });
+  });
+
+  describe("createApiResourceClients", () => {
+    test("resource clientを生成すると、利用側は必要なresourceだけを参照して既存と同じRPC呼び出しを行える", async () => {
+      const rpc = createRpcClientStub([
+        response({ message: "Healthy" }),
+        response(null, 204),
+      ]);
+      const resources = createApiResourceClients({ rpcClient: rpc.rpcClient });
+
+      const healthResult = await resources.health.checkHealth();
+      const usersResult = await resources.users.setMainRole(
+        "user-1",
+        "guild-1",
+        "Top",
+      );
+
+      assertEquals(healthResult, { success: true, message: "Healthy" });
+      assertEquals(usersResult.success, true);
+      assertEquals(rpc.calls, [
+        {
+          method: "$get",
+          path: "/health",
+          args: [],
+        },
+        {
+          method: "$put",
+          path: "/users/:userId/main-role",
+          args: [{
+            param: { userId: "user-1" },
+            json: { guildId: "guild-1", role: "Top" },
+          }],
+        },
+      ]);
     });
   });
 
@@ -354,6 +405,35 @@ describe("apiClient", () => {
       );
       assertEquals(rpc.calls.length, 1);
     });
+
+    test("Riot APIがJSONではないエラーを返すとき、HTTPステータスを含むエラーを返す", async () => {
+      const rpc = createRpcClientStub([invalidJsonResponse()]);
+      const client = createApiClient({ rpcClient: rpc.rpcClient });
+
+      await assertRejects(
+        () => client.getActiveGameByPuuid("jp1", "puuid-1"),
+        Error,
+        "HTTP 502 Bad Gateway",
+      );
+    });
+
+    test("試合結果APIがnull bodyを返すとき、未反映としてnullを返す", async () => {
+      const rpc = createRpcClientStub([response(null)]);
+      const client = createApiClient({ rpcClient: rpc.rpcClient });
+
+      const result = await client.getMatchById("asia", "JP1_12345");
+
+      assertEquals(result, null);
+    });
+
+    test("ランク情報APIがnull bodyを返すとき、空配列へfallbackする", async () => {
+      const rpc = createRpcClientStub([response(null)]);
+      const client = createApiClient({ rpcClient: rpc.rpcClient });
+
+      const result = await client.getLeagueEntriesByPuuid("jp1", "puuid-1");
+
+      assertEquals(result, []);
+    });
   });
 
   describe("matches", () => {
@@ -378,6 +458,28 @@ describe("apiClient", () => {
         error: "API response missing participant id",
       });
       assertEquals(rpc.calls[0].path, "/matches/:matchId/participants");
+    });
+
+    test("参加者作成APIがnull bodyを返すとき、契約不整合の失敗結果を返す", async () => {
+      const rpc = createRpcClientStub([response(null)]);
+      const client = createApiClient({ rpcClient: rpc.rpcClient });
+
+      const result = await client.createMatchParticipant("JP1_12345", {
+        userId: "user-1",
+        team: "BLUE",
+        win: true,
+        lane: "Top",
+        kills: 1,
+        deaths: 2,
+        assists: 3,
+        cs: 100,
+        gold: 10_000,
+      });
+
+      assertEquals(result, {
+        success: false,
+        error: "API response missing participant id",
+      });
     });
   });
 
