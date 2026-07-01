@@ -1,13 +1,37 @@
 import { type Client, EmbedBuilder } from "discord.js";
 import type { MatchWatcher, RiotAccount } from "@adteemo/api/contract";
-import {
-  apiClient,
-  type FinalizedRankSnapshot,
-  type OpggMatchDetail,
-  type RankSnapshotPayload,
-} from "../api_client.ts";
+import { apiClient, type OpggMatchDetail } from "../api_client.ts";
 import { botLogger } from "../logger.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
+import {
+  activeGameCacheKey,
+  type ActiveNotificationGroup,
+  activeNotificationGroupKey,
+  currentStateFromWatcher,
+  displayMetric,
+  elapsedMinutes,
+  formatKillParticipation,
+  formatRankSnapshot,
+  hasResultFetchTimedOut as hasResultFetchTimedOutWithConfig,
+  isAfterDate,
+  isResultFetchTimedOut as isResultFetchTimedOutWithConfig,
+  matchCacheKey,
+  matchIdForGame,
+  matchIdParts,
+  newerDate,
+  type PendingResult,
+  pendingResultFromWatcher,
+  rankDelta,
+  rankedQueueTypeByQueueId,
+  rankSnapshotPayloadsFromEntries,
+  type RankSummary,
+  type ResultMetricKind,
+  resultMetricValues,
+  selectResultNotificationMessageId,
+  shouldNotifyActiveNotificationGroup
+    as shouldNotifyActiveNotificationGroupWithConfig,
+  shouldNotifyInGame as shouldNotifyInGameWithConfig,
+} from "./match_tracking_state.ts";
 
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
 const DEFAULT_IN_GAME_NOTIFY_INTERVAL_MS = 300_000;
@@ -26,17 +50,7 @@ type RiotMatch = NonNullable<
   Awaited<ReturnType<typeof apiClient.getMatchById>>
 >;
 type RiotMatchParticipant = RiotMatch["info"]["participants"][number];
-type LeagueEntries = Awaited<
-  ReturnType<typeof apiClient.getLeagueEntriesByPuuid>
->;
 type WatcherState = Parameters<typeof apiClient.updateMatchWatcherState>[2];
-type ActiveNotificationGroup = {
-  messageId: string | null;
-  targetDiscordIds: Set<string>;
-  activeWatchers: Map<string, MatchWatcher>;
-  messageIdTargetDiscordIds: Map<string, Set<string>>;
-  resultMessageIdsInUse: Set<string>;
-};
 type MatchWatcherProcessingContext = {
   activeNotificationGroups: Map<string, ActiveNotificationGroup>;
   riotAccountsByTargetDiscordId: Map<string, Promise<RiotAccountResult>>;
@@ -53,11 +67,6 @@ type WatcherChannel = {
     fetch?: (messageId: string) => Promise<WatcherMessage>;
   };
 };
-type PendingResult = {
-  matchId: string;
-  messageId: string | null;
-  startedAt: Date | null;
-};
 type ActiveGameTargetDetail = {
   targetDiscordId: string;
   championId?: number;
@@ -69,35 +78,6 @@ type ResolvedRiotStaticData = Extract<
   RiotStaticDataResult,
   { success: true }
 >["data"];
-type RankedQueueType = RankSnapshotPayload["queueType"];
-type RankSummary = {
-  queueType: RankedQueueType;
-  before: FinalizedRankSnapshot | null;
-  after: FinalizedRankSnapshot | null;
-};
-
-const RANKED_QUEUE_TYPES: RankedQueueType[] = [
-  "RANKED_SOLO_5x5",
-  "RANKED_FLEX_SR",
-];
-const RANKED_QUEUE_BY_QUEUE_ID = new Map<number, RankedQueueType>([
-  [420, "RANKED_SOLO_5x5"],
-  [440, "RANKED_FLEX_SR"],
-]);
-const TIER_ORDER = [
-  "IRON",
-  "BRONZE",
-  "SILVER",
-  "GOLD",
-  "PLATINUM",
-  "EMERALD",
-  "DIAMOND",
-  "MASTER",
-  "GRANDMASTER",
-  "CHALLENGER",
-];
-const DIVISION_ORDER = ["IV", "III", "II", "I"];
-
 function numberEnv(name: string, fallback: number) {
   const value = Number(Deno.env.get(name));
   return Number.isFinite(value) && value > 0 ? value : fallback;
@@ -106,49 +86,6 @@ function numberEnv(name: string, fallback: number) {
 function messageLocale() {
   return (Deno.env.get("BOT_MESSAGE_LANG") ?? Deno.env.get("LC_MESSAGES") ??
     Deno.env.get("LC_ALL") ?? "ja_JP").replace("-", "_").split(".")[0];
-}
-
-function matchIdForGame(account: RiotAccount, gameId: string | number) {
-  return `${account.platform.toUpperCase()}_${gameId}`;
-}
-
-function normalizePlatform(platform: string) {
-  return platform.toUpperCase();
-}
-
-function activeNotificationGroupKey(
-  watcher: MatchWatcher,
-  platform: string,
-  gameId: string | number,
-) {
-  return `${watcher.guildId}:${watcher.channelId}:${
-    normalizePlatform(platform)
-  }:${gameId}`;
-}
-
-function matchIdParts(matchId: string) {
-  const separatorIndex = matchId.indexOf("_");
-  if (separatorIndex < 0 || separatorIndex === matchId.length - 1) {
-    return null;
-  }
-  return {
-    platform: normalizePlatform(matchId.slice(0, separatorIndex)),
-    gameId: matchId.slice(separatorIndex + 1),
-  };
-}
-
-function activeGameCacheKey(account: RiotAccount) {
-  return `${account.platform}:${account.puuid}`;
-}
-
-function matchCacheKey(account: RiotAccount, matchId: string) {
-  return `${account.region}:${matchId}`;
-}
-
-function rankedQueueTypeByQueueId(queueId: number | undefined) {
-  return queueId === undefined
-    ? undefined
-    : RANKED_QUEUE_BY_QUEUE_ID.get(queueId);
 }
 
 function createMatchWatcherProcessingContext(): MatchWatcherProcessingContext {
@@ -275,33 +212,6 @@ function rememberActiveNotificationMessage(
   group.messageIdTargetDiscordIds.set(messageId, targetDiscordIds);
 }
 
-function newerDate(left: Date | null, right: Date | null) {
-  if (!left) return right;
-  if (!right) return left;
-  return left.getTime() >= right.getTime() ? left : right;
-}
-
-function isAfterDate(left: Date, right: Date | null) {
-  return !right || left.getTime() > right.getTime();
-}
-
-function activeNotificationGroupLastInGameNotifiedAt(
-  group: ActiveNotificationGroup,
-) {
-  const messageId = group.messageId;
-  if (!messageId) return null;
-
-  let lastInGameNotifiedAt: Date | null = null;
-  for (const watcher of group.activeWatchers.values()) {
-    if (watcher.currentNotificationMessageId !== messageId) continue;
-    lastInGameNotifiedAt = newerDate(
-      lastInGameNotifiedAt,
-      watcher.lastInGameNotifiedAt,
-    );
-  }
-  return lastInGameNotifiedAt;
-}
-
 function resultNotificationMessageId(
   group: ActiveNotificationGroup | undefined,
   watcher: MatchWatcher,
@@ -309,18 +219,13 @@ function resultNotificationMessageId(
   if (!group) return watcher.currentNotificationMessageId ?? null;
 
   const activeWatcher = group.activeWatchers.get(watcher.targetDiscordId);
-  const watcherMessageId = activeWatcher?.currentNotificationMessageId ??
-    watcher.currentNotificationMessageId;
-  const groupMessageId = group.messageId;
-  if (watcherMessageId && watcherMessageId !== groupMessageId) {
-    if (group.resultMessageIdsInUse.has(watcherMessageId)) return null;
-    group.resultMessageIdsInUse.add(watcherMessageId);
-    return watcherMessageId;
-  }
-
-  const messageId = groupMessageId ?? watcherMessageId;
+  const messageId = selectResultNotificationMessageId({
+    groupMessageId: group.messageId,
+    watcherMessageId: watcher.currentNotificationMessageId,
+    activeWatcherMessageId: activeWatcher?.currentNotificationMessageId,
+    usedMessageIds: group.resultMessageIdsInUse,
+  });
   if (!messageId) return null;
-  if (group.resultMessageIdsInUse.has(messageId)) return null;
   group.resultMessageIdsInUse.add(messageId);
   return messageId;
 }
@@ -477,26 +382,6 @@ function getMatchForPendingResult(
   return result;
 }
 
-function rankSnapshotPayloadsFromEntries(
-  entries: LeagueEntries,
-  fetchedAt = new Date(),
-): RankSnapshotPayload[] {
-  return RANKED_QUEUE_TYPES.map((queueType) => {
-    const entry = entries.find((candidate) =>
-      candidate.queueType === queueType
-    );
-    return {
-      queueType,
-      tier: entry?.tier ?? null,
-      rank: entry?.rank ?? null,
-      leaguePoints: entry?.leaguePoints ?? null,
-      wins: entry?.wins ?? null,
-      losses: entry?.losses ?? null,
-      fetchedAt,
-    };
-  });
-}
-
 async function capturePendingRankSnapshots(
   watcher: MatchWatcher,
   account: RiotAccount,
@@ -513,7 +398,7 @@ async function capturePendingRankSnapshots(
       platform: account.platform,
       gameId: String(activeGame.gameId),
       puuid: account.puuid,
-      snapshots: rankSnapshotPayloadsFromEntries(entries),
+      snapshots: rankSnapshotPayloadsFromEntries(entries, new Date()),
     });
     if (!result.success) {
       botLogger.warn("match_tracking.rank_snapshot_pending_save_failed", {
@@ -550,7 +435,7 @@ async function finalizeRankSnapshotsForResult(
         platform: account.platform,
         gameId: String(match.info.gameId),
         puuid: account.puuid,
-        snapshots: rankSnapshotPayloadsFromEntries(entries),
+        snapshots: rankSnapshotPayloadsFromEntries(entries, new Date()),
       },
     );
     if (!result.success) {
@@ -583,26 +468,6 @@ async function finalizeRankSnapshotsForResult(
   }
 }
 
-function elapsedMinutes(activeGame: ActiveGame, now = Date.now()) {
-  const currentLengthMs = (activeGame.gameLength ?? 0) * 1000;
-  const elapsedMs = activeGame.gameStartTime > 0
-    ? Math.max(now - activeGame.gameStartTime, currentLengthMs)
-    : currentLengthMs;
-  return Math.max(0, Math.floor(elapsedMs / 60_000));
-}
-
-function shouldNotifySince(
-  lastInGameNotifiedAt: Date | null,
-  intervalMs = numberEnv(
-    "MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS",
-    DEFAULT_IN_GAME_NOTIFY_INTERVAL_MS,
-  ),
-  now = new Date(),
-) {
-  if (!lastInGameNotifiedAt) return true;
-  return now.getTime() - lastInGameNotifiedAt.getTime() >= intervalMs;
-}
-
 function shouldNotifyInGame(
   watcher: MatchWatcher,
   intervalMs = numberEnv(
@@ -611,7 +476,7 @@ function shouldNotifyInGame(
   ),
   now = new Date(),
 ) {
-  return shouldNotifySince(watcher.lastInGameNotifiedAt, intervalMs, now);
+  return shouldNotifyInGameWithConfig(watcher, intervalMs, now);
 }
 
 function shouldNotifyActiveNotificationGroup(
@@ -623,9 +488,9 @@ function shouldNotifyActiveNotificationGroup(
   ),
   now = new Date(),
 ) {
-  return shouldNotifySince(
-    activeNotificationGroupLastInGameNotifiedAt(group) ??
-      watcher.lastInGameNotifiedAt,
+  return shouldNotifyActiveNotificationGroupWithConfig(
+    group,
+    watcher,
     intervalMs,
     now,
   );
@@ -639,9 +504,7 @@ function hasResultFetchTimedOut(
   ),
   now = new Date(),
 ) {
-  const startedAt = watcher.pendingResultStartedAt ?? watcher.gameStartedAt;
-  if (!startedAt) return false;
-  return isResultFetchTimedOut(startedAt, timeoutMs, now);
+  return hasResultFetchTimedOutWithConfig(watcher, timeoutMs, now);
 }
 
 function isResultFetchTimedOut(
@@ -652,7 +515,7 @@ function isResultFetchTimedOut(
   ),
   now = new Date(),
 ) {
-  return now.getTime() - startedAt.getTime() >= timeoutMs;
+  return isResultFetchTimedOutWithConfig(startedAt, timeoutMs, now);
 }
 
 function fallbackChampionName(
@@ -768,200 +631,34 @@ async function activeGameTargetDetails(
   return details;
 }
 
-function formatPerMinute(value: number, gameDurationSeconds: number) {
-  if (!Number.isFinite(value) || !Number.isFinite(gameDurationSeconds)) {
-    return "-";
+function resultMetricFieldMessageKey(kind: ResultMetricKind) {
+  switch (kind) {
+    case "visionScore":
+      return messageKeys.matchTracking.embed.field.visionScore;
+    case "visionScorePerMinute":
+      return messageKeys.matchTracking.embed.field.visionScorePerMinute;
+    case "jungleCs":
+      return messageKeys.matchTracking.embed.field.jungleCs;
+    case "enemyJungleCs":
+      return messageKeys.matchTracking.embed.field.enemyJungleCs;
+    case "cs":
+      return messageKeys.matchTracking.embed.field.cs;
+    case "csPerMinute":
+      return messageKeys.matchTracking.embed.field.csPerMinute;
   }
-  if (value < 0 || gameDurationSeconds <= 0) return "-";
-  return (value / (gameDurationSeconds / 60)).toFixed(1);
-}
-
-function resultMetricRole(participant: RiotMatchParticipant) {
-  for (
-    const position of [
-      participant.teamPosition,
-      participant.individualPosition,
-    ]
-  ) {
-    switch (position?.toUpperCase()) {
-      case "TOP":
-        return "TOP";
-      case "JUNGLE":
-        return "JUNGLE";
-      case "MIDDLE":
-      case "MID":
-        return "MIDDLE";
-      case "BOTTOM":
-      case "BOT":
-        return "BOTTOM";
-      case "UTILITY":
-      case "SUPPORT":
-        return "SUPPORT";
-    }
-  }
-  return "UNKNOWN";
-}
-
-function displayMetric(value: number | undefined) {
-  return value !== undefined && Number.isFinite(value) && value >= 0
-    ? String(value)
-    : null;
 }
 
 function resultMetricFields(
   participant: RiotMatchParticipant,
   gameDurationSeconds: number,
 ) {
-  const fields: { name: string; value: string; inline: boolean }[] = [];
-  const role = resultMetricRole(participant);
-
-  if (role === "SUPPORT") {
-    const visionScore = participant.visionScore;
-    if (
-      visionScore === undefined || !Number.isFinite(visionScore) ||
-      visionScore < 0
-    ) {
-      return fields;
-    }
-    fields.push(
-      {
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.visionScore,
-        ),
-        value: String(visionScore),
-        inline: true,
-      },
-      {
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.visionScorePerMinute,
-        ),
-        value: formatPerMinute(visionScore, gameDurationSeconds),
-        inline: true,
-      },
-    );
-    return fields;
-  }
-
-  if (role === "JUNGLE") {
-    const jungleCs = displayMetric(participant.neutralMinionsKilled);
-    if (jungleCs) {
-      fields.push({
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.jungleCs,
-        ),
-        value: jungleCs,
-        inline: true,
-      });
-    }
-    const enemyJungleCs = displayMetric(
-      participant.totalEnemyJungleMinionsKilled,
-    );
-    if (enemyJungleCs) {
-      fields.push({
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.enemyJungleCs,
-        ),
-        value: enemyJungleCs,
-        inline: true,
-      });
-    }
-    return fields;
-  }
-
-  const cs = participant.totalMinionsKilled + participant.neutralMinionsKilled;
-  fields.push(
-    {
-      name: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.field.cs,
-      ),
-      value: String(cs),
+  return resultMetricValues(participant, gameDurationSeconds).map(
+    ({ kind, value }) => ({
+      name: messageHandler.formatMessage(resultMetricFieldMessageKey(kind)),
+      value,
       inline: true,
-    },
-    {
-      name: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.field.csPerMinute,
-      ),
-      value: formatPerMinute(cs, gameDurationSeconds),
-      inline: true,
-    },
+    }),
   );
-  return fields;
-}
-
-function formatKillParticipation(
-  participantKills: number,
-  participantAssists: number,
-  teamKills: number,
-) {
-  if (
-    !Number.isFinite(participantKills) ||
-    !Number.isFinite(participantAssists) ||
-    !Number.isFinite(teamKills) ||
-    participantKills < 0 ||
-    participantAssists < 0 ||
-    teamKills <= 0
-  ) {
-    return "-";
-  }
-  return `${
-    (((participantKills + participantAssists) / teamKills) * 100).toFixed(1)
-  }%`;
-}
-
-function displayTier(tier: string) {
-  return tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase();
-}
-
-function isApexTier(tier: string) {
-  const tierIndex = TIER_ORDER.indexOf(tier.toUpperCase());
-  const masterIndex = TIER_ORDER.indexOf("MASTER");
-  return tierIndex >= masterIndex && masterIndex >= 0;
-}
-
-function formatRankSnapshot(snapshot: FinalizedRankSnapshot) {
-  if (
-    !snapshot.tier || snapshot.leaguePoints === null ||
-    snapshot.leaguePoints === undefined
-  ) {
-    return null;
-  }
-  const rank = snapshot.rank && !isApexTier(snapshot.tier)
-    ? ` ${snapshot.rank}`
-    : "";
-  return `${displayTier(snapshot.tier)}${rank} ${snapshot.leaguePoints}LP`;
-}
-
-function rankSnapshotTotalLp(snapshot: FinalizedRankSnapshot) {
-  if (
-    !snapshot.tier || snapshot.leaguePoints === null ||
-    snapshot.leaguePoints === undefined
-  ) {
-    return null;
-  }
-
-  const tierIndex = TIER_ORDER.indexOf(snapshot.tier.toUpperCase());
-  if (tierIndex < 0) return null;
-  const masterIndex = TIER_ORDER.indexOf("MASTER");
-  if (isApexTier(snapshot.tier)) {
-    return masterIndex * 400 + snapshot.leaguePoints;
-  }
-
-  if (!snapshot.rank) return null;
-  const divisionIndex = DIVISION_ORDER.indexOf(snapshot.rank.toUpperCase());
-  if (divisionIndex < 0) return null;
-  return tierIndex * 400 + divisionIndex * 100 + snapshot.leaguePoints;
-}
-
-function rankDelta(
-  before: FinalizedRankSnapshot,
-  after: FinalizedRankSnapshot,
-) {
-  const beforeLp = rankSnapshotTotalLp(before);
-  const afterLp = rankSnapshotTotalLp(after);
-  if (beforeLp === null || afterLp === null) return null;
-  const delta = afterLp - beforeLp;
-  if (delta === 0 || Math.abs(delta) > 100) return null;
-  return delta;
 }
 
 function rankFieldValue(summary: RankSummary | null) {
@@ -1068,41 +765,6 @@ async function resolveOpggMatchDetailForResult(
   return result.detail;
 }
 
-function currentStateFromWatcher(watcher: MatchWatcher): WatcherState {
-  return {
-    lastState: watcher.lastState === "FETCHING_RESULT"
-      ? "IDLE"
-      : watcher.lastState,
-    currentGameId: watcher.lastState === "FETCHING_RESULT"
-      ? null
-      : watcher.currentGameId,
-    currentMatchId: watcher.lastState === "FETCHING_RESULT"
-      ? null
-      : watcher.currentMatchId,
-    currentNotificationMessageId: watcher.lastState === "FETCHING_RESULT"
-      ? null
-      : watcher.currentNotificationMessageId,
-    gameStartedAt: watcher.lastState === "FETCHING_RESULT"
-      ? null
-      : watcher.gameStartedAt,
-    lastInGameNotifiedAt: watcher.lastState === "FETCHING_RESULT"
-      ? null
-      : watcher.lastInGameNotifiedAt,
-  };
-}
-
-function pendingResultFromWatcher(watcher: MatchWatcher): PendingResult | null {
-  const matchId = watcher.pendingResultMatchId ??
-    (watcher.lastState === "FETCHING_RESULT" ? watcher.currentMatchId : null);
-  if (!matchId) return null;
-  return {
-    matchId,
-    messageId: watcher.pendingResultNotificationMessageId ??
-      watcher.currentNotificationMessageId,
-    startedAt: watcher.pendingResultStartedAt ?? watcher.gameStartedAt,
-  };
-}
-
 async function buildActiveGameEmbed(
   watcher: MatchWatcher,
   account: RiotAccount,
@@ -1113,7 +775,7 @@ async function buildActiveGameEmbed(
   const participant = activeGame.participants.find((p) =>
     p.puuid === account.puuid
   );
-  const minutes = elapsedMinutes(activeGame);
+  const minutes = elapsedMinutes(activeGame, Date.now());
   const championIds = [
     participant?.championId,
     ...(targetDetails?.map((detail) => detail.championId) ?? []),
