@@ -1,6 +1,6 @@
-import { type Client, EmbedBuilder } from "discord.js";
+import type { Client } from "discord.js";
 import type { MatchWatcher, RiotAccount } from "@adteemo/api/contract";
-import { apiClient, type OpggMatchDetail } from "../api_client.ts";
+import { apiClient } from "../api_client.ts";
 import { botLogger } from "../logger.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import {
@@ -8,10 +8,6 @@ import {
   type ActiveNotificationGroup,
   activeNotificationGroupKey,
   currentStateFromWatcher,
-  displayMetric,
-  elapsedMinutes,
-  formatKillParticipation,
-  formatRankSnapshot,
   hasResultFetchTimedOut as hasResultFetchTimedOutWithConfig,
   isAfterDate,
   isResultFetchTimedOut as isResultFetchTimedOutWithConfig,
@@ -21,17 +17,19 @@ import {
   newerDate,
   type PendingResult,
   pendingResultFromWatcher,
-  rankDelta,
   rankedQueueTypeByQueueId,
   rankSnapshotPayloadsFromEntries,
   type RankSummary,
-  type ResultMetricKind,
-  resultMetricValues,
   selectResultNotificationMessageId,
   shouldNotifyActiveNotificationGroup
     as shouldNotifyActiveNotificationGroupWithConfig,
   shouldNotifyInGame as shouldNotifyInGameWithConfig,
 } from "./match_tracking_state.ts";
+import {
+  createMatchTrackingNotifier,
+  type WatcherChannel,
+} from "./match_tracking_notifier.ts";
+import { createMatchTrackingRenderer } from "./match_tracking_renderer.ts";
 
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
 const DEFAULT_IN_GAME_NOTIFY_INTERVAL_MS = 300_000;
@@ -49,23 +47,14 @@ type RiotAccountResult = Awaited<ReturnType<typeof apiClient.getRiotAccount>>;
 type RiotMatch = NonNullable<
   Awaited<ReturnType<typeof apiClient.getMatchById>>
 >;
-type RiotMatchParticipant = RiotMatch["info"]["participants"][number];
 type WatcherState = Parameters<typeof apiClient.updateMatchWatcherState>[2];
+type MatchTrackingRenderer = ReturnType<typeof createMatchTrackingRenderer>;
+type MatchTrackingNotifier = ReturnType<typeof createMatchTrackingNotifier>;
 type MatchWatcherProcessingContext = {
   activeNotificationGroups: Map<string, ActiveNotificationGroup>;
   riotAccountsByTargetDiscordId: Map<string, Promise<RiotAccountResult>>;
   activeGamesByRiotAccount: Map<string, Promise<ActiveGameResult>>;
   matchesByRegionAndMatchId: Map<string, Promise<RiotMatch | null>>;
-};
-type WatcherMessage = {
-  id?: string;
-  edit?: (options: { embeds: EmbedBuilder[] }) => Promise<unknown>;
-};
-type WatcherChannel = {
-  send?: (options: { embeds: EmbedBuilder[] }) => Promise<WatcherMessage>;
-  messages?: {
-    fetch?: (messageId: string) => Promise<WatcherMessage>;
-  };
 };
 type ActiveGameTargetDetail = {
   targetDiscordId: string;
@@ -518,76 +507,6 @@ function isResultFetchTimedOut(
   return isResultFetchTimedOutWithConfig(startedAt, timeoutMs, now);
 }
 
-function fallbackChampionName(
-  championId: number | undefined,
-  fallbackName?: string,
-) {
-  if (fallbackName) return fallbackName;
-  if (championId === undefined) {
-    return messageHandler.formatMessage(
-      messageKeys.matchTracking.embed.fallback.unknownChampion,
-    );
-  }
-  return messageHandler.formatMessage(
-    messageKeys.matchTracking.embed.fallback.championId,
-    { id: championId },
-  );
-}
-
-function championNameById(
-  staticData: ResolvedRiotStaticData | null,
-  championId: number | undefined,
-  fallbackName?: string,
-) {
-  if (championId === undefined) {
-    return fallbackChampionName(championId, fallbackName);
-  }
-  return staticData?.champions[String(championId)]?.name ??
-    fallbackChampionName(championId, fallbackName);
-}
-
-function championIconUrlById(
-  staticData: ResolvedRiotStaticData | null,
-  championId: number | undefined,
-) {
-  if (championId === undefined) return null;
-  return staticData?.champions[String(championId)]?.iconUrl ?? null;
-}
-
-function queueName(
-  staticData: ResolvedRiotStaticData | null,
-  queueId: number | undefined,
-) {
-  if (queueId === undefined) {
-    return messageHandler.formatMessage(
-      messageKeys.matchTracking.embed.fallback.unknownQueue,
-    );
-  }
-  const fallback = messageHandler.formatMessage(
-    messageKeys.matchTracking.embed.fallback.queueId,
-    { id: queueId },
-  );
-  return staticData?.queues[String(queueId)] ?? fallback;
-}
-
-function mapName(
-  staticData: ResolvedRiotStaticData | null,
-  mapId: number,
-) {
-  const fallback = messageHandler.formatMessage(
-    messageKeys.matchTracking.embed.fallback.mapId,
-    { id: mapId },
-  );
-  return staticData?.maps[String(mapId)] ?? fallback;
-}
-
-function gameModeName(
-  staticData: ResolvedRiotStaticData | null,
-  gameMode: string,
-) {
-  return staticData?.gameModes[gameMode] ?? gameMode;
-}
-
 async function resolveRiotStaticData(input: {
   championIds: number[];
   queueIds: number[];
@@ -599,6 +518,19 @@ async function resolveRiotStaticData(input: {
     ...input,
   });
   return result.success ? result.data : null;
+}
+
+function createDefaultMatchTrackingRenderer() {
+  return createMatchTrackingRenderer({
+    messages: {
+      formatMessage: messageHandler.formatMessage.bind(messageHandler),
+      keys: messageKeys,
+    },
+    resolveStaticData: resolveRiotStaticData,
+    clock: {
+      now: () => new Date(),
+    },
+  });
 }
 
 async function activeGameTargetDetails(
@@ -629,102 +561,6 @@ async function activeGameTargetDetails(
     });
   }
   return details;
-}
-
-function resultMetricFieldMessageKey(kind: ResultMetricKind) {
-  switch (kind) {
-    case "visionScore":
-      return messageKeys.matchTracking.embed.field.visionScore;
-    case "visionScorePerMinute":
-      return messageKeys.matchTracking.embed.field.visionScorePerMinute;
-    case "jungleCs":
-      return messageKeys.matchTracking.embed.field.jungleCs;
-    case "enemyJungleCs":
-      return messageKeys.matchTracking.embed.field.enemyJungleCs;
-    case "cs":
-      return messageKeys.matchTracking.embed.field.cs;
-    case "csPerMinute":
-      return messageKeys.matchTracking.embed.field.csPerMinute;
-  }
-}
-
-function resultMetricFields(
-  participant: RiotMatchParticipant,
-  gameDurationSeconds: number,
-) {
-  return resultMetricValues(participant, gameDurationSeconds).map(
-    ({ kind, value }) => ({
-      name: messageHandler.formatMessage(resultMetricFieldMessageKey(kind)),
-      value,
-      inline: true,
-    }),
-  );
-}
-
-function rankFieldValue(summary: RankSummary | null) {
-  if (!summary?.after) return null;
-
-  const afterRank = formatRankSnapshot(summary.after);
-  if (!afterRank) return null;
-
-  if (!summary.before) {
-    return messageHandler.formatMessage(
-      messageKeys.matchTracking.embed.rank.current,
-      { rank: afterRank },
-    );
-  }
-
-  const beforeRank = formatRankSnapshot(summary.before);
-  const delta = beforeRank ? rankDelta(summary.before, summary.after) : null;
-  if (beforeRank && delta !== null) {
-    const sign = delta > 0 ? "+" : "";
-    return messageHandler.formatMessage(
-      messageKeys.matchTracking.embed.rank.delta,
-      {
-        delta: `${sign}${delta}`,
-        before: beforeRank,
-        after: afterRank,
-      },
-    );
-  }
-
-  return messageHandler.formatMessage(
-    messageKeys.matchTracking.embed.rank.current,
-    { rank: afterRank },
-  );
-}
-
-function opggScoreValue(score: number) {
-  return score.toFixed(1);
-}
-
-function opggFieldValue(detail: OpggMatchDetail | null) {
-  if (!detail) return null;
-
-  const lines = [
-    messageHandler.formatMessage(
-      messageKeys.matchTracking.embed.opgg.detail,
-      { url: detail.detailUrl },
-    ),
-  ];
-  const laneScore = detail.participant?.laneScore;
-  if (laneScore !== null && laneScore !== undefined) {
-    lines.push(
-      messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.opgg.laneScore,
-        { score: opggScoreValue(laneScore) },
-      ),
-    );
-  }
-  if (detail.averageTier) {
-    lines.push(
-      messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.opgg.averageTier,
-        { tier: detail.averageTier },
-      ),
-    );
-  }
-  return lines.join("\n");
 }
 
 async function resolveOpggMatchDetailForResult(
@@ -765,414 +601,6 @@ async function resolveOpggMatchDetailForResult(
   return result.detail;
 }
 
-async function buildActiveGameEmbed(
-  watcher: MatchWatcher,
-  account: RiotAccount,
-  activeGame: ActiveGame,
-  kind: "started" | "progress",
-  targetDetails?: ActiveGameTargetDetail[],
-) {
-  const participant = activeGame.participants.find((p) =>
-    p.puuid === account.puuid
-  );
-  const minutes = elapsedMinutes(activeGame, Date.now());
-  const championIds = [
-    participant?.championId,
-    ...(targetDetails?.map((detail) => detail.championId) ?? []),
-  ].filter((id): id is number => id !== undefined);
-  const staticData = await resolveRiotStaticData({
-    championIds: [...new Set(championIds)],
-    queueIds: activeGame.gameQueueConfigId === undefined
-      ? []
-      : [activeGame.gameQueueConfigId],
-    mapIds: [activeGame.mapId],
-    gameModes: [activeGame.gameMode],
-  });
-  const champion = championNameById(
-    staticData,
-    participant?.championId,
-  );
-  const queue = queueName(staticData, activeGame.gameQueueConfigId);
-  const map = mapName(staticData, activeGame.mapId);
-  const mode = gameModeName(staticData, activeGame.gameMode);
-  const title = kind === "started"
-    ? messageHandler.formatMessage(
-      messageKeys.matchTracking.embed.active.startedTitle,
-    )
-    : messageHandler.formatMessage(
-      messageKeys.matchTracking.embed.active.progressTitle,
-    );
-  const targets = targetDetails?.length
-    ? targetDetails.map(({ targetDiscordId, championId }) => ({
-      targetDiscordId,
-      champion: championNameById(staticData, championId),
-    }))
-    : [{ targetDiscordId: watcher.targetDiscordId, champion }];
-  const thumbnailUrl = targets.length === 1
-    ? championIconUrlById(staticData, participant?.championId)
-    : null;
-  const description = messageHandler.formatMessage(
-    messageKeys.matchTracking.embed.active.description,
-    {
-      member: targets.map(({ targetDiscordId }) => `<@${targetDiscordId}>`)
-        .join(", "),
-    },
-  );
-  const targetChampionField = targets.length > 1
-    ? {
-      name: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.field.activeChampions,
-      ),
-      value: targets.map(({ targetDiscordId, champion }) =>
-        `<@${targetDiscordId}>: ${champion}`
-      ).join("\n"),
-      inline: false,
-    }
-    : {
-      name: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.field.champion,
-      ),
-      value: champion,
-      inline: true,
-    };
-  const footerText = targets.length > 1
-    ? messageHandler.formatMessage(
-      messageKeys.matchTracking.embed.footer.gameOnly,
-      {
-        platform: account.platform.toUpperCase(),
-        gameId: activeGame.gameId,
-      },
-    )
-    : messageHandler.formatMessage(
-      messageKeys.matchTracking.embed.footer.game,
-      {
-        platform: account.platform.toUpperCase(),
-        gameId: activeGame.gameId,
-        riotId: `${account.gameName}#${account.tagLine}`,
-      },
-    );
-
-  const embed = new EmbedBuilder()
-    .setTitle(title)
-    .setDescription(description)
-    .setColor(kind === "started" ? 0x2ecc71 : 0x3498db)
-    .addFields(
-      targetChampionField,
-      {
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.queue,
-        ),
-        value: queue,
-        inline: true,
-      },
-      {
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.map,
-        ),
-        value: map,
-        inline: true,
-      },
-      {
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.mode,
-        ),
-        value: mode,
-        inline: true,
-      },
-      {
-        name: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.field.elapsed,
-        ),
-        value: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.fallback.elapsedMinutes,
-          { minutes },
-        ),
-        inline: true,
-      },
-    )
-    .setFooter({
-      text: footerText,
-    })
-    .setTimestamp(new Date());
-  if (thumbnailUrl) {
-    embed.setThumbnail(thumbnailUrl);
-  }
-  return embed;
-}
-
-function buildResultPendingEmbed(watcher: MatchWatcher, matchId: string) {
-  return new EmbedBuilder()
-    .setTitle(
-      messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.resultPending.title,
-      ),
-    )
-    .setDescription(
-      messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.resultPending.description,
-        { member: `<@${watcher.targetDiscordId}>` },
-      ),
-    )
-    .setColor(0xf1c40f)
-    .setFooter({
-      text: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.footer.match,
-        { matchId },
-      ),
-    })
-    .setTimestamp(new Date());
-}
-
-function buildResultFetchTimeoutEmbed(
-  watcher: MatchWatcher,
-  matchId: string,
-) {
-  return new EmbedBuilder()
-    .setTitle(
-      messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.resultTimeout.title,
-      ),
-    )
-    .setDescription(
-      messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.resultTimeout.description,
-        { member: `<@${watcher.targetDiscordId}>` },
-      ),
-    )
-    .setColor(0x95a5a6)
-    .setFooter({
-      text: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.footer.match,
-        { matchId },
-      ),
-    })
-    .setTimestamp(new Date());
-}
-
-async function buildMatchResultEmbed(
-  watcher: MatchWatcher,
-  account: RiotAccount,
-  match: RiotMatch,
-  rankSummary: RankSummary | null = null,
-  opggDetail: OpggMatchDetail | null = null,
-) {
-  const participant = match.info.participants.find((p) =>
-    p.puuid === account.puuid
-  );
-  if (!participant) {
-    return new EmbedBuilder()
-      .setTitle(
-        messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.result.participantMissingTitle,
-        ),
-      )
-      .setDescription(
-        messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.result.participantMissingDescription,
-          { member: `<@${watcher.targetDiscordId}>` },
-        ),
-      )
-      .setColor(0x95a5a6)
-      .setFooter({
-        text: messageHandler.formatMessage(
-          messageKeys.matchTracking.embed.footer.match,
-          { matchId: match.metadata.matchId },
-        ),
-      })
-      .setTimestamp(new Date());
-  }
-
-  const staticData = await resolveRiotStaticData({
-    championIds: participant.championId === undefined
-      ? []
-      : [participant.championId],
-    queueIds: [match.info.queueId],
-    mapIds: [match.info.mapId],
-    gameModes: [match.info.gameMode],
-  });
-  const champion = championNameById(
-    staticData,
-    participant.championId,
-    participant.championName,
-  );
-  const thumbnailUrl = championIconUrlById(
-    staticData,
-    participant.championId,
-  );
-  const teamKills = match.info.participants
-    .filter((candidate) => candidate.teamId === participant.teamId)
-    .reduce((sum, candidate) => sum + candidate.kills, 0);
-  const killParticipation = formatKillParticipation(
-    participant.kills,
-    participant.assists,
-    teamKills,
-  );
-  const queue = queueName(staticData, match.info.queueId);
-  const map = mapName(staticData, match.info.mapId);
-  const mode = gameModeName(staticData, match.info.gameMode);
-  const result = participant.win
-    ? messageHandler.formatMessage(messageKeys.matchTracking.embed.result.win)
-    : messageHandler.formatMessage(messageKeys.matchTracking.embed.result.loss);
-  const rankValue = rankFieldValue(rankSummary);
-  const opggValue = opggFieldValue(opggDetail);
-  const fields: { name: string; value: string; inline: boolean }[] = [
-    {
-      name: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.field.champion,
-      ),
-      value: champion,
-      inline: true,
-    },
-    {
-      name: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.field.kda,
-      ),
-      value:
-        `${participant.kills}/${participant.deaths}/${participant.assists}`,
-      inline: true,
-    },
-    {
-      name: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.field.killParticipation,
-      ),
-      value: killParticipation,
-      inline: true,
-    },
-    {
-      name: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.field.gold,
-      ),
-      value: String(participant.goldEarned),
-      inline: true,
-    },
-  ];
-  const damage = displayMetric(participant.totalDamageDealtToChampions);
-  if (damage) {
-    fields.push({
-      name: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.field.damage,
-      ),
-      value: damage,
-      inline: true,
-    });
-  }
-  fields.push(
-    {
-      name: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.field.queue,
-      ),
-      value: queue,
-      inline: true,
-    },
-    {
-      name: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.field.map,
-      ),
-      value: map,
-      inline: true,
-    },
-    {
-      name: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.field.mode,
-      ),
-      value: mode,
-      inline: true,
-    },
-    ...resultMetricFields(participant, match.info.gameDuration),
-  );
-  const embed = new EmbedBuilder()
-    .setTitle(
-      messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.result.title,
-        { result },
-      ),
-    )
-    .setDescription(
-      messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.result.description,
-        { member: `<@${watcher.targetDiscordId}>` },
-      ),
-    )
-    .setColor(participant.win ? 0x2ecc71 : 0xe74c3c)
-    .addFields(fields)
-    .setFooter({
-      text: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.footer.matchWithRiotId,
-        {
-          matchId: match.metadata.matchId,
-          riotId: `${account.gameName}#${account.tagLine}`,
-        },
-      ),
-    })
-    .setTimestamp(new Date(match.info.gameEndTimestamp ?? Date.now()));
-  if (thumbnailUrl) {
-    embed.setThumbnail(thumbnailUrl);
-  }
-  if (rankValue) {
-    embed.addFields({
-      name: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.field.rank,
-      ),
-      value: rankValue,
-      inline: false,
-    });
-  }
-  if (opggValue) {
-    embed.addFields({
-      name: messageHandler.formatMessage(
-        messageKeys.matchTracking.embed.field.opgg,
-      ),
-      value: opggValue,
-      inline: false,
-    });
-  }
-  return embed;
-}
-
-async function sendOrEditWatcherMessage(
-  client: Client,
-  watcher: MatchWatcher,
-  messageId: string | null | undefined,
-  embed: EmbedBuilder,
-) {
-  try {
-    const channel = await client.channels.fetch(watcher.channelId) as
-      | WatcherChannel
-      | null;
-    if (!channel?.send) {
-      botLogger.warn("match_tracking.channel_not_found", {
-        guildId: watcher.guildId,
-        channelId: watcher.channelId,
-      });
-      return messageId ?? null;
-    }
-
-    if (messageId && channel.messages?.fetch) {
-      try {
-        const message = await channel.messages.fetch(messageId);
-        await message.edit?.({ embeds: [embed] });
-        return message.id ?? messageId;
-      } catch (error) {
-        botLogger.warn("match_tracking.edit_message_failed", {
-          guildId: watcher.guildId,
-          channelId: watcher.channelId,
-          messageId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    const message = await channel.send({ embeds: [embed] });
-    return message.id ?? null;
-  } catch (error) {
-    botLogger.error("match_tracking.send_message_failed", {
-      guildId: watcher.guildId,
-      channelId: watcher.channelId,
-    }, error);
-    return messageId ?? null;
-  }
-}
-
 async function setWatcherState(
   watcher: MatchWatcher,
   state: Parameters<typeof apiClient.updateMatchWatcherState>[2],
@@ -1192,7 +620,8 @@ async function setWatcherState(
 }
 
 async function tryFetchAndNotifyResult(
-  client: Client,
+  notifier: MatchTrackingNotifier,
+  renderer: MatchTrackingRenderer,
   watcher: MatchWatcher,
   account: RiotAccount,
   context: MatchWatcherProcessingContext,
@@ -1205,11 +634,10 @@ async function tryFetchAndNotifyResult(
       targetDiscordId: watcher.targetDiscordId,
       matchId: pending.matchId,
     });
-    const messageId = await sendOrEditWatcherMessage(
-      client,
+    const messageId = await notifier.sendOrEditWatcherMessage(
       watcher,
       pending.messageId,
-      buildResultFetchTimeoutEmbed(watcher, pending.matchId),
+      renderer.resultFetchTimeout(watcher, pending.matchId),
     );
     await setWatcherState(watcher, {
       ...currentState,
@@ -1249,11 +677,10 @@ async function tryFetchAndNotifyResult(
     account,
     match,
   );
-  const messageId = await sendOrEditWatcherMessage(
-    client,
+  const messageId = await notifier.sendOrEditWatcherMessage(
     watcher,
     pending.messageId,
-    await buildMatchResultEmbed(
+    await renderer.matchResult(
       watcher,
       account,
       match,
@@ -1273,7 +700,8 @@ async function tryFetchAndNotifyResult(
 }
 
 async function processWatcher(
-  client: Client,
+  notifier: MatchTrackingNotifier,
+  renderer: MatchTrackingRenderer,
   watcher: MatchWatcher,
   context: MatchWatcherProcessingContext,
 ) {
@@ -1295,7 +723,8 @@ async function processWatcher(
   let pendingStatus: "none" | "pending" | "cleared" = "none";
   if (pending) {
     const result = await tryFetchAndNotifyResult(
-      client,
+      notifier,
+      renderer,
       watcher,
       account,
       context,
@@ -1317,24 +746,31 @@ async function processWatcher(
         watcher.currentGameId,
       );
       const matchId = matchIdForGame(account, watcher.currentGameId);
-      const messageId = await sendOrEditWatcherMessage(
-        client,
+      const messageId = await notifier.sendOrEditWatcherMessage(
         watcher,
         resultNotificationMessageId(activeNotificationGroup, watcher),
-        buildResultPendingEmbed(watcher, matchId),
+        renderer.resultPending(watcher, matchId),
       );
-      await tryFetchAndNotifyResult(client, watcher, account, context, {
-        matchId,
-        messageId,
-        startedAt: watcher.gameStartedAt,
-      }, {
-        lastState: "IDLE",
-        currentGameId: null,
-        currentMatchId: null,
-        currentNotificationMessageId: null,
-        gameStartedAt: null,
-        lastInGameNotifiedAt: null,
-      });
+      await tryFetchAndNotifyResult(
+        notifier,
+        renderer,
+        watcher,
+        account,
+        context,
+        {
+          matchId,
+          messageId,
+          startedAt: watcher.gameStartedAt,
+        },
+        {
+          lastState: "IDLE",
+          currentGameId: null,
+          currentMatchId: null,
+          currentNotificationMessageId: null,
+          gameStartedAt: null,
+          lastInGameNotifiedAt: null,
+        },
+      );
       return;
     }
 
@@ -1378,18 +814,16 @@ async function processWatcher(
       watcher.currentGameId,
     );
     const notifiedAt = new Date();
-    const previousMessageId = await sendOrEditWatcherMessage(
-      client,
+    const previousMessageId = await notifier.sendOrEditWatcherMessage(
       watcher,
       resultNotificationMessageId(previousActiveNotificationGroup, watcher),
-      buildResultPendingEmbed(watcher, previousMatchId),
+      renderer.resultPending(watcher, previousMatchId),
     );
     await capturePendingRankSnapshots(watcher, account, activeGame);
-    const newMessageId = await sendOrEditWatcherMessage(
-      client,
+    const newMessageId = await notifier.sendOrEditWatcherMessage(
       watcher,
       activeNotificationGroup.messageId,
-      await buildActiveGameEmbed(
+      await renderer.activeGame(
         watcher,
         account,
         activeGame,
@@ -1425,11 +859,19 @@ async function processWatcher(
       pendingResultStartedAt: watcher.gameStartedAt,
       lastCheckedAt: new Date(),
     });
-    await tryFetchAndNotifyResult(client, watcher, account, context, {
-      matchId: previousMatchId,
-      messageId: previousMessageId,
-      startedAt: watcher.gameStartedAt,
-    }, currentState);
+    await tryFetchAndNotifyResult(
+      notifier,
+      renderer,
+      watcher,
+      account,
+      context,
+      {
+        matchId: previousMatchId,
+        messageId: previousMessageId,
+        startedAt: watcher.gameStartedAt,
+      },
+      currentState,
+    );
     return;
   }
 
@@ -1438,11 +880,10 @@ async function processWatcher(
   if (started) {
     const notifiedAt = new Date();
     await capturePendingRankSnapshots(watcher, account, activeGame);
-    const messageId = await sendOrEditWatcherMessage(
-      client,
+    const messageId = await notifier.sendOrEditWatcherMessage(
       watcher,
       activeNotificationGroup.messageId,
-      await buildActiveGameEmbed(
+      await renderer.activeGame(
         watcher,
         account,
         activeGame,
@@ -1477,11 +918,10 @@ async function processWatcher(
 
   if (shouldNotifyActiveNotificationGroup(activeNotificationGroup, watcher)) {
     const notifiedAt = new Date();
-    const messageId = await sendOrEditWatcherMessage(
-      client,
+    const messageId = await notifier.sendOrEditWatcherMessage(
       watcher,
       activeNotificationGroup.messageId ?? watcher.currentNotificationMessageId,
-      await buildActiveGameEmbed(
+      await renderer.activeGame(
         watcher,
         account,
         activeGame,
@@ -1541,10 +981,20 @@ async function processMatchWatchers(client: Client) {
   warnIfRiotRequestBudgetRisk(result.watchers.length);
 
   const context = createMatchWatcherProcessingContext();
+  const renderer = createDefaultMatchTrackingRenderer();
+  const notifier = createMatchTrackingNotifier({
+    client: {
+      channels: {
+        fetch: async (channelId) =>
+          await client.channels.fetch(channelId) as WatcherChannel | null,
+      },
+    },
+    logger: botLogger,
+  });
   await seedMatchWatcherProcessingContext(context, result.watchers);
   for (const watcher of result.watchers) {
     try {
-      await processWatcher(client, watcher, context);
+      await processWatcher(notifier, renderer, watcher, context);
     } catch (error) {
       botLogger.error("match_tracking.watcher_failed", {
         guildId: watcher.guildId,
