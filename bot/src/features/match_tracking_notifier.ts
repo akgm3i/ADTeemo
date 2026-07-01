@@ -50,7 +50,10 @@ export function createMatchTrackingNotifier(
       if (messageId && channel.messages?.fetch) {
         try {
           const message = await channel.messages.fetch(messageId);
-          await message.edit?.({ embeds: [embed] });
+          if (!message.edit) {
+            throw new Error("message.edit is not available");
+          }
+          await message.edit({ embeds: [embed] });
           return message.id ?? messageId;
         } catch (error) {
           dependencies.logger.warn("match_tracking.edit_message_failed", {

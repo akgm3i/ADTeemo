@@ -89,6 +89,51 @@ describe("match_tracking_notifier.ts", () => {
     });
   });
 
+  test("既存Discord投稿にeditメソッドがないとき、新規sendへfallbackして送信後IDを返す", async () => {
+    const message = {
+      id: "message-old",
+    };
+    const channel = {
+      send: (_options: { embeds: EmbedBuilder[] }) =>
+        Promise.resolve({ id: "message-new" }),
+      messages: {
+        fetch: (_messageId: string) => Promise.resolve(message),
+      },
+    };
+    const client = {
+      channels: {
+        fetch: (_channelId: string) => Promise.resolve(channel),
+      },
+    };
+    const log = logger();
+    const warnSpy = spy(log, "warn");
+    const sendSpy = spy(channel, "send");
+    const notifier = createMatchTrackingNotifier({
+      client,
+      logger: log,
+    });
+
+    const result = await notifier.sendOrEditWatcherMessage(
+      watcher(),
+      "message-old",
+      new EmbedBuilder().setTitle("test"),
+    );
+
+    assertEquals(result, "message-new");
+    assertSpyCalls(sendSpy, 1);
+    assertSpyCall(warnSpy, 0, {
+      args: [
+        "match_tracking.edit_message_failed",
+        {
+          guildId: "guild-1",
+          channelId: "channel-1",
+          messageId: "message-old",
+          error: "message.edit is not available",
+        },
+      ],
+    });
+  });
+
   test("Discordチャンネルが見つからないとき、状態更新をせず既存messageIdを返す", async () => {
     const client = {
       channels: {
