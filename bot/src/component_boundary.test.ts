@@ -36,6 +36,21 @@ const forbiddenBackendRuntimeImportPatterns = [
   /from\s+["']drizzle-orm\/sqlite-core["']/,
 ];
 
+function relativeImportUrls(source: string, sourceFile: URL): string[] {
+  const importPattern =
+    /\b(?:import|export)\s+(?:type\s+)?(?:[^"']*?\s+from\s+)?["']([^"']+)["']/g;
+  const urls: string[] = [];
+
+  for (const match of source.matchAll(importPattern)) {
+    const specifier = match[1];
+    if (!specifier.startsWith(".")) continue;
+
+    urls.push(new URL(specifier, sourceFile).href);
+  }
+
+  return urls;
+}
+
 test("Bot実行環境がBackend内部実装とDB設定に依存しない", async () => {
   // Arrange
   const violations: string[] = [];
@@ -92,11 +107,16 @@ test("Bot実行環境がBackend内部実装とDB設定に依存しない", async
 
 test("record-matchコマンドがmatch tracking機能に依存しない", async () => {
   // Arrange
-  const source = await Deno.readTextFile(
-    new URL("./commands/record-match.ts", import.meta.url),
+  const commandFile = new URL("./commands/record-match.ts", import.meta.url);
+  const matchTrackingFile = new URL(
+    "./features/match_tracking.ts",
+    import.meta.url,
   );
-  const forbiddenImport = /from\s+["'][^"']*match_tracking(?:\.ts)?["']/;
+  const source = await Deno.readTextFile(commandFile);
 
   // Act / Assert
-  assertEquals(forbiddenImport.test(source), false);
+  assertEquals(
+    relativeImportUrls(source, commandFile).includes(matchTrackingFile.href),
+    false,
+  );
 });
