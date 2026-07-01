@@ -89,3 +89,13 @@ test("Bot実行環境がBackend内部実装とDB設定に依存しない", async
   // Act / Assert
   assertEquals(violations, []);
 });
+
+test("record-matchコマンドがmatch tracking機能に依存しない", async () => {
+  // Arrange
+  const source = await Deno.readTextFile(
+    new URL("./commands/record-match.ts", import.meta.url),
+  );
+
+  // Act / Assert
+  assertEquals(source.includes("../features/match_tracking.ts"), false);
+});

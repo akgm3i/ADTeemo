@@ -8,8 +8,8 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import { messageHandler, messageKeys } from "../messages.ts";
-import { matchTracker } from "../features/match_tracking.ts";
 import { apiClient, type MatchParticipant } from "../api_client.ts";
+import { recordMatchParticipantProvider } from "../features/record_match_participants.ts";
 import { statCollector } from "../features/stat_collector.ts";
 import { MessageFlags } from "discord.js";
 
@@ -54,7 +54,8 @@ export async function execute(interaction: CommandInteraction) {
       flags: MessageFlags.Ephemeral,
     });
 
-    const participants = await matchTracker.getActiveParticipants();
+    const participants = await recordMatchParticipantProvider
+      .getActiveParticipants();
     const allStats: Map<string, Stats> = new Map();
 
     for (const participant of participants) {

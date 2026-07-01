@@ -10,7 +10,7 @@ import { data, execute } from "./record-match.ts";
 import { MockInteractionBuilder } from "../test_utils.ts";
 import { assertEquals } from "@std/assert";
 import type { Lane } from "@adteemo/api/contract";
-import { matchTracker } from "../features/match_tracking.ts";
+import { recordMatchParticipantProvider } from "../features/record_match_participants.ts";
 import { statCollector } from "../features/stat_collector.ts";
 
 describe("/record-match command", () => {
@@ -61,7 +61,7 @@ describe("/record-match command", () => {
   test("対話フローが正常に完了し、全プレイヤーのデータがAPIに送信される", async () => {
     // Arrange
     using _getActiveParticipantsStub = stub(
-      matchTracker,
+      recordMatchParticipantProvider,
       "getActiveParticipants",
       () => Promise.resolve(mockParticipants),
     );
