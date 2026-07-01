@@ -95,7 +95,8 @@ test("record-matchコマンドがmatch tracking機能に依存しない", async 
   const source = await Deno.readTextFile(
     new URL("./commands/record-match.ts", import.meta.url),
   );
+  const forbiddenImport = /from\s+["'][^"']*match_tracking(?:\.ts)?["']/;
 
   // Act / Assert
-  assertEquals(source.includes("../features/match_tracking.ts"), false);
+  assertEquals(forbiddenImport.test(source), false);
 });
