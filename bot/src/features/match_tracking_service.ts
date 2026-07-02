@@ -385,22 +385,20 @@ async function inspectActiveGameForWatcher(
     watcher.lastState,
     watcher.currentGameId ?? "",
   ].join(":");
-  const cached = context.activeGameInspectionsByTargetAndState.get(cacheKey);
-  const result = await (cached ??
-    dependencies.apiClient.inspectMatchWatcherActiveGame(
+  let promise = context.activeGameInspectionsByTargetAndState.get(cacheKey);
+  if (!promise) {
+    promise = dependencies.apiClient.inspectMatchWatcherActiveGame(
       watcher.guildId,
       watcher.targetDiscordId,
       {
         lastState: watcher.lastState,
         currentGameId: watcher.currentGameId,
       },
-    ));
-  if (!cached) {
-    context.activeGameInspectionsByTargetAndState.set(
-      cacheKey,
-      Promise.resolve(result),
     );
+    context.activeGameInspectionsByTargetAndState.set(cacheKey, promise);
   }
+
+  const result = await promise;
   if (result.success) {
     rememberRiotAccountForWatcher(context, result.account);
   }
@@ -704,9 +702,8 @@ async function processWatcher(
   context: MatchWatcherProcessingContext,
 ) {
   const pending = pendingResultFromWatcher(watcher);
-  if (
-    pending && watcher.lastState === "FETCHING_RESULT" && watcher.currentMatchId
-  ) {
+  let pendingStatus: "none" | "pending" | "cleared" = "none";
+  if (pending) {
     const accountResult = await getRiotAccountForWatcher(
       dependencies,
       context,
@@ -720,14 +717,19 @@ async function processWatcher(
       });
       return;
     }
-    await tryFetchAndNotifyResult(
+    const result = await tryFetchAndNotifyResult(
       dependencies,
       watcher,
       accountResult.account,
       context,
       pending,
     );
-    return;
+    pendingStatus = result.status;
+    if (
+      watcher.lastState === "FETCHING_RESULT" && watcher.currentMatchId
+    ) {
+      return;
+    }
   }
 
   const activeGameResult = await inspectActiveGameForWatcher(
@@ -744,21 +746,6 @@ async function processWatcher(
     return;
   }
   const account = activeGameResult.account;
-
-  let pendingStatus: "none" | "pending" | "cleared" = "none";
-  if (pending) {
-    const result = await tryFetchAndNotifyResult(
-      dependencies,
-      watcher,
-      account,
-      context,
-      pending,
-    );
-    pendingStatus = result.status;
-    if (watcher.lastState === "FETCHING_RESULT" && watcher.currentMatchId) {
-      return;
-    }
-  }
 
   const activeGame = activeGameResult.activeGame;
   if (!activeGame) {

@@ -3235,6 +3235,60 @@ describe("match_tracking.ts", () => {
     assertEquals(updateStub.calls.at(-1)?.args[2].currentGameId, "67890");
   });
 
+  test("pending resultがある状態でActive Game検査が失敗しても、結果取得を先に試行する", async () => {
+    const calls: string[] = [];
+    const { client } = clientWithSend();
+    using _loggerStub = stub(botLogger, "error", () => {});
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: [watcher({
+            pendingResultMatchId: "JP1_12345",
+            pendingResultNotificationMessageId: "message-old",
+            pendingResultStartedAt: new Date(Date.now() - 120_000),
+          })],
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () => Promise.resolve({ success: true as const, account: account() }),
+    );
+    using getMatchStub = stub(
+      apiClient,
+      "getMatchById",
+      () => {
+        calls.push("match");
+        return Promise.resolve(null);
+      },
+    );
+    using _activeGameStub = stub(
+      apiClient,
+      "getActiveGameByPuuid",
+      () => {
+        calls.push("activeGame");
+        throw new Error("Spectator API failed");
+      },
+    );
+    using updateStub = stub(
+      apiClient,
+      "updateMatchWatcherState",
+      () => Promise.resolve({ success: true as const }),
+    );
+
+    await matchTracker.processMatchWatchers(client);
+
+    assertEquals(calls, ["match", "activeGame"]);
+    assertSpyCall(getMatchStub, 0, { args: ["asia", "JP1_12345"] });
+    assertEquals(
+      updateStub.calls[0].args[2].pendingResultMatchId,
+      "JP1_12345",
+    );
+  });
+
   test("IDLEかつ試合中ではない監視対象では、DB状態更新をスキップする", async () => {
     const { client, sendSpy } = clientWithSend();
     using _getWatchersStub = stub(
