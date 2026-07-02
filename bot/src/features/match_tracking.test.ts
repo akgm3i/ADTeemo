@@ -263,6 +263,7 @@ async function resultEmbedFields(resultMatch: RiotMatch) {
 describe("match_tracking.ts", () => {
   let staticDataStub: { restore(): void } | undefined;
   let opggDetailStub: { restore(): void } | undefined;
+  let activeGameInspectionStub: { restore(): void } | undefined;
   let rankSnapshotStubs: { restore(): void }[] = [];
 
   function restoreStaticDataStub() {
@@ -273,6 +274,11 @@ describe("match_tracking.ts", () => {
   function restoreOpggDetailStub() {
     opggDetailStub?.restore();
     opggDetailStub = undefined;
+  }
+
+  function restoreActiveGameInspectionStub() {
+    activeGameInspectionStub?.restore();
+    activeGameInspectionStub = undefined;
   }
 
   function restoreRankSnapshotStubs() {
@@ -314,11 +320,63 @@ describe("match_tracking.ts", () => {
           }),
       ),
     ];
+    activeGameInspectionStub = stub(
+      apiClient,
+      "inspectMatchWatcherActiveGame",
+      async (_guildId, targetDiscordId, state) => {
+        const accountResult = await apiClient.getRiotAccount(targetDiscordId);
+        if (!accountResult.success) return accountResult;
+
+        const activeGame = await apiClient.getActiveGameByPuuid(
+          accountResult.account.platform,
+          accountResult.account.puuid,
+        );
+        if (
+          activeGame && activeGame.gameQueueConfigId === 420 &&
+          (state.lastState !== "IN_GAME" ||
+            state.currentGameId !== String(activeGame.gameId))
+        ) {
+          const entries = await apiClient.getLeagueEntriesByPuuid(
+            accountResult.account.platform,
+            accountResult.account.puuid,
+          );
+          await apiClient.upsertPendingRankSnapshots({
+            platform: accountResult.account.platform,
+            gameId: String(activeGame.gameId),
+            puuid: accountResult.account.puuid,
+            snapshots: [{
+              queueType: "RANKED_SOLO_5x5",
+              tier: entries[0]?.tier ?? null,
+              rank: entries[0]?.rank ?? null,
+              leaguePoints: entries[0]?.leaguePoints ?? null,
+              wins: entries[0]?.wins ?? null,
+              losses: entries[0]?.losses ?? null,
+              fetchedAt: new Date(),
+            }, {
+              queueType: "RANKED_FLEX_SR",
+              tier: null,
+              rank: null,
+              leaguePoints: null,
+              wins: null,
+              losses: null,
+              fetchedAt: new Date(),
+            }],
+          });
+        }
+
+        return {
+          success: true as const,
+          account: accountResult.account,
+          activeGame,
+        };
+      },
+    );
   });
 
   afterEach(() => {
     restoreStaticDataStub();
     restoreOpggDetailStub();
+    restoreActiveGameInspectionStub();
     restoreRankSnapshotStubs();
   });
 

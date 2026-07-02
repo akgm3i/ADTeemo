@@ -1,4 +1,9 @@
-import type { MatchWatcher, MatchWatcherState } from "@adteemo/api/contract";
+import type {
+  ActiveGame,
+  MatchWatcher,
+  MatchWatcherState,
+  RiotAccount,
+} from "@adteemo/api/contract";
 import {
   type ApiRpcClient,
   dateOrNull,
@@ -38,6 +43,25 @@ function parseMatchWatcher(
     pendingResultStartedAt: dateOrNull(watcher.pendingResultStartedAt),
   };
 }
+
+function parseRiotAccount(
+  account:
+    & {
+      createdAt: string | Date;
+      updatedAt: string | Date | null;
+    }
+    & Omit<RiotAccount, "createdAt" | "updatedAt">,
+): RiotAccount {
+  return {
+    ...account,
+    createdAt: new Date(account.createdAt),
+    updatedAt: dateOrNull(account.updatedAt),
+  };
+}
+
+export type InspectMatchWatcherActiveGameResult =
+  | { success: true; account: RiotAccount; activeGame: ActiveGame | null }
+  | { success: false; error: string };
 
 export function createMatchWatchersApiClient(
   { rpcClient }: { rpcClient: ApiRpcClient },
@@ -133,11 +157,48 @@ export function createMatchWatchersApiClient(
     );
   }
 
+  async function inspectMatchWatcherActiveGame(
+    guildId: string,
+    targetDiscordId: string,
+    state: {
+      lastState: MatchWatcherState;
+      currentGameId: string | null;
+    },
+  ): Promise<InspectMatchWatcherActiveGameResult> {
+    return await resultFromRequest(
+      () =>
+        rpcClient["match-watchers"][":guildId"][":targetDiscordId"].tracking[
+          "active-game"
+        ].$post({
+          param: { guildId, targetDiscordId },
+          json: state,
+        }),
+      async (res) => {
+        const body = await res.json() as {
+          account: Parameters<typeof parseRiotAccount>[0];
+          activeGame: ActiveGame | null;
+        };
+        return {
+          account: parseRiotAccount(body.account),
+          activeGame: body.activeGame,
+        };
+      },
+      async (res) => {
+        if (res.status === 404 || res.status === 502) {
+          return { success: false, error: await readErrorMessage(res) };
+        }
+
+        throw unexpectedResponseError(res);
+      },
+    );
+  }
+
   return {
     watchMatch,
     unwatchMatch,
     getEnabledMatchWatchers,
     getEnabledMatchWatchersByGuild,
+    inspectMatchWatcherActiveGame,
     updateMatchWatcherState,
   };
 }
