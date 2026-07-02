@@ -58,6 +58,7 @@ describe("match_tracking worker", () => {
       },
       logger: {
         warn: () => {},
+        error: () => {},
       },
     });
 
@@ -90,6 +91,7 @@ describe("match_tracking worker", () => {
       },
       logger: {
         warn: () => {},
+        error: () => {},
       },
     });
 
@@ -120,6 +122,7 @@ describe("match_tracking worker", () => {
       },
       logger: {
         warn: (message) => warnings.push(message),
+        error: () => {},
       },
     });
 
@@ -134,6 +137,50 @@ describe("match_tracking worker", () => {
     assertEquals(warnings, ["match_tracking.worker_tick_skipped"]);
   });
 
+  test("tick処理が例外で失敗したとき、errorログを出して次tickを継続できる", async () => {
+    const manualScheduler = createManualScheduler();
+    const calls: string[] = [];
+    const errors: {
+      message: string;
+      metadata: Record<string, unknown>;
+      error: unknown;
+    }[] = [];
+    const failure = new Error("temporary failure");
+    const worker = createMatchTrackingWorker({
+      createService: () => ({
+        processMatchWatchers: () => {
+          calls.push("process");
+          if (calls.length === 1) {
+            return Promise.reject(failure);
+          }
+          return Promise.resolve();
+        },
+      }),
+      scheduler: manualScheduler.scheduler,
+      config: {
+        pollIntervalMs: 60_000,
+      },
+      logger: {
+        warn: () => {},
+        error: (message, metadata, error) => {
+          errors.push({ message, metadata, error });
+        },
+      },
+    });
+
+    worker.start();
+    await flushMicrotasks();
+    manualScheduler.tick();
+    await flushMicrotasks();
+
+    assertEquals(calls, ["process", "process"]);
+    assertEquals(errors, [{
+      message: "match_tracking.worker_tick_failed",
+      metadata: {},
+      error: failure,
+    }]);
+  });
+
   test("stopしたとき、登録済みintervalを解除する", () => {
     const manualScheduler = createManualScheduler();
     const worker = createMatchTrackingWorker({
@@ -146,6 +193,7 @@ describe("match_tracking worker", () => {
       },
       logger: {
         warn: () => {},
+        error: () => {},
       },
     });
 

@@ -127,6 +127,11 @@ export type MatchTrackingWorkerDependencies = {
   };
   logger: {
     warn: (message: string, metadata: Record<string, unknown>) => void;
+    error: (
+      message: string,
+      metadata: Record<string, unknown>,
+      error?: unknown,
+    ) => void;
   };
 };
 
@@ -148,6 +153,8 @@ export function createMatchTrackingWorker(
     processingMatchWatchers = true;
     try {
       await service.processMatchWatchers();
+    } catch (error) {
+      dependencies.logger.error("match_tracking.worker_tick_failed", {}, error);
     } finally {
       processingMatchWatchers = false;
     }
