@@ -22,6 +22,7 @@ import {
     as shouldNotifyActiveNotificationGroupWithConfig,
   shouldNotifyInGame as shouldNotifyInGameWithConfig,
 } from "./match_tracking_state.ts";
+import { createRiotRequestBudgetMonitor } from "./match_tracking_budget.ts";
 import type { createMatchTrackingRenderer } from "./match_tracking_renderer.ts";
 
 type ActiveGame = NonNullable<
@@ -1013,29 +1014,11 @@ async function processWatcher(
 export function createMatchTrackingService(
   dependencies: MatchTrackingServiceDependencies,
 ) {
-  let lastBudgetWarningAt = 0;
-
-  function warnIfRiotRequestBudgetRisk(watcherCount: number) {
-    const estimatedRequests = watcherCount *
-      Math.ceil(
-        dependencies.config.riotLongWindowMs /
-          dependencies.config.pollIntervalMs,
-      );
-    const now = dependencies.clock.now().getTime();
-    if (
-      estimatedRequests >= dependencies.config.riotLongWindowLimit * 0.8 &&
-      now - lastBudgetWarningAt >= dependencies.config.riotLongWindowMs
-    ) {
-      lastBudgetWarningAt = now;
-      dependencies.logger.warn("match_tracking.riot_request_budget_risk", {
-        watcherCount,
-        pollIntervalMs: dependencies.config.pollIntervalMs,
-        rateLimitWindowMs: dependencies.config.riotLongWindowMs,
-        estimatedRequestsPerWindow: estimatedRequests,
-        limitPerWindow: dependencies.config.riotLongWindowLimit,
-      });
-    }
-  }
+  const budgetMonitor = createRiotRequestBudgetMonitor({
+    config: () => dependencies.config,
+    clock: dependencies.clock,
+    logger: dependencies.logger,
+  });
 
   async function processMatchWatchers() {
     const result = await dependencies.apiClient.getEnabledMatchWatchers();
@@ -1046,7 +1029,7 @@ export function createMatchTrackingService(
       return;
     }
 
-    warnIfRiotRequestBudgetRisk(result.watchers.length);
+    budgetMonitor.warnIfRiotRequestBudgetRisk(result.watchers.length);
 
     const context = createMatchWatcherProcessingContext();
     await seedMatchWatcherProcessingContext(
@@ -1080,6 +1063,6 @@ export function createMatchTrackingService(
         dependencies.config.inGameNotifyIntervalMs,
         dependencies.clock.now(),
       ),
-    warnIfRiotRequestBudgetRisk,
+    warnIfRiotRequestBudgetRisk: budgetMonitor.warnIfRiotRequestBudgetRisk,
   };
 }
