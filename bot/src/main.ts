@@ -38,7 +38,8 @@ client.once(Events.ClientReady, (c) => {
     userTag: c.user.tag,
     userId: c.user.id,
   });
-  matchTracker.startMatchTrackingWorker(c);
+  const matchTrackingWorker = matchTracker.createDefaultMatchTrackingWorker(c);
+  matchTrackingWorker.start();
 });
 
 export async function handleInteractionCreate(interaction: Interaction) {

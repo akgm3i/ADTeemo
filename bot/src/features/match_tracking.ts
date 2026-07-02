@@ -16,6 +16,7 @@ import {
   createMatchTrackingService,
   type MatchTrackingServiceConfig,
 } from "./match_tracking_service.ts";
+import { createRiotRequestBudgetMonitor } from "./match_tracking_budget.ts";
 
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
 const DEFAULT_IN_GAME_NOTIFY_INTERVAL_MS = 300_000;
@@ -109,71 +110,108 @@ async function processMatchWatchers(client: Client) {
   await createDefaultMatchTrackingService(client).processMatchWatchers();
 }
 
-let workerId: number | undefined;
-let processingMatchWatchers = false;
-let lastBudgetWarningAt = 0;
-let workerService:
-  | ReturnType<typeof createMatchTrackingService>
+export type MatchTrackingWorkerService = {
+  processMatchWatchers: () => Promise<void>;
+};
+
+export type MatchTrackingWorkerScheduler = {
+  setInterval: (callback: () => void, intervalMs: number) => number;
+  clearInterval: (intervalId: number) => void;
+};
+
+export type MatchTrackingWorkerDependencies = {
+  createService: () => MatchTrackingWorkerService;
+  scheduler: MatchTrackingWorkerScheduler;
+  config: {
+    pollIntervalMs: number;
+  };
+  logger: {
+    warn: (message: string, metadata: Record<string, unknown>) => void;
+  };
+};
+
+export function createMatchTrackingWorker(
+  dependencies: MatchTrackingWorkerDependencies,
+) {
+  let workerId: number | undefined;
+  let processingMatchWatchers = false;
+
+  async function guardedProcessMatchWatchers(
+    service: MatchTrackingWorkerService,
+  ) {
+    if (processingMatchWatchers) {
+      dependencies.logger.warn("match_tracking.worker_tick_skipped", {
+        reason: "previous_tick_still_running",
+      });
+      return;
+    }
+    processingMatchWatchers = true;
+    try {
+      await service.processMatchWatchers();
+    } finally {
+      processingMatchWatchers = false;
+    }
+  }
+
+  function start() {
+    if (workerId !== undefined) return;
+
+    const service = dependencies.createService();
+    workerId = dependencies.scheduler.setInterval(() => {
+      void guardedProcessMatchWatchers(service);
+    }, dependencies.config.pollIntervalMs);
+    void guardedProcessMatchWatchers(service);
+  }
+
+  function stop() {
+    if (workerId === undefined) return;
+    dependencies.scheduler.clearInterval(workerId);
+    workerId = undefined;
+  }
+
+  return {
+    start,
+    stop,
+  };
+}
+
+function createDefaultMatchTrackingWorker(client: Client) {
+  return createMatchTrackingWorker({
+    createService: () => createDefaultMatchTrackingService(client),
+    scheduler: {
+      setInterval: (callback, intervalMs) => setInterval(callback, intervalMs),
+      clearInterval: (intervalId) => clearInterval(intervalId),
+    },
+    config: {
+      pollIntervalMs: numberEnv(
+        "MATCH_WATCH_POLL_INTERVAL_MS",
+        DEFAULT_POLL_INTERVAL_MS,
+      ),
+    },
+    logger: botLogger,
+  });
+}
+
+let defaultWorker:
+  | ReturnType<typeof createDefaultMatchTrackingWorker>
   | undefined;
 
-function warnIfRiotRequestBudgetRisk(watcherCount: number) {
-  const config = matchTrackingServiceConfig();
-  const estimatedRequests = watcherCount *
-    Math.ceil(config.riotLongWindowMs / config.pollIntervalMs);
-  const now = Date.now();
-  if (
-    estimatedRequests >= config.riotLongWindowLimit * 0.8 &&
-    now - lastBudgetWarningAt >= config.riotLongWindowMs
-  ) {
-    lastBudgetWarningAt = now;
-    botLogger.warn("match_tracking.riot_request_budget_risk", {
-      watcherCount,
-      pollIntervalMs: config.pollIntervalMs,
-      rateLimitWindowMs: config.riotLongWindowMs,
-      estimatedRequestsPerWindow: estimatedRequests,
-      limitPerWindow: config.riotLongWindowLimit,
-    });
-  }
-}
-
-async function guardedProcessMatchWatchers(
-  service: ReturnType<typeof createMatchTrackingService>,
-) {
-  if (processingMatchWatchers) {
-    botLogger.warn("match_tracking.worker_tick_skipped", {
-      reason: "previous_tick_still_running",
-    });
-    return;
-  }
-  processingMatchWatchers = true;
-  try {
-    await service.processMatchWatchers();
-  } finally {
-    processingMatchWatchers = false;
-  }
-}
+const defaultBudgetMonitor = createRiotRequestBudgetMonitor({
+  config: matchTrackingServiceConfig,
+  clock: {
+    now: () => new Date(),
+  },
+  logger: botLogger,
+});
 
 function startMatchTrackingWorker(client: Client) {
-  if (workerId !== undefined) return;
-
-  const pollIntervalMs = numberEnv(
-    "MATCH_WATCH_POLL_INTERVAL_MS",
-    DEFAULT_POLL_INTERVAL_MS,
-  );
-  workerService = createDefaultMatchTrackingService(client);
-  workerId = setInterval(() => {
-    if (workerService) {
-      guardedProcessMatchWatchers(workerService);
-    }
-  }, pollIntervalMs);
-  guardedProcessMatchWatchers(workerService);
+  defaultWorker ??= createDefaultMatchTrackingWorker(client);
+  defaultWorker.start();
 }
 
 function stopMatchTrackingWorker() {
-  if (workerId === undefined) return;
-  clearInterval(workerId);
-  workerId = undefined;
-  workerService = undefined;
+  defaultWorker?.stop();
+  defaultWorker = undefined;
 }
 
 function hasResultFetchTimedOut(watcher: MatchWatcher) {
@@ -200,9 +238,11 @@ function shouldNotifyInGame(watcher: MatchWatcher) {
 
 export const matchTracker = {
   processMatchWatchers,
+  createMatchTrackingWorker,
+  createDefaultMatchTrackingWorker,
   startMatchTrackingWorker,
   stopMatchTrackingWorker,
   hasResultFetchTimedOut,
   shouldNotifyInGame,
-  warnIfRiotRequestBudgetRisk,
+  warnIfRiotRequestBudgetRisk: defaultBudgetMonitor.warnIfRiotRequestBudgetRisk,
 };
