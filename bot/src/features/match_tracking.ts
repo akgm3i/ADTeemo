@@ -112,6 +112,9 @@ async function processMatchWatchers(client: Client) {
 let workerId: number | undefined;
 let processingMatchWatchers = false;
 let lastBudgetWarningAt = 0;
+let workerService:
+  | ReturnType<typeof createMatchTrackingService>
+  | undefined;
 
 function warnIfRiotRequestBudgetRisk(watcherCount: number) {
   const config = matchTrackingServiceConfig();
@@ -133,7 +136,9 @@ function warnIfRiotRequestBudgetRisk(watcherCount: number) {
   }
 }
 
-async function guardedProcessMatchWatchers(client: Client) {
+async function guardedProcessMatchWatchers(
+  service: ReturnType<typeof createMatchTrackingService>,
+) {
   if (processingMatchWatchers) {
     botLogger.warn("match_tracking.worker_tick_skipped", {
       reason: "previous_tick_still_running",
@@ -142,7 +147,7 @@ async function guardedProcessMatchWatchers(client: Client) {
   }
   processingMatchWatchers = true;
   try {
-    await processMatchWatchers(client);
+    await service.processMatchWatchers();
   } finally {
     processingMatchWatchers = false;
   }
@@ -155,16 +160,20 @@ function startMatchTrackingWorker(client: Client) {
     "MATCH_WATCH_POLL_INTERVAL_MS",
     DEFAULT_POLL_INTERVAL_MS,
   );
+  workerService = createDefaultMatchTrackingService(client);
   workerId = setInterval(() => {
-    guardedProcessMatchWatchers(client);
+    if (workerService) {
+      guardedProcessMatchWatchers(workerService);
+    }
   }, pollIntervalMs);
-  guardedProcessMatchWatchers(client);
+  guardedProcessMatchWatchers(workerService);
 }
 
 function stopMatchTrackingWorker() {
   if (workerId === undefined) return;
   clearInterval(workerId);
   workerId = undefined;
+  workerService = undefined;
 }
 
 function hasResultFetchTimedOut(watcher: MatchWatcher) {

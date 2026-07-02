@@ -1,6 +1,7 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
+import { FakeTime } from "@std/testing/time";
 import type { Client } from "discord.js";
 import type { MatchWatcher, RiotAccount } from "@adteemo/api/contract";
 import { apiClient } from "../api_client.ts";
@@ -84,6 +85,12 @@ function activeGameForPuuid(puuid: string, gameId = 12345) {
   const game = activeGame(gameId);
   game.participants[0].puuid = puuid;
   return game;
+}
+
+async function flushMicrotasks(count = 100) {
+  for (let index = 0; index < count; index++) {
+    await Promise.resolve();
+  }
 }
 
 function match(): RiotMatch {
@@ -3517,5 +3524,77 @@ describe("match_tracking.ts", () => {
 
     assertEquals(updateStub.calls[0].args[2].lastState, "IN_GAME");
     assertEquals(updateStub.calls[0].args[2].currentGameId, "12345");
+  });
+
+  test("workerの複数tickでRiotリクエスト予算警告をlong window内に再出力しない", async () => {
+    const time = new FakeTime(new Date("2026-01-01T00:00:00Z"));
+    const originalPollInterval = Deno.env.get("MATCH_WATCH_POLL_INTERVAL_MS");
+    const originalLongWindowLimit = Deno.env.get(
+      "RIOT_RATE_LIMIT_LONG_WINDOW_LIMIT",
+    );
+    const originalLongWindowMs = Deno.env.get("RIOT_RATE_LIMIT_LONG_WINDOW_MS");
+    Deno.env.set("MATCH_WATCH_POLL_INTERVAL_MS", "60000");
+    Deno.env.set("RIOT_RATE_LIMIT_LONG_WINDOW_LIMIT", "100");
+    Deno.env.set("RIOT_RATE_LIMIT_LONG_WINDOW_MS", "120000");
+    const warnings: string[] = [];
+    using _loggerStub = stub(botLogger, "warn", (message) => {
+      warnings.push(message);
+    });
+    using _getWatchersStub = stub(
+      apiClient,
+      "getEnabledMatchWatchers",
+      () =>
+        Promise.resolve({
+          success: true as const,
+          watchers: Array.from({ length: 40 }, (_, index) =>
+            watcher({ targetDiscordId: `target-${index + 1}` })),
+        }),
+    );
+    using _getAccountStub = stub(
+      apiClient,
+      "getRiotAccount",
+      () =>
+        Promise.resolve({
+          success: false as const,
+          error: "Riot account fetch failed",
+        }),
+    );
+    const { client } = clientWithSend();
+
+    try {
+      matchTracker.startMatchTrackingWorker(client);
+      await time.tickAsync(0);
+      await flushMicrotasks();
+      await time.tickAsync(60_000);
+      await flushMicrotasks();
+
+      assertEquals(
+        warnings.filter((message) =>
+          message === "match_tracking.riot_request_budget_risk"
+        ).length,
+        1,
+      );
+    } finally {
+      matchTracker.stopMatchTrackingWorker();
+      time.restore();
+      if (originalPollInterval === undefined) {
+        Deno.env.delete("MATCH_WATCH_POLL_INTERVAL_MS");
+      } else {
+        Deno.env.set("MATCH_WATCH_POLL_INTERVAL_MS", originalPollInterval);
+      }
+      if (originalLongWindowLimit === undefined) {
+        Deno.env.delete("RIOT_RATE_LIMIT_LONG_WINDOW_LIMIT");
+      } else {
+        Deno.env.set(
+          "RIOT_RATE_LIMIT_LONG_WINDOW_LIMIT",
+          originalLongWindowLimit,
+        );
+      }
+      if (originalLongWindowMs === undefined) {
+        Deno.env.delete("RIOT_RATE_LIMIT_LONG_WINDOW_MS");
+      } else {
+        Deno.env.set("RIOT_RATE_LIMIT_LONG_WINDOW_MS", originalLongWindowMs);
+      }
+    }
   });
 });
