@@ -139,6 +139,9 @@ export const apiClient: ApiClient = {
   resolveOpggMatchDetail(...args) {
     return getConfiguredApiClient().resolveOpggMatchDetail(...args);
   },
+  inspectMatchWatcherActiveGame(...args) {
+    return getConfiguredApiClient().inspectMatchWatcherActiveGame(...args);
+  },
   getLoginUrl(...args) {
     return getConfiguredApiClient().getLoginUrl(...args);
   },

@@ -158,6 +158,102 @@ describe("routes/match_watchers.ts", () => {
     });
   });
 
+  test("監視処理用Active Game検査を行うと、連携アカウントと進行中試合を返す", async () => {
+    const account = {
+      discordId: watcher.targetDiscordId,
+      puuid: "puuid-1",
+      gameName: "Teemo",
+      tagLine: "JP1",
+      platform: "jp1" as const,
+      region: "asia" as const,
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: null,
+    };
+    const activeGame = {
+      gameId: 12345,
+      gameType: "MATCHED_GAME",
+      gameStartTime: 1_700_000_000_000,
+      mapId: 11,
+      gameMode: "CLASSIC",
+      gameQueueConfigId: 420,
+      participants: [{
+        puuid: "puuid-1",
+        championId: 17,
+        teamId: 100,
+      }],
+    };
+    using accountStub = stub(
+      dbActions,
+      "getRiotAccountByDiscordId",
+      () => Promise.resolve(account),
+    );
+    using activeGameStub = stub(
+      deps.riotApi,
+      "getActiveGameByPuuid",
+      () => Promise.resolve(activeGame),
+    );
+    using entriesStub = stub(
+      deps.riotApi,
+      "getLeagueEntriesByPuuid",
+      () => Promise.resolve([]),
+    );
+    using snapshotsStub = stub(
+      dbActions,
+      "upsertPendingRankSnapshots",
+      () => Promise.resolve(),
+    );
+
+    const res = await client["match-watchers"][":guildId"][
+      ":targetDiscordId"
+    ].tracking["active-game"].$post({
+      param: {
+        guildId: watcher.guildId,
+        targetDiscordId: watcher.targetDiscordId,
+      },
+      json: {
+        lastState: "IDLE",
+        currentGameId: null,
+      },
+    });
+
+    assertEquals(res.status, 200);
+    assertEquals(await res.json(), {
+      account: {
+        ...account,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+      activeGame,
+    });
+    assertSpyCall(accountStub, 0, { args: [watcher.targetDiscordId] });
+    assertSpyCall(activeGameStub, 0, { args: ["jp1", "puuid-1"] });
+    assertSpyCall(entriesStub, 0, { args: ["jp1", "puuid-1"] });
+    assertEquals(snapshotsStub.calls.length, 1);
+  });
+
+  test("監視処理用Active Game検査で未連携メンバーを指定すると、404を返す", async () => {
+    using accountStub = stub(
+      dbActions,
+      "getRiotAccountByDiscordId",
+      () => Promise.resolve(undefined),
+    );
+
+    const res = await client["match-watchers"][":guildId"][
+      ":targetDiscordId"
+    ].tracking["active-game"].$post({
+      param: {
+        guildId: watcher.guildId,
+        targetDiscordId: watcher.targetDiscordId,
+      },
+      json: {
+        lastState: "IDLE",
+        currentGameId: null,
+      },
+    });
+
+    assertEquals(res.status, 404);
+    assertSpyCall(accountStub, 0, { args: [watcher.targetDiscordId] });
+  });
+
   test("監視を解除すると、204 No Contentを返す", async () => {
     using disableStub = stub(
       dbActions,

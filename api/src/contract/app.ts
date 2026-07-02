@@ -6,6 +6,7 @@ import {
   createMatchWatcherSchema,
   createParticipantSchema,
   finalizeRankSnapshotsSchema,
+  inspectMatchWatcherActiveGameSchema,
   linkByRiotIdSchema,
   loginUrlQuerySchema,
   platformAndPuuidSchema,
@@ -117,6 +118,18 @@ const matchWatchersContractRoutes = new Hono()
     "/:guildId/:targetDiscordId/state",
     zValidator("json", updateMatchWatcherStateSchema),
     (c) => c.body(null, 204),
+  )
+  .post(
+    "/:guildId/:targetDiscordId/tracking/active-game",
+    zValidator("json", inspectMatchWatcherActiveGameSchema),
+    (c) => {
+      if (hasContractError()) return c.json(errorResponse, 404);
+      if (hasContractError()) return c.json(errorResponse, 502);
+      return c.json({
+        account: {} as RiotAccount,
+        activeGame: null as ActiveGame | null,
+      }, 200);
+    },
   )
   .delete("/:guildId/:targetDiscordId", (c) => c.body(null, 204));
 

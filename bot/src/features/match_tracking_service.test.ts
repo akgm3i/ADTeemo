@@ -28,7 +28,7 @@ function watcher(overrides: Partial<MatchWatcher> = {}): MatchWatcher {
 
 describe("match_tracking_service.ts", () => {
   test("watcher単位処理で例外が発生したとき、後続のwatcher処理を継続する", async () => {
-    const accountCalls: string[] = [];
+    const inspectionCalls: string[] = [];
     const errors: unknown[] = [];
     const service = createMatchTrackingService({
       apiClient: {
@@ -40,8 +40,11 @@ describe("match_tracking_service.ts", () => {
               watcher({ targetDiscordId: "target-2" }),
             ],
           }),
-        getRiotAccount: (targetDiscordId) => {
-          accountCalls.push(targetDiscordId);
+        getRiotAccount: () => {
+          throw new Error("getRiotAccount should not be called");
+        },
+        inspectMatchWatcherActiveGame: (_guildId, targetDiscordId) => {
+          inspectionCalls.push(targetDiscordId);
           if (targetDiscordId === "target-1") {
             throw new Error("temporary failure");
           }
@@ -57,13 +60,11 @@ describe("match_tracking_service.ts", () => {
               createdAt: new Date("2026-01-01T00:00:00Z"),
               updatedAt: null,
             },
+            activeGame: null,
           });
         },
-        getActiveGameByPuuid: () => Promise.resolve(null),
         getMatchById: () => Promise.resolve(null),
         getLeagueEntriesByPuuid: () => Promise.resolve([]),
-        upsertPendingRankSnapshots: () =>
-          Promise.resolve({ success: true as const }),
         finalizeRankSnapshots: () =>
           Promise.resolve({
             success: true as const,
@@ -109,7 +110,7 @@ describe("match_tracking_service.ts", () => {
 
     await service.processMatchWatchers();
 
-    assertEquals(accountCalls, ["target-1", "target-2"]);
+    assertEquals(inspectionCalls, ["target-1", "target-2"]);
     assertEquals(errors.length, 1);
   });
 });

@@ -99,6 +99,11 @@ export const updateMatchWatcherStateSchema = z.object({
   lastInGameNotifiedAt: z.coerce.date().nullable().optional(),
 });
 
+export const inspectMatchWatcherActiveGameSchema = z.object({
+  lastState: z.enum(matchWatcherStates),
+  currentGameId: z.string().nullable(),
+});
+
 export const platformAndPuuidSchema = z.object({
   platform: z.enum(riotPlatforms),
   puuid: z.string().min(1),
