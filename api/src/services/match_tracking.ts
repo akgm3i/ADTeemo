@@ -157,6 +157,7 @@ function activeGameStateTransition(
   input: InspectMatchWatcherActiveGameInput,
   activeGame: ActiveGame | null,
   account: RiotAccount,
+  now: Date,
 ): {
   notificationIntent: MatchTrackingNotificationIntent | null;
   stateTransition: MatchTrackingStateTransition | null;
@@ -210,6 +211,7 @@ function activeGameStateTransition(
           currentGameId,
           currentMatchId: null,
           gameStartedAt: new Date(activeGame.gameStartTime),
+          lastInGameNotifiedAt: now,
         },
         messageIdField: "currentNotificationMessageId",
       },
@@ -264,6 +266,7 @@ export function createMatchTrackingInspectionService(
   async function inspectActiveGame(
     input: InspectMatchWatcherActiveGameInput,
   ): Promise<InspectMatchWatcherActiveGameResult> {
+    const now = clock.now();
     const account = await dependencies.dbActions.getRiotAccountByDiscordId(
       input.targetDiscordId,
     );
@@ -286,6 +289,7 @@ export function createMatchTrackingInspectionService(
       input,
       activeGame,
       account,
+      now,
     );
     if (
       activeGame && !notificationIntent &&
@@ -293,7 +297,7 @@ export function createMatchTrackingInspectionService(
         input.notificationLastInGameNotifiedAt ??
           input.lastInGameNotifiedAt,
         input.inGameNotifyIntervalMs,
-        clock.now(),
+        now,
       )
     ) {
       notificationIntent = { kind: "progress", activeGame };
@@ -301,12 +305,13 @@ export function createMatchTrackingInspectionService(
         state: {
           lastState: "IN_GAME",
           currentGameId: String(activeGame.gameId),
+          lastInGameNotifiedAt: now,
         },
         messageIdField: "currentNotificationMessageId",
       };
     }
     if (stateTransition) {
-      stateTransition.state.lastCheckedAt = clock.now();
+      stateTransition.state.lastCheckedAt = now;
     }
 
     return {
@@ -403,6 +408,7 @@ export function createMatchTrackingInspectionService(
   async function inspectResult(
     input: InspectMatchWatcherResultInput,
   ): Promise<InspectMatchWatcherResult> {
+    const now = clock.now();
     const account = await dependencies.dbActions.getRiotAccountByDiscordId(
       input.targetDiscordId,
     );
@@ -417,7 +423,7 @@ export function createMatchTrackingInspectionService(
       isResultFetchTimedOut(
         input.startedAt,
         input.resultFetchTimeoutMs,
-        clock.now(),
+        now,
       )
     ) {
       return {
@@ -429,13 +435,10 @@ export function createMatchTrackingInspectionService(
         notificationIntent: { kind: "timeout", matchId: input.matchId },
         stateTransition: {
           state: {
-            lastState: "IDLE",
-            currentGameId: null,
-            currentMatchId: null,
             pendingResultMatchId: null,
             pendingResultNotificationMessageId: null,
             pendingResultStartedAt: null,
-            lastCheckedAt: clock.now(),
+            lastCheckedAt: now,
           },
           messageIdField: null,
         },
@@ -456,13 +459,10 @@ export function createMatchTrackingInspectionService(
         notificationIntent: null,
         stateTransition: {
           state: {
-            lastState: "IDLE",
-            currentGameId: null,
-            currentMatchId: null,
             pendingResultMatchId: input.matchId,
             pendingResultNotificationMessageId: input.messageId ?? null,
             pendingResultStartedAt: input.startedAt ?? null,
-            lastCheckedAt: clock.now(),
+            lastCheckedAt: now,
           },
           messageIdField: null,
         },
@@ -494,13 +494,10 @@ export function createMatchTrackingInspectionService(
       },
       stateTransition: {
         state: {
-          lastState: "IDLE",
-          currentGameId: null,
-          currentMatchId: null,
           pendingResultMatchId: null,
           pendingResultNotificationMessageId: null,
           pendingResultStartedAt: null,
-          lastCheckedAt: clock.now(),
+          lastCheckedAt: now,
         },
         messageIdField: null,
       },

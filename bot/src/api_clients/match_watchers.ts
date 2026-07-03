@@ -133,13 +133,20 @@ function parseOpggMatchDetail(
 function parseMatchWatcherStatePatch(
   state: MatchWatcherStatePatch,
 ): MatchWatcherStatePatch {
-  return {
-    ...state,
-    pendingResultStartedAt: dateOrNull(state.pendingResultStartedAt),
-    gameStartedAt: dateOrNull(state.gameStartedAt),
-    lastCheckedAt: dateOrNull(state.lastCheckedAt),
-    lastInGameNotifiedAt: dateOrNull(state.lastInGameNotifiedAt),
-  };
+  const parsed: MatchWatcherStatePatch = { ...state };
+  if ("pendingResultStartedAt" in state) {
+    parsed.pendingResultStartedAt = dateOrNull(state.pendingResultStartedAt);
+  }
+  if ("gameStartedAt" in state) {
+    parsed.gameStartedAt = dateOrNull(state.gameStartedAt);
+  }
+  if ("lastCheckedAt" in state) {
+    parsed.lastCheckedAt = dateOrNull(state.lastCheckedAt);
+  }
+  if ("lastInGameNotifiedAt" in state) {
+    parsed.lastInGameNotifiedAt = dateOrNull(state.lastInGameNotifiedAt);
+  }
+  return parsed;
 }
 
 function parseMatchTrackingStateTransition(

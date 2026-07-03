@@ -3704,7 +3704,7 @@ describe("match_tracking.ts", () => {
     );
   });
 
-  test("同一matchIdの結果取得待ちが複数guildにあるとき、1回の処理ではRiot試合取得を共有しつつ各guildの通知と状態更新を継続する", async () => {
+  test("同一matchIdの結果取得待ちが複数guildにあるとき、guildごとのBackend Result検査で通知と状態更新を継続する", async () => {
     const { client, editSpy } = clientWithSend();
     using _getWatchersStub = stub(
       apiClient,
@@ -3749,8 +3749,8 @@ describe("match_tracking.ts", () => {
 
     await matchTracker.processMatchWatchers(client);
 
-    assertSpyCalls(getAccountStub, 1);
-    assertSpyCalls(matchStub, 1);
+    assertSpyCalls(getAccountStub, 2);
+    assertSpyCalls(matchStub, 2);
     assertSpyCalls(editSpy, 2);
     assertSpyCalls(updateStub, 2);
     assertEquals(updateStub.calls[0].args[0], "guild-1");

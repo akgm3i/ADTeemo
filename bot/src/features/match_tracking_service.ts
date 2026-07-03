@@ -403,13 +403,35 @@ async function inspectActiveGameForWatcher(
   return result;
 }
 
+function resultInspectionCacheKey(
+  watcher: MatchWatcher,
+  matchId: string,
+  resultFetchTimeoutMs: number,
+) {
+  return JSON.stringify({
+    guildId: watcher.guildId,
+    targetDiscordId: watcher.targetDiscordId,
+    matchId,
+    messageId: watcher.pendingResultNotificationMessageId ??
+      watcher.currentNotificationMessageId ??
+      null,
+    startedAt: (watcher.pendingResultStartedAt ?? watcher.gameStartedAt)
+      ?.toISOString() ?? null,
+    resultFetchTimeoutMs,
+  });
+}
+
 async function inspectResultForWatcher(
   dependencies: MatchTrackingServiceDependencies,
   context: MatchWatcherProcessingContext,
   watcher: MatchWatcher,
   matchId: string,
 ) {
-  const cacheKey = `${watcher.targetDiscordId}:${matchId}`;
+  const cacheKey = resultInspectionCacheKey(
+    watcher,
+    matchId,
+    dependencies.config.resultFetchTimeoutMs,
+  );
   let promise = context.resultInspectionsByTargetAndMatchId.get(cacheKey);
   if (!promise) {
     promise = dependencies.apiClient.inspectMatchWatcherResult(
@@ -516,6 +538,23 @@ async function setWatcherState(
   }
 }
 
+function resultTransitionStateForCurrentState(
+  currentState: WatcherState,
+  state: Partial<WatcherState> | undefined,
+): Partial<WatcherState> {
+  if (!state || currentState.lastState !== "IN_GAME") return state ?? {};
+  const {
+    lastState: _lastState,
+    currentGameId: _currentGameId,
+    currentMatchId: _currentMatchId,
+    currentNotificationMessageId: _currentNotificationMessageId,
+    gameStartedAt: _gameStartedAt,
+    lastInGameNotifiedAt: _lastInGameNotifiedAt,
+    ...resultState
+  } = state;
+  return resultState;
+}
+
 async function tryFetchAndNotifyResult(
   dependencies: MatchTrackingServiceDependencies,
   watcher: MatchWatcher,
@@ -561,11 +600,15 @@ async function tryFetchAndNotifyResult(
     );
     await setWatcherState(dependencies, watcher, {
       ...currentState,
-      ...(stateTransition?.state ?? {
-        pendingResultMatchId: null,
-        pendingResultNotificationMessageId: null,
-        pendingResultStartedAt: null,
-      }),
+      ...resultTransitionStateForCurrentState(
+        currentState,
+        stateTransition
+          ?.state ?? {
+          pendingResultMatchId: null,
+          pendingResultNotificationMessageId: null,
+          pendingResultStartedAt: null,
+        },
+      ),
       currentMatchId: null,
       lastCheckedAt: dependencies.clock.now(),
     });
@@ -574,12 +617,16 @@ async function tryFetchAndNotifyResult(
   if (!match || notificationIntent?.kind !== "result") {
     await setWatcherState(dependencies, watcher, {
       ...currentState,
-      ...(stateTransition?.state ?? {
-        pendingResultMatchId: pending.matchId,
-        pendingResultNotificationMessageId: pending.messageId,
-        pendingResultStartedAt: pending.startedAt,
-        currentMatchId: null,
-      }),
+      ...resultTransitionStateForCurrentState(
+        currentState,
+        stateTransition
+          ?.state ?? {
+          pendingResultMatchId: pending.matchId,
+          pendingResultNotificationMessageId: pending.messageId,
+          pendingResultStartedAt: pending.startedAt,
+          currentMatchId: null,
+        },
+      ),
       lastCheckedAt: dependencies.clock.now(),
     });
     return { status: "pending" as const, messageId: pending.messageId };
@@ -598,12 +645,16 @@ async function tryFetchAndNotifyResult(
   );
   await setWatcherState(dependencies, watcher, {
     ...currentState,
-    ...(stateTransition?.state ?? {
-      currentMatchId: null,
-      pendingResultMatchId: null,
-      pendingResultNotificationMessageId: null,
-      pendingResultStartedAt: null,
-    }),
+    ...resultTransitionStateForCurrentState(
+      currentState,
+      stateTransition
+        ?.state ?? {
+        currentMatchId: null,
+        pendingResultMatchId: null,
+        pendingResultNotificationMessageId: null,
+        pendingResultStartedAt: null,
+      },
+    ),
     lastCheckedAt: dependencies.clock.now(),
   });
   return { status: "cleared" as const, messageId };

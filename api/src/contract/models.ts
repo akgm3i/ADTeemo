@@ -50,7 +50,7 @@ export type MatchWatcher = {
 };
 
 export type MatchWatcherStatePatch = {
-  lastState: MatchWatcherState;
+  lastState?: MatchWatcherState;
   currentGameId?: string | null;
   currentMatchId?: string | null;
   currentNotificationMessageId?: string | null;

@@ -423,6 +423,58 @@ describe("apiClient", () => {
         }],
       });
     });
+
+    test("監視処理用Active Game検査のstate transitionを復元するとき、未指定の日付フィールドをnullに変換しない", async () => {
+      const account = {
+        discordId: "target-1",
+        puuid: "puuid-1",
+        gameName: "Teemo",
+        tagLine: "JP1",
+        platform: "jp1",
+        region: "asia",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: null,
+      };
+      const rpc = createRpcClientStub([
+        response({
+          account,
+          activeGame: null,
+          notificationIntent: null,
+          stateTransition: {
+            state: {
+              lastState: "IN_GAME",
+              currentGameId: "12345",
+              lastCheckedAt: "2026-01-01T00:05:00.000Z",
+            },
+            messageIdField: "currentNotificationMessageId",
+          },
+        }),
+      ]);
+      const client = createApiClient({ rpcClient: rpc.rpcClient });
+
+      const result = await client.inspectMatchWatcherActiveGame(
+        "guild-1",
+        "target-1",
+        { lastState: "IDLE", currentGameId: null },
+      );
+
+      assertEquals(result.success, true);
+      if (!result.success) return;
+      assertEquals(
+        result.stateTransition?.state.lastCheckedAt,
+        new Date(
+          "2026-01-01T00:05:00.000Z",
+        ),
+      );
+      assertEquals(
+        "gameStartedAt" in (result.stateTransition?.state ?? {}),
+        false,
+      );
+      assertEquals(
+        "lastInGameNotifiedAt" in (result.stateTransition?.state ?? {}),
+        false,
+      );
+    });
   });
 
   describe("Riot API facade", () => {
