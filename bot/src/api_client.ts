@@ -142,6 +142,9 @@ export const apiClient: ApiClient = {
   inspectMatchWatcherActiveGame(...args) {
     return getConfiguredApiClient().inspectMatchWatcherActiveGame(...args);
   },
+  inspectMatchWatcherResult(...args) {
+    return getConfiguredApiClient().inspectMatchWatcherResult(...args);
+  },
   getLoginUrl(...args) {
     return getConfiguredApiClient().getLoginUrl(...args);
   },

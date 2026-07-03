@@ -254,6 +254,149 @@ describe("routes/match_watchers.ts", () => {
     assertSpyCall(accountStub, 0, { args: [watcher.targetDiscordId] });
   });
 
+  test("監視処理用Result検査を行うと、試合結果とrank summaryとOP.GG詳細を返す", async () => {
+    const account = {
+      discordId: watcher.targetDiscordId,
+      puuid: "puuid-1",
+      gameName: "Teemo",
+      tagLine: "JP1",
+      platform: "jp1" as const,
+      region: "asia" as const,
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: null,
+    };
+    const match = {
+      metadata: {
+        matchId: "JP1_12345",
+        participants: ["puuid-1"],
+      },
+      info: {
+        gameId: 12345,
+        gameCreation: 1_700_000_000_000,
+        gameDuration: 1800,
+        gameMode: "CLASSIC",
+        gameType: "MATCHED_GAME",
+        mapId: 11,
+        queueId: 420,
+        participants: [{
+          puuid: "puuid-1",
+          championId: 17,
+          championName: "Teemo",
+          teamId: 100,
+          win: true,
+          kills: 10,
+          deaths: 2,
+          assists: 8,
+          totalMinionsKilled: 180,
+          neutralMinionsKilled: 12,
+          goldEarned: 12345,
+        }],
+      },
+    };
+    const beforeSnapshot = {
+      id: 1,
+      matchId: "JP1_12345",
+      puuid: "puuid-1",
+      platform: "jp1" as const,
+      queueType: "RANKED_SOLO_5x5" as const,
+      phase: "before" as const,
+      tier: "EMERALD",
+      rank: "IV",
+      leaguePoints: 19,
+      wins: 11,
+      losses: 8,
+      fetchedAt: new Date("2026-01-01T00:00:00.000Z"),
+    };
+    const afterSnapshot = {
+      ...beforeSnapshot,
+      id: 2,
+      phase: "after" as const,
+      leaguePoints: 37,
+      fetchedAt: new Date("2026-01-01T00:05:00.000Z"),
+    };
+    const opggDetail = {
+      provider: "opgg" as const,
+      providerRegion: "jp",
+      providerMatchId: "12345",
+      detailUrl: "https://op.gg/lol/summoners/jp/Teemo-JP1/matches/12345",
+      providerCreatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      averageTier: "Emerald",
+      participant: {
+        puuid: "puuid-1",
+        participantId: 1,
+        laneScore: 7,
+      },
+    };
+    using accountStub = stub(
+      dbActions,
+      "getRiotAccountByDiscordId",
+      () => Promise.resolve(account),
+    );
+    using matchStub = stub(
+      deps.riotApi,
+      "getMatchById",
+      () => Promise.resolve(match),
+    );
+    using entriesStub = stub(
+      deps.riotApi,
+      "getLeagueEntriesByPuuid",
+      () => Promise.resolve([]),
+    );
+    using finalizeStub = stub(
+      dbActions,
+      "finalizeMatchRankSnapshots",
+      () =>
+        Promise.resolve({
+          before: [beforeSnapshot],
+          after: [afterSnapshot],
+        }),
+    );
+    using opggStub = stub(
+      deps.opggMatchDetailService,
+      "resolveAndSave",
+      () => Promise.resolve(opggDetail),
+    );
+
+    const res = await client["match-watchers"][":guildId"][
+      ":targetDiscordId"
+    ].tracking.result.$post({
+      param: {
+        guildId: watcher.guildId,
+        targetDiscordId: watcher.targetDiscordId,
+      },
+      json: { matchId: "JP1_12345" },
+    });
+
+    assertEquals(res.status, 200);
+    assertEquals(await res.json(), {
+      account: {
+        ...account,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+      match,
+      rankSummary: {
+        queueType: "RANKED_SOLO_5x5",
+        before: {
+          ...beforeSnapshot,
+          fetchedAt: "2026-01-01T00:00:00.000Z",
+        },
+        after: {
+          ...afterSnapshot,
+          fetchedAt: "2026-01-01T00:05:00.000Z",
+        },
+      },
+      opggDetail: {
+        ...opggDetail,
+        providerCreatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
+    assertSpyCall(accountStub, 0, { args: [watcher.targetDiscordId] });
+    assertSpyCall(matchStub, 0, { args: ["asia", "JP1_12345"] });
+    assertSpyCall(entriesStub, 0, { args: ["jp1", "puuid-1"] });
+    assertEquals(finalizeStub.calls.length, 1);
+    assertEquals(opggStub.calls.length, 1);
+  });
+
   test("監視を解除すると、204 No Contentを返す", async () => {
     using disableStub = stub(
       dbActions,

@@ -7,15 +7,11 @@ import {
   hasResultFetchTimedOut as hasResultFetchTimedOutWithConfig,
   isAfterDate,
   isResultFetchTimedOut as isResultFetchTimedOutWithConfig,
-  matchCacheKey,
   matchIdForGame,
   matchIdParts,
   newerDate,
   type PendingResult,
   pendingResultFromWatcher,
-  rankedQueueTypeByQueueId,
-  rankSnapshotPayloadsFromEntries,
-  type RankSummary,
   selectResultNotificationMessageId,
   shouldNotifyActiveNotificationGroup
     as shouldNotifyActiveNotificationGroupWithConfig,
@@ -31,8 +27,8 @@ type RiotAccountResult = Awaited<ReturnType<ApiClient["getRiotAccount"]>>;
 type ActiveGameInspectionResult = Awaited<
   ReturnType<ApiClient["inspectMatchWatcherActiveGame"]>
 >;
-type RiotMatch = NonNullable<
-  Awaited<ReturnType<ApiClient["getMatchById"]>>
+type ResultInspectionResult = Awaited<
+  ReturnType<ApiClient["inspectMatchWatcherResult"]>
 >;
 type WatcherState = Parameters<ApiClient["updateMatchWatcherState"]>[2];
 type MatchTrackingRenderer = ReturnType<typeof createMatchTrackingRenderer>;
@@ -51,7 +47,10 @@ type MatchWatcherProcessingContext = {
     string,
     Promise<ActiveGameInspectionResult>
   >;
-  matchesByRegionAndMatchId: Map<string, Promise<RiotMatch | null>>;
+  resultInspectionsByTargetAndMatchId: Map<
+    string,
+    Promise<ResultInspectionResult>
+  >;
 };
 type ActiveGameTargetDetail = {
   targetDiscordId: string;
@@ -79,11 +78,8 @@ export type MatchTrackingServiceApiClient = Pick<
   ApiClient,
   | "getEnabledMatchWatchers"
   | "getRiotAccount"
-  | "getMatchById"
-  | "getLeagueEntriesByPuuid"
-  | "finalizeRankSnapshots"
-  | "resolveOpggMatchDetail"
   | "inspectMatchWatcherActiveGame"
+  | "inspectMatchWatcherResult"
   | "updateMatchWatcherState"
 >;
 export type MatchTrackingServiceDependencies = {
@@ -100,7 +96,7 @@ function createMatchWatcherProcessingContext(): MatchWatcherProcessingContext {
     activeNotificationGroups: new Map(),
     riotAccountsByTargetDiscordId: new Map(),
     activeGameInspectionsByTargetAndState: new Map(),
-    matchesByRegionAndMatchId: new Map(),
+    resultInspectionsByTargetAndMatchId: new Map(),
   };
 }
 
@@ -405,86 +401,28 @@ async function inspectActiveGameForWatcher(
   return result;
 }
 
-function getMatchForPendingResult(
+async function inspectResultForWatcher(
   dependencies: MatchTrackingServiceDependencies,
   context: MatchWatcherProcessingContext,
-  account: RiotAccount,
+  watcher: MatchWatcher,
   matchId: string,
 ) {
-  const cacheKey = matchCacheKey(account, matchId);
-  const cached = context.matchesByRegionAndMatchId.get(cacheKey);
-  if (cached) return cached;
-
-  const result = dependencies.apiClient.getMatchById(account.region, matchId);
-  context.matchesByRegionAndMatchId.set(cacheKey, result);
-  return result;
-}
-
-async function finalizeRankSnapshotsForResult(
-  dependencies: MatchTrackingServiceDependencies,
-  watcher: MatchWatcher,
-  account: RiotAccount,
-  match: RiotMatch,
-): Promise<RankSummary | null> {
-  const queueType = rankedQueueTypeByQueueId(match.info.queueId);
-  if (!queueType) return null;
-
-  try {
-    const entries = await dependencies.apiClient.getLeagueEntriesByPuuid(
-      account.platform,
-      account.puuid,
+  const cacheKey = `${watcher.targetDiscordId}:${matchId}`;
+  let promise = context.resultInspectionsByTargetAndMatchId.get(cacheKey);
+  if (!promise) {
+    promise = dependencies.apiClient.inspectMatchWatcherResult(
+      watcher.guildId,
+      watcher.targetDiscordId,
+      { matchId },
     );
-    const result = await dependencies.apiClient.finalizeRankSnapshots(
-      match.metadata.matchId,
-      {
-        platform: account.platform,
-        gameId: String(match.info.gameId),
-        puuid: account.puuid,
-        snapshots: rankSnapshotPayloadsFromEntries(
-          entries,
-          dependencies.clock.now(),
-        ),
-      },
-    );
-    if (!result.success) {
-      dependencies.logger.warn("match_tracking.rank_snapshot_finalize_failed", {
-        guildId: watcher.guildId,
-        targetDiscordId: watcher.targetDiscordId,
-        matchId: match.metadata.matchId,
-        error: result.error,
-      });
-      return null;
-    }
-
-    return {
-      queueType,
-      before: result.snapshots.before.find((snapshot) =>
-        snapshot.queueType === queueType
-      ) ?? null,
-      after: result.snapshots.after.find((snapshot) =>
-        snapshot.queueType === queueType
-      ) ?? null,
-    };
-  } catch (error) {
-    dependencies.logger.warn(
-      "match_tracking.rank_snapshot_after_fetch_failed",
-      {
-        guildId: watcher.guildId,
-        targetDiscordId: watcher.targetDiscordId,
-        matchId: match.metadata.matchId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-    );
-    return null;
+    context.resultInspectionsByTargetAndMatchId.set(cacheKey, promise);
   }
-}
 
-function shouldNotifyInGame(
-  watcher: MatchWatcher,
-  intervalMs: number,
-  now: Date,
-) {
-  return shouldNotifyInGameWithConfig(watcher, intervalMs, now);
+  const result = await promise;
+  if (result.success) {
+    rememberRiotAccountForWatcher(context, result.account);
+  }
+  return result;
 }
 
 function shouldNotifyActiveNotificationGroup(
@@ -498,6 +436,14 @@ function shouldNotifyActiveNotificationGroup(
     dependencies.config.inGameNotifyIntervalMs,
     dependencies.clock.now(),
   );
+}
+
+function shouldNotifyInGame(
+  watcher: MatchWatcher,
+  intervalMs: number,
+  now: Date,
+) {
+  return shouldNotifyInGameWithConfig(watcher, intervalMs, now);
 }
 
 function hasResultFetchTimedOut(
@@ -554,45 +500,6 @@ async function activeGameTargetDetails(
   return details;
 }
 
-async function resolveOpggMatchDetailForResult(
-  dependencies: MatchTrackingServiceDependencies,
-  watcher: MatchWatcher,
-  account: RiotAccount,
-  match: RiotMatch,
-) {
-  const participant = match.info.participants.find((candidate) =>
-    candidate.puuid === account.puuid
-  );
-  if (!participant) return null;
-
-  const result = await dependencies.apiClient.resolveOpggMatchDetail(
-    match.metadata.matchId,
-    {
-      targetDiscordId: watcher.targetDiscordId,
-      match: {
-        gameCreation: match.info.gameCreation,
-        gameDuration: match.info.gameDuration,
-        queueId: match.info.queueId,
-        participant: {
-          puuid: participant.puuid,
-          championId: participant.championId,
-          championName: participant.championName,
-        },
-      },
-    },
-  );
-  if (!result.success) {
-    dependencies.logger.warn("match_tracking.opgg_detail_resolve_failed", {
-      guildId: watcher.guildId,
-      targetDiscordId: watcher.targetDiscordId,
-      matchId: match.metadata.matchId,
-      error: result.error,
-    });
-    return null;
-  }
-  return result.detail;
-}
-
 async function setWatcherState(
   dependencies: MatchTrackingServiceDependencies,
   watcher: MatchWatcher,
@@ -615,7 +522,6 @@ async function setWatcherState(
 async function tryFetchAndNotifyResult(
   dependencies: MatchTrackingServiceDependencies,
   watcher: MatchWatcher,
-  account: RiotAccount,
   context: MatchWatcherProcessingContext,
   pending: PendingResult,
   currentState: WatcherState = currentStateFromWatcher(watcher),
@@ -644,12 +550,21 @@ async function tryFetchAndNotifyResult(
     return { status: "cleared" as const, messageId };
   }
 
-  const match = await getMatchForPendingResult(
+  const result = await inspectResultForWatcher(
     dependencies,
     context,
-    account,
+    watcher,
     pending.matchId,
   );
+  if (!result.success) {
+    dependencies.logger.warn("match_tracking.riot_account_not_found", {
+      guildId: watcher.guildId,
+      targetDiscordId: watcher.targetDiscordId,
+      error: result.error,
+    });
+    return { status: "pending" as const, messageId: pending.messageId };
+  }
+  const { account, match, rankSummary, opggDetail } = result;
   if (!match) {
     await setWatcherState(dependencies, watcher, {
       ...currentState,
@@ -662,18 +577,6 @@ async function tryFetchAndNotifyResult(
     return { status: "pending" as const, messageId: pending.messageId };
   }
 
-  const rankSummary = await finalizeRankSnapshotsForResult(
-    dependencies,
-    watcher,
-    account,
-    match,
-  );
-  const opggDetail = await resolveOpggMatchDetailForResult(
-    dependencies,
-    watcher,
-    account,
-    match,
-  );
   const messageId = await dependencies.notifier.sendOrEditWatcherMessage(
     watcher,
     pending.messageId,
@@ -704,23 +607,9 @@ async function processWatcher(
   const pending = pendingResultFromWatcher(watcher);
   let pendingStatus: "none" | "pending" | "cleared" = "none";
   if (pending) {
-    const accountResult = await getRiotAccountForWatcher(
-      dependencies,
-      context,
-      watcher.targetDiscordId,
-    );
-    if (!accountResult.success) {
-      dependencies.logger.warn("match_tracking.riot_account_not_found", {
-        guildId: watcher.guildId,
-        targetDiscordId: watcher.targetDiscordId,
-        error: accountResult.error,
-      });
-      return;
-    }
     const result = await tryFetchAndNotifyResult(
       dependencies,
       watcher,
-      accountResult.account,
       context,
       pending,
     );
@@ -765,7 +654,6 @@ async function processWatcher(
       await tryFetchAndNotifyResult(
         dependencies,
         watcher,
-        account,
         context,
         {
           matchId,
@@ -874,7 +762,6 @@ async function processWatcher(
     await tryFetchAndNotifyResult(
       dependencies,
       watcher,
-      account,
       context,
       {
         matchId: previousMatchId,

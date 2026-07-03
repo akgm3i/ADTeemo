@@ -1,9 +1,12 @@
 import type {
   ActiveGame,
   LeagueEntry,
+  MatchTrackingRankSummary,
   MatchWatcherState,
+  OpggMatchDetail,
   RankSnapshotPayload,
   RiotAccount,
+  RiotMatch,
 } from "../contract/mod.ts";
 import type { AppDependencies } from "../dependencies.ts";
 
@@ -21,11 +24,15 @@ const RANKED_QUEUE_BY_QUEUE_ID = new Map<
 
 type MatchTrackingInspectionDbActions = Pick<
   AppDependencies["dbActions"],
-  "getRiotAccountByDiscordId" | "upsertPendingRankSnapshots"
+  | "getRiotAccountByDiscordId"
+  | "upsertPendingRankSnapshots"
+  | "finalizeMatchRankSnapshots"
 >;
 type MatchTrackingInspectionRiotApi = Pick<
   AppDependencies["riotApi"],
-  "getActiveGameByPuuid" | "getLeagueEntriesByPuuid"
+  | "getActiveGameByPuuid"
+  | "getLeagueEntriesByPuuid"
+  | "getMatchById"
 >;
 type MatchTrackingInspectionLogger = Pick<
   AppDependencies["logger"],
@@ -46,6 +53,23 @@ export type InspectMatchWatcherActiveGameResult =
     status: "ok";
     account: RiotAccount;
     activeGame: ActiveGame | null;
+  }
+  | {
+    status: "riot_account_not_found";
+    error: string;
+  };
+export type InspectMatchWatcherResultInput = {
+  guildId: string;
+  targetDiscordId: string;
+  matchId: string;
+};
+export type InspectMatchWatcherResult =
+  | {
+    status: "ok";
+    account: RiotAccount;
+    match: RiotMatch | null;
+    rankSummary: MatchTrackingRankSummary | null;
+    opggDetail: OpggMatchDetail | null;
   }
   | {
     status: "riot_account_not_found";
@@ -93,6 +117,7 @@ export function createMatchTrackingInspectionService(
   dependencies: {
     dbActions: MatchTrackingInspectionDbActions;
     riotApi: MatchTrackingInspectionRiotApi;
+    opggMatchDetailService: AppDependencies["opggMatchDetailService"];
     logger: MatchTrackingInspectionLogger;
     clock?: MatchTrackingInspectionClock;
   },
@@ -158,7 +183,137 @@ export function createMatchTrackingInspectionService(
     };
   }
 
+  async function finalizeRankSnapshotsForResult(
+    input: InspectMatchWatcherResultInput,
+    account: RiotAccount,
+    match: RiotMatch,
+  ): Promise<MatchTrackingRankSummary | null> {
+    const queueType = rankedQueueTypeByQueueId(match.info.queueId);
+    if (!queueType) return null;
+
+    try {
+      const entries = await dependencies.riotApi.getLeagueEntriesByPuuid(
+        account.platform,
+        account.puuid,
+      );
+      const snapshots = await dependencies.dbActions.finalizeMatchRankSnapshots(
+        {
+          matchId: match.metadata.matchId,
+          platform: account.platform,
+          gameId: String(match.info.gameId),
+          puuid: account.puuid,
+          snapshots: rankSnapshotPayloadsFromEntries(entries, clock.now()),
+        },
+      );
+
+      return {
+        queueType,
+        before: snapshots.before.find((snapshot) =>
+          snapshot.queueType === queueType
+        ) ?? null,
+        after: snapshots.after.find((snapshot) =>
+          snapshot.queueType === queueType
+        ) ?? null,
+      };
+    } catch (error) {
+      dependencies.logger.warn(
+        "match_tracking.rank_snapshot_finalize_failed",
+        {
+          guildId: input.guildId,
+          targetDiscordId: input.targetDiscordId,
+          matchId: match.metadata.matchId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+      return null;
+    }
+  }
+
+  async function resolveOpggMatchDetailForResult(
+    input: InspectMatchWatcherResultInput,
+    account: RiotAccount,
+    match: RiotMatch,
+  ) {
+    const participant = match.info.participants.find((candidate) =>
+      candidate.puuid === account.puuid
+    );
+    if (!participant) return null;
+
+    try {
+      return await dependencies.opggMatchDetailService.resolveAndSave({
+        matchId: match.metadata.matchId,
+        targetDiscordId: input.targetDiscordId,
+        match: {
+          gameCreation: match.info.gameCreation,
+          gameDuration: match.info.gameDuration,
+          queueId: match.info.queueId,
+          participant: {
+            puuid: participant.puuid,
+            championId: participant.championId,
+            championName: participant.championName,
+          },
+        },
+      });
+    } catch (error) {
+      dependencies.logger.warn("match_tracking.opgg_detail_resolve_failed", {
+        guildId: input.guildId,
+        targetDiscordId: input.targetDiscordId,
+        matchId: match.metadata.matchId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  async function inspectResult(
+    input: InspectMatchWatcherResultInput,
+  ): Promise<InspectMatchWatcherResult> {
+    const account = await dependencies.dbActions.getRiotAccountByDiscordId(
+      input.targetDiscordId,
+    );
+    if (!account) {
+      return {
+        status: "riot_account_not_found",
+        error: "Riot account not found",
+      };
+    }
+
+    const match = await dependencies.riotApi.getMatchById(
+      account.region,
+      input.matchId,
+    );
+    if (!match) {
+      return {
+        status: "ok",
+        account,
+        match: null,
+        rankSummary: null,
+        opggDetail: null,
+      };
+    }
+
+    const rankSummary = await finalizeRankSnapshotsForResult(
+      input,
+      account,
+      match,
+    );
+    const opggDetail = await resolveOpggMatchDetailForResult(
+      input,
+      account,
+      match,
+    );
+
+    return {
+      status: "ok",
+      account,
+      match,
+      rankSummary,
+      opggDetail,
+    };
+  }
+
   return {
     inspectActiveGame,
+    inspectResult,
   };
 }
