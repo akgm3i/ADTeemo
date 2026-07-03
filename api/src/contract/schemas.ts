@@ -104,6 +104,10 @@ export const inspectMatchWatcherActiveGameSchema = z.object({
   currentGameId: z.string().nullable(),
 });
 
+export const inspectMatchWatcherResultSchema = z.object({
+  matchId: z.string().min(1),
+});
+
 export const platformAndPuuidSchema = z.object({
   platform: z.enum(riotPlatforms),
   puuid: z.string().min(1),

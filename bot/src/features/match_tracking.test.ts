@@ -264,6 +264,7 @@ describe("match_tracking.ts", () => {
   let staticDataStub: { restore(): void } | undefined;
   let opggDetailStub: { restore(): void } | undefined;
   let activeGameInspectionStub: { restore(): void } | undefined;
+  let resultInspectionStub: { restore(): void } | undefined;
   let rankSnapshotStubs: { restore(): void }[] = [];
 
   function restoreStaticDataStub() {
@@ -279,6 +280,11 @@ describe("match_tracking.ts", () => {
   function restoreActiveGameInspectionStub() {
     activeGameInspectionStub?.restore();
     activeGameInspectionStub = undefined;
+  }
+
+  function restoreResultInspectionStub() {
+    resultInspectionStub?.restore();
+    resultInspectionStub = undefined;
   }
 
   function restoreRankSnapshotStubs() {
@@ -351,7 +357,7 @@ describe("match_tracking.ts", () => {
               leaguePoints: entries[0]?.leaguePoints ?? null,
               wins: entries[0]?.wins ?? null,
               losses: entries[0]?.losses ?? null,
-              fetchedAt: new Date(),
+              fetchedAt: new Date("2026-01-01T00:00:00.000Z"),
             }, {
               queueType: "RANKED_FLEX_SR",
               tier: null,
@@ -359,7 +365,7 @@ describe("match_tracking.ts", () => {
               leaguePoints: null,
               wins: null,
               losses: null,
-              fetchedAt: new Date(),
+              fetchedAt: new Date("2026-01-01T00:00:00.000Z"),
             }],
           });
         }
@@ -371,12 +377,125 @@ describe("match_tracking.ts", () => {
         };
       },
     );
+    resultInspectionStub = stub(
+      apiClient,
+      "inspectMatchWatcherResult",
+      async (_guildId, targetDiscordId, payload) => {
+        const accountResult = await apiClient.getRiotAccount(targetDiscordId);
+        if (!accountResult.success) return accountResult;
+
+        const match = await apiClient.getMatchById(
+          accountResult.account.region,
+          payload.matchId,
+        );
+        if (!match) {
+          return {
+            success: true as const,
+            account: accountResult.account,
+            match: null,
+            rankSummary: null,
+            opggDetail: null,
+          };
+        }
+
+        const queueType = match.info.queueId === 420
+          ? "RANKED_SOLO_5x5" as const
+          : match.info.queueId === 440
+          ? "RANKED_FLEX_SR" as const
+          : null;
+        let rankSummary = null;
+        if (queueType) {
+          const entries = await apiClient.getLeagueEntriesByPuuid(
+            accountResult.account.platform,
+            accountResult.account.puuid,
+          );
+          const snapshots = await apiClient.finalizeRankSnapshots(
+            match.metadata.matchId,
+            {
+              platform: accountResult.account.platform,
+              gameId: String(match.info.gameId),
+              puuid: accountResult.account.puuid,
+              snapshots: [{
+                queueType: "RANKED_SOLO_5x5",
+                tier: entries[0]?.tier ?? null,
+                rank: entries[0]?.rank ?? null,
+                leaguePoints: entries[0]?.leaguePoints ?? null,
+                wins: entries[0]?.wins ?? null,
+                losses: entries[0]?.losses ?? null,
+                fetchedAt: new Date("2026-01-01T00:05:00.000Z"),
+              }, {
+                queueType: "RANKED_FLEX_SR",
+                tier: null,
+                rank: null,
+                leaguePoints: null,
+                wins: null,
+                losses: null,
+                fetchedAt: new Date("2026-01-01T00:05:00.000Z"),
+              }],
+            },
+          );
+          if (snapshots.success) {
+            rankSummary = {
+              queueType,
+              before: snapshots.snapshots.before.find((snapshot) =>
+                  snapshot.queueType === queueType
+                )
+                ? {
+                  id: 0,
+                  ...snapshots.snapshots.before.find((snapshot) =>
+                    snapshot.queueType === queueType
+                  )!,
+                }
+                : null,
+              after: snapshots.snapshots.after.find((snapshot) =>
+                  snapshot.queueType === queueType
+                )
+                ? {
+                  id: 0,
+                  ...snapshots.snapshots.after.find((snapshot) =>
+                    snapshot.queueType === queueType
+                  )!,
+                }
+                : null,
+            };
+          }
+        }
+
+        const participant = match.info.participants.find((candidate) =>
+          candidate.puuid === accountResult.account.puuid
+        );
+        const opggDetail = participant
+          ? await apiClient.resolveOpggMatchDetail(match.metadata.matchId, {
+            targetDiscordId,
+            match: {
+              gameCreation: match.info.gameCreation,
+              gameDuration: match.info.gameDuration,
+              queueId: match.info.queueId,
+              participant: {
+                puuid: participant.puuid,
+                championId: participant.championId,
+                championName: participant.championName,
+              },
+            },
+          })
+          : { success: true as const, detail: null };
+
+        return {
+          success: true as const,
+          account: accountResult.account,
+          match,
+          rankSummary,
+          opggDetail: opggDetail.success ? opggDetail.detail : null,
+        };
+      },
+    );
   });
 
   afterEach(() => {
     restoreStaticDataStub();
     restoreOpggDetailStub();
     restoreActiveGameInspectionStub();
+    restoreResultInspectionStub();
     restoreRankSnapshotStubs();
   });
 

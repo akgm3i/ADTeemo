@@ -331,6 +331,98 @@ describe("apiClient", () => {
       assertEquals("status" in result ? result.status : undefined, 404);
       assertEquals(rpc.calls[0].path, "/match-watchers");
     });
+
+    test("監視処理用Result検査を行うと、rank snapshotとOP.GG詳細の日付をDateへ変換する", async () => {
+      const account = {
+        discordId: "target-1",
+        puuid: "puuid-1",
+        gameName: "Teemo",
+        tagLine: "JP1",
+        platform: "jp1",
+        region: "asia",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: null,
+      };
+      const match = {
+        metadata: { matchId: "JP1_12345", participants: ["puuid-1"] },
+        info: {
+          gameId: 12345,
+          gameCreation: 1_700_000_000_000,
+          gameDuration: 1800,
+          gameMode: "CLASSIC",
+          gameType: "MATCHED_GAME",
+          mapId: 11,
+          queueId: 420,
+          participants: [],
+        },
+      };
+      const rankSnapshot = {
+        id: 1,
+        matchId: "JP1_12345",
+        puuid: "puuid-1",
+        platform: "jp1",
+        queueType: "RANKED_SOLO_5x5",
+        phase: "before",
+        tier: "EMERALD",
+        rank: "IV",
+        leaguePoints: 19,
+        wins: 11,
+        losses: 8,
+        fetchedAt: "2026-01-01T00:05:00.000Z",
+      };
+      const opggDetail = {
+        provider: "opgg",
+        providerRegion: "jp",
+        providerMatchId: "12345",
+        detailUrl: "https://op.gg/lol/summoners/jp/Teemo-JP1/matches/12345",
+        providerCreatedAt: "2026-01-01T00:06:00.000Z",
+        averageTier: "Emerald",
+        participant: null,
+      };
+      const rpc = createRpcClientStub([
+        response({
+          account,
+          match,
+          rankSummary: {
+            queueType: "RANKED_SOLO_5x5",
+            before: rankSnapshot,
+            after: null,
+          },
+          opggDetail,
+        }),
+      ]);
+      const client = createApiClient({ rpcClient: rpc.rpcClient });
+
+      const result = await client.inspectMatchWatcherResult(
+        "guild-1",
+        "target-1",
+        { matchId: "JP1_12345" },
+      );
+
+      assertEquals(result.success, true);
+      if (!result.success) return;
+      assertEquals(
+        result.account.createdAt,
+        new Date("2026-01-01T00:00:00.000Z"),
+      );
+      assertEquals(
+        result.rankSummary?.before?.fetchedAt,
+        new Date("2026-01-01T00:05:00.000Z"),
+      );
+      assertEquals(
+        result.opggDetail?.providerCreatedAt,
+        new Date("2026-01-01T00:06:00.000Z"),
+      );
+      assertEquals(result.match?.metadata.matchId, "JP1_12345");
+      assertEquals(rpc.calls[0], {
+        method: "$post",
+        path: "/match-watchers/:guildId/:targetDiscordId/tracking/result",
+        args: [{
+          param: { guildId: "guild-1", targetDiscordId: "target-1" },
+          json: { matchId: "JP1_12345" },
+        }],
+      });
+    });
   });
 
   describe("Riot API facade", () => {

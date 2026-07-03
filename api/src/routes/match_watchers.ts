@@ -3,6 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import {
   createMatchWatcherSchema,
   inspectMatchWatcherActiveGameSchema,
+  inspectMatchWatcherResultSchema,
   updateMatchWatcherStateSchema,
 } from "../contract/schemas.ts";
 import { MatchWatcherLimitError, RecordNotFoundError } from "../errors.ts";
@@ -16,6 +17,7 @@ type MatchWatchersDbActions = Pick<
   | "getEnabledMatchWatchersByGuild"
   | "getRiotAccountByDiscordId"
   | "upsertPendingRankSnapshots"
+  | "finalizeMatchRankSnapshots"
   | "updateMatchWatcherState"
   | "disableMatchWatcher"
 >;
@@ -25,8 +27,11 @@ export function matchWatchersRoutes(
     dbActions: MatchWatchersDbActions;
     riotApi: Pick<
       AppDependencies["riotApi"],
-      "getActiveGameByPuuid" | "getLeagueEntriesByPuuid"
+      | "getActiveGameByPuuid"
+      | "getLeagueEntriesByPuuid"
+      | "getMatchById"
     >;
+    opggMatchDetailService: AppDependencies["opggMatchDetailService"];
     logger: AppDependencies["logger"];
   },
 ) {
@@ -90,6 +95,37 @@ export function matchWatchersRoutes(
           return c.json({
             account: result.account,
             activeGame: result.activeGame,
+          }, 200);
+        } catch (error) {
+          return c.json({
+            error: error instanceof Error
+              ? error.message
+              : "Riot API request failed",
+          }, 502);
+        }
+      },
+    )
+    .post(
+      "/:guildId/:targetDiscordId/tracking/result",
+      zValidator("json", inspectMatchWatcherResultSchema),
+      async (c) => {
+        const { guildId, targetDiscordId } = c.req.param();
+        const payload = c.req.valid("json");
+
+        try {
+          const result = await matchTrackingInspection.inspectResult({
+            guildId,
+            targetDiscordId,
+            matchId: payload.matchId,
+          });
+          if (result.status === "riot_account_not_found") {
+            return c.json({ error: result.error }, 404);
+          }
+          return c.json({
+            account: result.account,
+            match: result.match,
+            rankSummary: result.rankSummary,
+            opggDetail: result.opggDetail,
           }, 200);
         } catch (error) {
           return c.json({

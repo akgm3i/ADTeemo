@@ -1,8 +1,12 @@
 import type {
   ActiveGame,
+  MatchRankSnapshot,
+  MatchTrackingRankSummary,
   MatchWatcher,
   MatchWatcherState,
+  OpggMatchDetail,
   RiotAccount,
+  RiotMatch,
 } from "@adteemo/api/contract";
 import {
   type ApiRpcClient,
@@ -62,6 +66,58 @@ function parseRiotAccount(
 export type InspectMatchWatcherActiveGameResult =
   | { success: true; account: RiotAccount; activeGame: ActiveGame | null }
   | { success: false; error: string };
+export type InspectMatchWatcherResultResult =
+  | {
+    success: true;
+    account: RiotAccount;
+    match: RiotMatch | null;
+    rankSummary: MatchTrackingRankSummary | null;
+    opggDetail: OpggMatchDetail | null;
+  }
+  | { success: false; error: string };
+
+function parseMatchRankSnapshot(
+  snapshot: Omit<MatchRankSnapshot, "fetchedAt"> & {
+    fetchedAt: string | Date;
+  },
+): MatchRankSnapshot {
+  return {
+    ...snapshot,
+    fetchedAt: new Date(snapshot.fetchedAt),
+  };
+}
+
+function parseMatchTrackingRankSummary(
+  rankSummary:
+    | (Omit<MatchTrackingRankSummary, "before" | "after"> & {
+      before: Parameters<typeof parseMatchRankSnapshot>[0] | null;
+      after: Parameters<typeof parseMatchRankSnapshot>[0] | null;
+    })
+    | null,
+): MatchTrackingRankSummary | null {
+  if (!rankSummary) return null;
+  return {
+    ...rankSummary,
+    before: rankSummary.before
+      ? parseMatchRankSnapshot(rankSummary.before)
+      : null,
+    after: rankSummary.after ? parseMatchRankSnapshot(rankSummary.after) : null,
+  };
+}
+
+function parseOpggMatchDetail(
+  detail:
+    | (Omit<OpggMatchDetail, "providerCreatedAt"> & {
+      providerCreatedAt: string | Date;
+    })
+    | null,
+): OpggMatchDetail | null {
+  if (!detail) return null;
+  return {
+    ...detail,
+    providerCreatedAt: new Date(detail.providerCreatedAt),
+  };
+}
 
 export function createMatchWatchersApiClient(
   { rpcClient }: { rpcClient: ApiRpcClient },
@@ -193,12 +249,49 @@ export function createMatchWatchersApiClient(
     );
   }
 
+  async function inspectMatchWatcherResult(
+    guildId: string,
+    targetDiscordId: string,
+    payload: { matchId: string },
+  ): Promise<InspectMatchWatcherResultResult> {
+    return await resultFromRequest(
+      () =>
+        rpcClient["match-watchers"][":guildId"][":targetDiscordId"].tracking
+          .result.$post({
+            param: { guildId, targetDiscordId },
+            json: payload,
+          }),
+      async (res) => {
+        const body = await res.json() as {
+          account: Parameters<typeof parseRiotAccount>[0];
+          match: RiotMatch | null;
+          rankSummary: Parameters<typeof parseMatchTrackingRankSummary>[0];
+          opggDetail: Parameters<typeof parseOpggMatchDetail>[0];
+        };
+        return {
+          account: parseRiotAccount(body.account),
+          match: body.match,
+          rankSummary: parseMatchTrackingRankSummary(body.rankSummary),
+          opggDetail: parseOpggMatchDetail(body.opggDetail),
+        };
+      },
+      async (res) => {
+        if (res.status === 404 || res.status === 502) {
+          return { success: false, error: await readErrorMessage(res) };
+        }
+
+        throw unexpectedResponseError(res);
+      },
+    );
+  }
+
   return {
     watchMatch,
     unwatchMatch,
     getEnabledMatchWatchers,
     getEnabledMatchWatchersByGuild,
     inspectMatchWatcherActiveGame,
+    inspectMatchWatcherResult,
     updateMatchWatcherState,
   };
 }

@@ -7,6 +7,7 @@ import {
   createParticipantSchema,
   finalizeRankSnapshotsSchema,
   inspectMatchWatcherActiveGameSchema,
+  inspectMatchWatcherResultSchema,
   linkByRiotIdSchema,
   loginUrlQuerySchema,
   platformAndPuuidSchema,
@@ -22,6 +23,7 @@ import type {
   Event,
   LeagueEntry,
   MatchRankSnapshot,
+  MatchTrackingRankSummary,
   MatchWatcher,
   OpggMatchDetail,
   RiotAccount,
@@ -128,6 +130,20 @@ const matchWatchersContractRoutes = new Hono()
       return c.json({
         account: {} as RiotAccount,
         activeGame: null as ActiveGame | null,
+      }, 200);
+    },
+  )
+  .post(
+    "/:guildId/:targetDiscordId/tracking/result",
+    zValidator("json", inspectMatchWatcherResultSchema),
+    (c) => {
+      if (hasContractError()) return c.json(errorResponse, 404);
+      if (hasContractError()) return c.json(errorResponse, 502);
+      return c.json({
+        account: {} as RiotAccount,
+        match: null as RiotMatch | null,
+        rankSummary: null as MatchTrackingRankSummary | null,
+        opggDetail: null as OpggMatchDetail | null,
       }, 200);
     },
   )

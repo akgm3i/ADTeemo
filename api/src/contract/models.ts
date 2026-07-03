@@ -78,6 +78,12 @@ export type MatchRankSnapshot = {
   fetchedAt: Date;
 };
 
+export type MatchTrackingRankSummary = {
+  queueType: RankedQueueType;
+  before: MatchRankSnapshot | null;
+  after: MatchRankSnapshot | null;
+};
+
 export type ExternalMatchDetail = {
   matchId: string;
   provider: ExternalMatchProvider;
