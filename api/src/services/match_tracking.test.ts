@@ -133,7 +133,22 @@ describe("services/match_tracking.ts", () => {
       currentGameId: null,
     });
 
-    assertEquals(result, { status: "ok", account, activeGame });
+    assertEquals(result, {
+      status: "ok",
+      account,
+      activeGame,
+      notificationIntent: { kind: "started", activeGame },
+      stateTransition: {
+        state: {
+          lastState: "IN_GAME",
+          currentGameId: "12345",
+          currentMatchId: null,
+          gameStartedAt: new Date("2023-11-14T22:13:20.000Z"),
+          lastCheckedAt: new Date("2026-01-01T00:00:00.000Z"),
+        },
+        messageIdField: "currentNotificationMessageId",
+      },
+    });
     assertEquals(calls, [
       "account:target-1",
       "activeGame:jp1:puuid-1",
@@ -188,6 +203,7 @@ describe("services/match_tracking.ts", () => {
         resolveAndSave: () => Promise.resolve(null),
       },
       logger: { warn: () => {} },
+      clock: { now: () => new Date("2026-01-01T00:05:00.000Z") },
     });
 
     const result = await service.inspectActiveGame({
@@ -197,7 +213,13 @@ describe("services/match_tracking.ts", () => {
       currentGameId: "12345",
     });
 
-    assertEquals(result, { status: "ok", account, activeGame });
+    assertEquals(result, {
+      status: "ok",
+      account,
+      activeGame,
+      notificationIntent: null,
+      stateTransition: null,
+    });
     assertEquals(calls, []);
   });
 
@@ -230,6 +252,7 @@ describe("services/match_tracking.ts", () => {
         },
       },
       logger: { warn: () => {} },
+      clock: { now: () => new Date("2026-01-01T00:05:00.000Z") },
     });
 
     const result = await service.inspectResult({
@@ -244,6 +267,19 @@ describe("services/match_tracking.ts", () => {
       match: null,
       rankSummary: null,
       opggDetail: null,
+      notificationIntent: null,
+      stateTransition: {
+        state: {
+          lastState: "IDLE",
+          currentGameId: null,
+          currentMatchId: null,
+          pendingResultMatchId: "JP1_12345",
+          pendingResultNotificationMessageId: null,
+          pendingResultStartedAt: null,
+          lastCheckedAt: new Date("2026-01-01T00:05:00.000Z"),
+        },
+        messageIdField: null,
+      },
     });
     assertEquals(calls, ["match:asia:JP1_12345"]);
   });
@@ -314,6 +350,28 @@ describe("services/match_tracking.ts", () => {
         after: afterSnapshot,
       },
       opggDetail,
+      notificationIntent: {
+        kind: "result",
+        match,
+        rankSummary: {
+          queueType: "RANKED_SOLO_5x5",
+          before: beforeSnapshot,
+          after: afterSnapshot,
+        },
+        opggDetail,
+      },
+      stateTransition: {
+        state: {
+          lastState: "IDLE",
+          currentGameId: null,
+          currentMatchId: null,
+          pendingResultMatchId: null,
+          pendingResultNotificationMessageId: null,
+          pendingResultStartedAt: null,
+          lastCheckedAt: new Date("2026-01-01T00:05:00.000Z"),
+        },
+        messageIdField: null,
+      },
     });
     assertEquals(calls, [
       "match:asia:JP1_12345",

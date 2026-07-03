@@ -6,7 +6,6 @@ import {
   currentStateFromWatcher,
   hasResultFetchTimedOut as hasResultFetchTimedOutWithConfig,
   isAfterDate,
-  isResultFetchTimedOut as isResultFetchTimedOutWithConfig,
   matchIdForGame,
   matchIdParts,
   newerDate,
@@ -389,6 +388,9 @@ async function inspectActiveGameForWatcher(
       {
         lastState: watcher.lastState,
         currentGameId: watcher.currentGameId,
+        currentNotificationMessageId: watcher.currentNotificationMessageId,
+        gameStartedAt: watcher.gameStartedAt,
+        lastInGameNotifiedAt: watcher.lastInGameNotifiedAt,
       },
     );
     context.activeGameInspectionsByTargetAndState.set(cacheKey, promise);
@@ -413,7 +415,13 @@ async function inspectResultForWatcher(
     promise = dependencies.apiClient.inspectMatchWatcherResult(
       watcher.guildId,
       watcher.targetDiscordId,
-      { matchId },
+      {
+        matchId,
+        messageId: watcher.pendingResultNotificationMessageId ??
+          watcher.currentNotificationMessageId,
+        startedAt: watcher.pendingResultStartedAt ?? watcher.gameStartedAt,
+        resultFetchTimeoutMs: dependencies.config.resultFetchTimeoutMs,
+      },
     );
     context.resultInspectionsByTargetAndMatchId.set(cacheKey, promise);
   }
@@ -452,17 +460,6 @@ function hasResultFetchTimedOut(
   now: Date,
 ) {
   return hasResultFetchTimedOutWithConfig(watcher, timeoutMs, now);
-}
-
-function isResultFetchTimedOut(
-  dependencies: MatchTrackingServiceDependencies,
-  startedAt: Date,
-) {
-  return isResultFetchTimedOutWithConfig(
-    startedAt,
-    dependencies.config.resultFetchTimeoutMs,
-    dependencies.clock.now(),
-  );
 }
 
 async function activeGameTargetDetails(
@@ -526,30 +523,6 @@ async function tryFetchAndNotifyResult(
   pending: PendingResult,
   currentState: WatcherState = currentStateFromWatcher(watcher),
 ) {
-  if (
-    pending.startedAt && isResultFetchTimedOut(dependencies, pending.startedAt)
-  ) {
-    dependencies.logger.warn("match_tracking.fetch_result_timeout", {
-      guildId: watcher.guildId,
-      targetDiscordId: watcher.targetDiscordId,
-      matchId: pending.matchId,
-    });
-    const messageId = await dependencies.notifier.sendOrEditWatcherMessage(
-      watcher,
-      pending.messageId,
-      dependencies.renderer.resultFetchTimeout(watcher, pending.matchId),
-    );
-    await setWatcherState(dependencies, watcher, {
-      ...currentState,
-      pendingResultMatchId: null,
-      pendingResultNotificationMessageId: null,
-      pendingResultStartedAt: null,
-      currentMatchId: null,
-      lastCheckedAt: dependencies.clock.now(),
-    });
-    return { status: "cleared" as const, messageId };
-  }
-
   const result = await inspectResultForWatcher(
     dependencies,
     context,
@@ -564,14 +537,49 @@ async function tryFetchAndNotifyResult(
     });
     return { status: "pending" as const, messageId: pending.messageId };
   }
-  const { account, match, rankSummary, opggDetail } = result;
-  if (!match) {
+  const {
+    account,
+    match,
+    rankSummary,
+    opggDetail,
+    notificationIntent,
+    stateTransition,
+  } = result;
+  if (notificationIntent?.kind === "timeout") {
+    dependencies.logger.warn("match_tracking.fetch_result_timeout", {
+      guildId: watcher.guildId,
+      targetDiscordId: watcher.targetDiscordId,
+      matchId: pending.matchId,
+    });
+    const messageId = await dependencies.notifier.sendOrEditWatcherMessage(
+      watcher,
+      pending.messageId,
+      dependencies.renderer.resultFetchTimeout(
+        watcher,
+        notificationIntent.matchId,
+      ),
+    );
     await setWatcherState(dependencies, watcher, {
       ...currentState,
-      pendingResultMatchId: pending.matchId,
-      pendingResultNotificationMessageId: pending.messageId,
-      pendingResultStartedAt: pending.startedAt,
+      ...(stateTransition?.state ?? {
+        pendingResultMatchId: null,
+        pendingResultNotificationMessageId: null,
+        pendingResultStartedAt: null,
+      }),
       currentMatchId: null,
+      lastCheckedAt: dependencies.clock.now(),
+    });
+    return { status: "cleared" as const, messageId };
+  }
+  if (!match || notificationIntent?.kind !== "result") {
+    await setWatcherState(dependencies, watcher, {
+      ...currentState,
+      ...(stateTransition?.state ?? {
+        pendingResultMatchId: pending.matchId,
+        pendingResultNotificationMessageId: pending.messageId,
+        pendingResultStartedAt: pending.startedAt,
+        currentMatchId: null,
+      }),
       lastCheckedAt: dependencies.clock.now(),
     });
     return { status: "pending" as const, messageId: pending.messageId };
@@ -590,10 +598,12 @@ async function tryFetchAndNotifyResult(
   );
   await setWatcherState(dependencies, watcher, {
     ...currentState,
-    currentMatchId: null,
-    pendingResultMatchId: null,
-    pendingResultNotificationMessageId: null,
-    pendingResultStartedAt: null,
+    ...(stateTransition?.state ?? {
+      currentMatchId: null,
+      pendingResultMatchId: null,
+      pendingResultNotificationMessageId: null,
+      pendingResultStartedAt: null,
+    }),
     lastCheckedAt: dependencies.clock.now(),
   });
   return { status: "cleared" as const, messageId };
@@ -645,7 +655,17 @@ async function processWatcher(
         account,
         watcher.currentGameId,
       );
-      const matchId = matchIdForGame(account, watcher.currentGameId);
+      const resultPendingIntent = activeGameResult.notificationIntent?.kind ===
+          "resultPending"
+        ? activeGameResult.notificationIntent
+        : {
+          kind: "resultPending" as const,
+          matchId: matchIdForGame(
+            account,
+            watcher.currentGameId,
+          ),
+        };
+      const matchId = resultPendingIntent.matchId;
       const messageId = await dependencies.notifier.sendOrEditWatcherMessage(
         watcher,
         resultNotificationMessageId(activeNotificationGroup, watcher),

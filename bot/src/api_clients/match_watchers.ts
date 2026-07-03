@@ -1,9 +1,12 @@
 import type {
   ActiveGame,
   MatchRankSnapshot,
+  MatchTrackingNotificationIntent,
   MatchTrackingRankSummary,
+  MatchTrackingStateTransition,
   MatchWatcher,
   MatchWatcherState,
+  MatchWatcherStatePatch,
   OpggMatchDetail,
   RiotAccount,
   RiotMatch,
@@ -64,7 +67,13 @@ function parseRiotAccount(
 }
 
 export type InspectMatchWatcherActiveGameResult =
-  | { success: true; account: RiotAccount; activeGame: ActiveGame | null }
+  | {
+    success: true;
+    account: RiotAccount;
+    activeGame: ActiveGame | null;
+    notificationIntent: MatchTrackingNotificationIntent | null;
+    stateTransition: MatchTrackingStateTransition | null;
+  }
   | { success: false; error: string };
 export type InspectMatchWatcherResultResult =
   | {
@@ -73,6 +82,8 @@ export type InspectMatchWatcherResultResult =
     match: RiotMatch | null;
     rankSummary: MatchTrackingRankSummary | null;
     opggDetail: OpggMatchDetail | null;
+    notificationIntent: MatchTrackingNotificationIntent | null;
+    stateTransition: MatchTrackingStateTransition | null;
   }
   | { success: false; error: string };
 
@@ -116,6 +127,51 @@ function parseOpggMatchDetail(
   return {
     ...detail,
     providerCreatedAt: new Date(detail.providerCreatedAt),
+  };
+}
+
+function parseMatchWatcherStatePatch(
+  state: MatchWatcherStatePatch,
+): MatchWatcherStatePatch {
+  return {
+    ...state,
+    pendingResultStartedAt: dateOrNull(state.pendingResultStartedAt),
+    gameStartedAt: dateOrNull(state.gameStartedAt),
+    lastCheckedAt: dateOrNull(state.lastCheckedAt),
+    lastInGameNotifiedAt: dateOrNull(state.lastInGameNotifiedAt),
+  };
+}
+
+function parseMatchTrackingStateTransition(
+  transition:
+    | (Omit<MatchTrackingStateTransition, "state"> & {
+      state: MatchWatcherStatePatch;
+    })
+    | null,
+): MatchTrackingStateTransition | null {
+  if (!transition) return null;
+  return {
+    ...transition,
+    state: parseMatchWatcherStatePatch(transition.state),
+  };
+}
+
+function parseMatchTrackingNotificationIntent(
+  intent: MatchTrackingNotificationIntent | null,
+  parsed: {
+    match?: RiotMatch | null;
+    rankSummary?: MatchTrackingRankSummary | null;
+    opggDetail?: OpggMatchDetail | null;
+  } = {},
+): MatchTrackingNotificationIntent | null {
+  if (!intent) return null;
+  if (intent.kind !== "result") return intent;
+  if (!parsed.match) return intent;
+  return {
+    kind: "result",
+    match: parsed.match,
+    rankSummary: parsed.rankSummary ?? null,
+    opggDetail: parsed.opggDetail ?? null,
   };
 }
 
@@ -219,6 +275,11 @@ export function createMatchWatchersApiClient(
     state: {
       lastState: MatchWatcherState;
       currentGameId: string | null;
+      currentNotificationMessageId?: string | null;
+      gameStartedAt?: Date | null;
+      lastInGameNotifiedAt?: Date | null;
+      notificationLastInGameNotifiedAt?: Date | null;
+      inGameNotifyIntervalMs?: number;
     },
   ): Promise<InspectMatchWatcherActiveGameResult> {
     return await resultFromRequest(
@@ -233,10 +294,20 @@ export function createMatchWatchersApiClient(
         const body = await res.json() as {
           account: Parameters<typeof parseRiotAccount>[0];
           activeGame: ActiveGame | null;
+          notificationIntent: MatchTrackingNotificationIntent | null;
+          stateTransition: Parameters<
+            typeof parseMatchTrackingStateTransition
+          >[0];
         };
         return {
           account: parseRiotAccount(body.account),
           activeGame: body.activeGame,
+          notificationIntent: parseMatchTrackingNotificationIntent(
+            body.notificationIntent,
+          ),
+          stateTransition: parseMatchTrackingStateTransition(
+            body.stateTransition,
+          ),
         };
       },
       async (res) => {
@@ -252,7 +323,12 @@ export function createMatchWatchersApiClient(
   async function inspectMatchWatcherResult(
     guildId: string,
     targetDiscordId: string,
-    payload: { matchId: string },
+    payload: {
+      matchId: string;
+      messageId?: string | null;
+      startedAt?: Date | null;
+      resultFetchTimeoutMs?: number;
+    },
   ): Promise<InspectMatchWatcherResultResult> {
     return await resultFromRequest(
       () =>
@@ -267,12 +343,25 @@ export function createMatchWatchersApiClient(
           match: RiotMatch | null;
           rankSummary: Parameters<typeof parseMatchTrackingRankSummary>[0];
           opggDetail: Parameters<typeof parseOpggMatchDetail>[0];
+          notificationIntent: MatchTrackingNotificationIntent | null;
+          stateTransition: Parameters<
+            typeof parseMatchTrackingStateTransition
+          >[0];
         };
+        const rankSummary = parseMatchTrackingRankSummary(body.rankSummary);
+        const opggDetail = parseOpggMatchDetail(body.opggDetail);
         return {
           account: parseRiotAccount(body.account),
           match: body.match,
-          rankSummary: parseMatchTrackingRankSummary(body.rankSummary),
-          opggDetail: parseOpggMatchDetail(body.opggDetail),
+          rankSummary,
+          opggDetail,
+          notificationIntent: parseMatchTrackingNotificationIntent(
+            body.notificationIntent,
+            { match: body.match, rankSummary, opggDetail },
+          ),
+          stateTransition: parseMatchTrackingStateTransition(
+            body.stateTransition,
+          ),
         };
       },
       async (res) => {

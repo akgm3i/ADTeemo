@@ -85,7 +85,7 @@ describe("routes/match_watchers.ts", () => {
     const res = await client["match-watchers"].enabled.$get();
 
     assert(res.status === 200);
-    const body = await res.json();
+    const body = await res.json() as { watchers: unknown[] };
     assertEquals(body.watchers.length, 1);
     assertSpyCall(getStub, 0, { args: [] });
   });
@@ -119,7 +119,9 @@ describe("routes/match_watchers.ts", () => {
     });
 
     assert(res.status === 200);
-    const body = await res.json();
+    const body = await res.json() as {
+      watchers: Array<{ guildId: string }>;
+    };
     assertEquals(
       body.watchers.map((item: { guildId: string }) => item.guildId),
       [watcher.guildId],
@@ -217,13 +219,27 @@ describe("routes/match_watchers.ts", () => {
     });
 
     assertEquals(res.status, 200);
-    assertEquals(await res.json(), {
-      account: {
-        ...account,
-        createdAt: "2026-01-01T00:00:00.000Z",
-      },
-      activeGame,
+    const body = await res.json() as {
+      account: unknown;
+      activeGame: unknown;
+      notificationIntent: unknown;
+      stateTransition: {
+        messageIdField: unknown;
+        state: { lastState: unknown; currentGameId: unknown };
+      };
+    };
+    assertEquals(body.account, {
+      ...account,
+      createdAt: "2026-01-01T00:00:00.000Z",
     });
+    assertEquals(body.activeGame, activeGame);
+    assertEquals(body.notificationIntent, { kind: "started", activeGame });
+    assertEquals(
+      body.stateTransition.messageIdField,
+      "currentNotificationMessageId",
+    );
+    assertEquals(body.stateTransition.state.lastState, "IN_GAME");
+    assertEquals(body.stateTransition.state.currentGameId, "12345");
     assertSpyCall(accountStub, 0, { args: [watcher.targetDiscordId] });
     assertSpyCall(activeGameStub, 0, { args: ["jp1", "puuid-1"] });
     assertSpyCall(entriesStub, 0, { args: ["jp1", "puuid-1"] });
@@ -368,11 +384,39 @@ describe("routes/match_watchers.ts", () => {
     });
 
     assertEquals(res.status, 200);
-    assertEquals(await res.json(), {
-      account: {
-        ...account,
-        createdAt: "2026-01-01T00:00:00.000Z",
+    const body = await res.json() as {
+      account: unknown;
+      match: unknown;
+      rankSummary: unknown;
+      opggDetail: unknown;
+      notificationIntent: unknown;
+      stateTransition: {
+        messageIdField: unknown;
+        state: { pendingResultMatchId: unknown };
+      };
+    };
+    assertEquals(body.account, {
+      ...account,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    assertEquals(body.match, match);
+    assertEquals(body.rankSummary, {
+      queueType: "RANKED_SOLO_5x5",
+      before: {
+        ...beforeSnapshot,
+        fetchedAt: "2026-01-01T00:00:00.000Z",
       },
+      after: {
+        ...afterSnapshot,
+        fetchedAt: "2026-01-01T00:05:00.000Z",
+      },
+    });
+    assertEquals(body.opggDetail, {
+      ...opggDetail,
+      providerCreatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    assertEquals(body.notificationIntent, {
+      kind: "result",
       match,
       rankSummary: {
         queueType: "RANKED_SOLO_5x5",
@@ -390,6 +434,8 @@ describe("routes/match_watchers.ts", () => {
         providerCreatedAt: "2026-01-01T00:00:00.000Z",
       },
     });
+    assertEquals(body.stateTransition.messageIdField, null);
+    assertEquals(body.stateTransition.state.pendingResultMatchId, null);
     assertSpyCall(accountStub, 0, { args: [watcher.targetDiscordId] });
     assertSpyCall(matchStub, 0, { args: ["asia", "JP1_12345"] });
     assertSpyCall(entriesStub, 0, { args: ["jp1", "puuid-1"] });

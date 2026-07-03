@@ -374,6 +374,8 @@ describe("match_tracking.ts", () => {
           success: true as const,
           account: accountResult.account,
           activeGame,
+          notificationIntent: null,
+          stateTransition: null,
         };
       },
     );
@@ -383,6 +385,26 @@ describe("match_tracking.ts", () => {
       async (_guildId, targetDiscordId, payload) => {
         const accountResult = await apiClient.getRiotAccount(targetDiscordId);
         if (!accountResult.success) return accountResult;
+
+        if (
+          payload.startedAt &&
+          payload.resultFetchTimeoutMs !== undefined &&
+          Date.now() - payload.startedAt.getTime() >=
+            payload.resultFetchTimeoutMs
+        ) {
+          return {
+            success: true as const,
+            account: accountResult.account,
+            match: null,
+            rankSummary: null,
+            opggDetail: null,
+            notificationIntent: {
+              kind: "timeout" as const,
+              matchId: payload.matchId,
+            },
+            stateTransition: null,
+          };
+        }
 
         const match = await apiClient.getMatchById(
           accountResult.account.region,
@@ -395,6 +417,8 @@ describe("match_tracking.ts", () => {
             match: null,
             rankSummary: null,
             opggDetail: null,
+            notificationIntent: null,
+            stateTransition: null,
           };
         }
 
@@ -480,12 +504,22 @@ describe("match_tracking.ts", () => {
           })
           : { success: true as const, detail: null };
 
+        const resolvedOpggDetail = opggDetail.success
+          ? opggDetail.detail
+          : null;
         return {
           success: true as const,
           account: accountResult.account,
           match,
           rankSummary,
-          opggDetail: opggDetail.success ? opggDetail.detail : null,
+          opggDetail: resolvedOpggDetail,
+          notificationIntent: {
+            kind: "result" as const,
+            match,
+            rankSummary,
+            opggDetail: resolvedOpggDetail,
+          },
+          stateTransition: null,
         };
       },
     );

@@ -95,6 +95,8 @@ export function matchWatchersRoutes(
           return c.json({
             account: result.account,
             activeGame: result.activeGame,
+            notificationIntent: result.notificationIntent,
+            stateTransition: result.stateTransition,
           }, 200);
         } catch (error) {
           return c.json({
@@ -117,6 +119,9 @@ export function matchWatchersRoutes(
             guildId,
             targetDiscordId,
             matchId: payload.matchId,
+            messageId: payload.messageId,
+            startedAt: payload.startedAt,
+            resultFetchTimeoutMs: payload.resultFetchTimeoutMs,
           });
           if (result.status === "riot_account_not_found") {
             return c.json({ error: result.error }, 404);
@@ -126,6 +131,8 @@ export function matchWatchersRoutes(
             match: result.match,
             rankSummary: result.rankSummary,
             opggDetail: result.opggDetail,
+            notificationIntent: result.notificationIntent,
+            stateTransition: result.stateTransition,
           }, 200);
         } catch (error) {
           return c.json({

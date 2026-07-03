@@ -100,6 +100,13 @@ describe("match_tracking_service.ts", () => {
             match,
             rankSummary: null,
             opggDetail: null,
+            notificationIntent: {
+              kind: "result" as const,
+              match,
+              rankSummary: null,
+              opggDetail: null,
+            },
+            stateTransition: null,
           });
         },
         updateMatchWatcherState: (...args) => {
@@ -149,7 +156,12 @@ describe("match_tracking_service.ts", () => {
     assertEquals(resultInspectionCalls, [[
       "guild-1",
       "target-1",
-      { matchId: "JP1_12345" },
+      {
+        matchId: "JP1_12345",
+        messageId: "message-existing",
+        startedAt: new Date("2026-01-01T00:00:00Z"),
+        resultFetchTimeoutMs: 10 * 60_000,
+      },
     ]]);
     assertEquals(activeGameInspectionCalls, []);
     assertEquals(renderedMatches.length, 1);
@@ -206,6 +218,8 @@ describe("match_tracking_service.ts", () => {
               updatedAt: null,
             },
             activeGame: null,
+            notificationIntent: null,
+            stateTransition: null,
           });
         },
         inspectMatchWatcherResult: () => {
