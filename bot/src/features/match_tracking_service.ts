@@ -610,7 +610,7 @@ async function tryFetchAndNotifyResult(
     });
     return { status: "cleared" as const, messageId };
   }
-  if (!match || notificationIntent?.kind !== "result") {
+  if (!match || (notificationIntent && notificationIntent.kind !== "result")) {
     await setWatcherState(dependencies, watcher, {
       ...currentState,
       ...resultTransitionStateForCurrentState(
