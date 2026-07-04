@@ -102,10 +102,18 @@ export const updateMatchWatcherStateSchema = z.object({
 export const inspectMatchWatcherActiveGameSchema = z.object({
   lastState: z.enum(matchWatcherStates),
   currentGameId: z.string().nullable(),
+  currentNotificationMessageId: z.string().nullable().optional(),
+  gameStartedAt: z.coerce.date().nullable().optional(),
+  lastInGameNotifiedAt: z.coerce.date().nullable().optional(),
+  notificationLastInGameNotifiedAt: z.coerce.date().nullable().optional(),
+  inGameNotifyIntervalMs: z.number().int().nonnegative().optional(),
 });
 
 export const inspectMatchWatcherResultSchema = z.object({
   matchId: z.string().min(1),
+  messageId: z.string().nullable().optional(),
+  startedAt: z.coerce.date().nullable().optional(),
+  resultFetchTimeoutMs: z.number().int().nonnegative().optional(),
 });
 
 export const platformAndPuuidSchema = z.object({

@@ -1,7 +1,9 @@
 import type {
   ActiveGame,
   LeagueEntry,
+  MatchTrackingNotificationIntent,
   MatchTrackingRankSummary,
+  MatchTrackingStateTransition,
   MatchWatcherState,
   OpggMatchDetail,
   RankSnapshotPayload,
@@ -47,12 +49,19 @@ export type InspectMatchWatcherActiveGameInput = {
   targetDiscordId: string;
   lastState: MatchWatcherState;
   currentGameId: string | null;
+  currentNotificationMessageId?: string | null;
+  gameStartedAt?: Date | null;
+  lastInGameNotifiedAt?: Date | null;
+  notificationLastInGameNotifiedAt?: Date | null;
+  inGameNotifyIntervalMs?: number;
 };
 export type InspectMatchWatcherActiveGameResult =
   | {
     status: "ok";
     account: RiotAccount;
     activeGame: ActiveGame | null;
+    notificationIntent: MatchTrackingNotificationIntent | null;
+    stateTransition: MatchTrackingStateTransition | null;
   }
   | {
     status: "riot_account_not_found";
@@ -62,6 +71,9 @@ export type InspectMatchWatcherResultInput = {
   guildId: string;
   targetDiscordId: string;
   matchId: string;
+  messageId?: string | null;
+  startedAt?: Date | null;
+  resultFetchTimeoutMs?: number;
 };
 export type InspectMatchWatcherResult =
   | {
@@ -70,6 +82,8 @@ export type InspectMatchWatcherResult =
     match: RiotMatch | null;
     rankSummary: MatchTrackingRankSummary | null;
     opggDetail: OpggMatchDetail | null;
+    notificationIntent: MatchTrackingNotificationIntent | null;
+    stateTransition: MatchTrackingStateTransition | null;
   }
   | {
     status: "riot_account_not_found";
@@ -111,6 +125,100 @@ function shouldCapturePendingRankSnapshots(
 ) {
   const currentGameId = String(activeGame.gameId);
   return input.lastState !== "IN_GAME" || input.currentGameId !== currentGameId;
+}
+
+function matchIdForGame(
+  account: Pick<RiotAccount, "platform">,
+  gameId: string,
+) {
+  return `${account.platform.toUpperCase()}_${gameId}`;
+}
+
+function shouldNotifySince(
+  lastNotifiedAt: Date | null | undefined,
+  intervalMs: number | undefined,
+  now: Date,
+) {
+  if (intervalMs === undefined) return false;
+  if (!lastNotifiedAt) return true;
+  return now.getTime() - lastNotifiedAt.getTime() >= intervalMs;
+}
+
+function isResultFetchTimedOut(
+  startedAt: Date | null | undefined,
+  timeoutMs: number | undefined,
+  now: Date,
+) {
+  if (!startedAt || timeoutMs === undefined) return false;
+  return now.getTime() - startedAt.getTime() >= timeoutMs;
+}
+
+function activeGameStateTransition(
+  input: InspectMatchWatcherActiveGameInput,
+  activeGame: ActiveGame | null,
+  account: RiotAccount,
+  now: Date,
+): {
+  notificationIntent: MatchTrackingNotificationIntent | null;
+  stateTransition: MatchTrackingStateTransition | null;
+} {
+  if (!activeGame) {
+    if (input.lastState !== "IN_GAME" || !input.currentGameId) {
+      if (input.lastState === "IDLE" && input.currentGameId === null) {
+        return { notificationIntent: null, stateTransition: null };
+      }
+      return {
+        notificationIntent: null,
+        stateTransition: {
+          state: {
+            lastState: "IDLE",
+            currentGameId: null,
+            currentNotificationMessageId: null,
+          },
+          messageIdField: null,
+        },
+      };
+    }
+
+    const matchId = matchIdForGame(account, input.currentGameId);
+    return {
+      notificationIntent: { kind: "resultPending", matchId },
+      stateTransition: {
+        state: {
+          lastState: "IDLE",
+          currentGameId: null,
+          currentMatchId: null,
+          currentNotificationMessageId: null,
+          pendingResultMatchId: matchId,
+          pendingResultStartedAt: input.gameStartedAt ?? null,
+          gameStartedAt: null,
+          lastInGameNotifiedAt: null,
+        },
+        messageIdField: "pendingResultNotificationMessageId",
+      },
+    };
+  }
+
+  const currentGameId = String(activeGame.gameId);
+  const started = input.lastState !== "IN_GAME" ||
+    input.currentGameId !== currentGameId;
+  if (started) {
+    return {
+      notificationIntent: { kind: "started", activeGame },
+      stateTransition: {
+        state: {
+          lastState: "IN_GAME",
+          currentGameId,
+          currentMatchId: null,
+          gameStartedAt: new Date(activeGame.gameStartTime),
+          lastInGameNotifiedAt: now,
+        },
+        messageIdField: "currentNotificationMessageId",
+      },
+    };
+  }
+
+  return { notificationIntent: null, stateTransition: null };
 }
 
 export function createMatchTrackingInspectionService(
@@ -158,6 +266,7 @@ export function createMatchTrackingInspectionService(
   async function inspectActiveGame(
     input: InspectMatchWatcherActiveGameInput,
   ): Promise<InspectMatchWatcherActiveGameResult> {
+    const now = clock.now();
     const account = await dependencies.dbActions.getRiotAccountByDiscordId(
       input.targetDiscordId,
     );
@@ -176,10 +285,41 @@ export function createMatchTrackingInspectionService(
       await capturePendingRankSnapshots(input, account, activeGame);
     }
 
+    let { notificationIntent, stateTransition } = activeGameStateTransition(
+      input,
+      activeGame,
+      account,
+      now,
+    );
+    if (
+      activeGame && !notificationIntent &&
+      shouldNotifySince(
+        input.notificationLastInGameNotifiedAt ??
+          input.lastInGameNotifiedAt,
+        input.inGameNotifyIntervalMs,
+        now,
+      )
+    ) {
+      notificationIntent = { kind: "progress", activeGame };
+      stateTransition = {
+        state: {
+          lastState: "IN_GAME",
+          currentGameId: String(activeGame.gameId),
+          lastInGameNotifiedAt: now,
+        },
+        messageIdField: "currentNotificationMessageId",
+      };
+    }
+    if (stateTransition) {
+      stateTransition.state.lastCheckedAt = now;
+    }
+
     return {
       status: "ok",
       account,
       activeGame,
+      notificationIntent,
+      stateTransition,
     };
   }
 
@@ -268,6 +408,7 @@ export function createMatchTrackingInspectionService(
   async function inspectResult(
     input: InspectMatchWatcherResultInput,
   ): Promise<InspectMatchWatcherResult> {
+    const now = clock.now();
     const account = await dependencies.dbActions.getRiotAccountByDiscordId(
       input.targetDiscordId,
     );
@@ -275,6 +416,32 @@ export function createMatchTrackingInspectionService(
       return {
         status: "riot_account_not_found",
         error: "Riot account not found",
+      };
+    }
+
+    if (
+      isResultFetchTimedOut(
+        input.startedAt,
+        input.resultFetchTimeoutMs,
+        now,
+      )
+    ) {
+      return {
+        status: "ok",
+        account,
+        match: null,
+        rankSummary: null,
+        opggDetail: null,
+        notificationIntent: { kind: "timeout", matchId: input.matchId },
+        stateTransition: {
+          state: {
+            pendingResultMatchId: null,
+            pendingResultNotificationMessageId: null,
+            pendingResultStartedAt: null,
+            lastCheckedAt: now,
+          },
+          messageIdField: null,
+        },
       };
     }
 
@@ -289,6 +456,16 @@ export function createMatchTrackingInspectionService(
         match: null,
         rankSummary: null,
         opggDetail: null,
+        notificationIntent: null,
+        stateTransition: {
+          state: {
+            pendingResultMatchId: input.matchId,
+            pendingResultNotificationMessageId: input.messageId ?? null,
+            pendingResultStartedAt: input.startedAt ?? null,
+            lastCheckedAt: now,
+          },
+          messageIdField: null,
+        },
       };
     }
 
@@ -309,6 +486,21 @@ export function createMatchTrackingInspectionService(
       match,
       rankSummary,
       opggDetail,
+      notificationIntent: {
+        kind: "result",
+        match,
+        rankSummary,
+        opggDetail,
+      },
+      stateTransition: {
+        state: {
+          pendingResultMatchId: null,
+          pendingResultNotificationMessageId: null,
+          pendingResultStartedAt: null,
+          lastCheckedAt: now,
+        },
+        messageIdField: null,
+      },
     };
   }
 

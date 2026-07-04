@@ -49,6 +49,19 @@ export type MatchWatcher = {
   updatedAt: Date | null;
 };
 
+export type MatchWatcherStatePatch = {
+  lastState?: MatchWatcherState;
+  currentGameId?: string | null;
+  currentMatchId?: string | null;
+  currentNotificationMessageId?: string | null;
+  pendingResultMatchId?: string | null;
+  pendingResultNotificationMessageId?: string | null;
+  pendingResultStartedAt?: Date | null;
+  gameStartedAt?: Date | null;
+  lastCheckedAt?: Date | null;
+  lastInGameNotifiedAt?: Date | null;
+};
+
 export type PendingMatchRankSnapshot = {
   platform: RiotPlatform;
   gameId: string;
@@ -187,4 +200,32 @@ export type LeagueEntry = {
   leaguePoints: number;
   wins: number;
   losses: number;
+};
+
+export type MatchTrackingNotificationIntent =
+  | {
+    kind: "started" | "progress";
+    activeGame: ActiveGame;
+  }
+  | {
+    kind: "resultPending";
+    matchId: string;
+  }
+  | {
+    kind: "result";
+    match: RiotMatch;
+    rankSummary: MatchTrackingRankSummary | null;
+    opggDetail: OpggMatchDetail | null;
+  }
+  | {
+    kind: "timeout";
+    matchId: string;
+  };
+
+export type MatchTrackingStateTransition = {
+  state: MatchWatcherStatePatch;
+  messageIdField:
+    | "currentNotificationMessageId"
+    | "pendingResultNotificationMessageId"
+    | null;
 };

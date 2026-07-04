@@ -374,6 +374,8 @@ describe("match_tracking.ts", () => {
           success: true as const,
           account: accountResult.account,
           activeGame,
+          notificationIntent: null,
+          stateTransition: null,
         };
       },
     );
@@ -383,6 +385,26 @@ describe("match_tracking.ts", () => {
       async (_guildId, targetDiscordId, payload) => {
         const accountResult = await apiClient.getRiotAccount(targetDiscordId);
         if (!accountResult.success) return accountResult;
+
+        if (
+          payload.startedAt &&
+          payload.resultFetchTimeoutMs !== undefined &&
+          Date.now() - payload.startedAt.getTime() >=
+            payload.resultFetchTimeoutMs
+        ) {
+          return {
+            success: true as const,
+            account: accountResult.account,
+            match: null,
+            rankSummary: null,
+            opggDetail: null,
+            notificationIntent: {
+              kind: "timeout" as const,
+              matchId: payload.matchId,
+            },
+            stateTransition: null,
+          };
+        }
 
         const match = await apiClient.getMatchById(
           accountResult.account.region,
@@ -395,6 +417,8 @@ describe("match_tracking.ts", () => {
             match: null,
             rankSummary: null,
             opggDetail: null,
+            notificationIntent: null,
+            stateTransition: null,
           };
         }
 
@@ -480,12 +504,22 @@ describe("match_tracking.ts", () => {
           })
           : { success: true as const, detail: null };
 
+        const resolvedOpggDetail = opggDetail.success
+          ? opggDetail.detail
+          : null;
         return {
           success: true as const,
           account: accountResult.account,
           match,
           rankSummary,
-          opggDetail: opggDetail.success ? opggDetail.detail : null,
+          opggDetail: resolvedOpggDetail,
+          notificationIntent: {
+            kind: "result" as const,
+            match,
+            rankSummary,
+            opggDetail: resolvedOpggDetail,
+          },
+          stateTransition: null,
         };
       },
     );
@@ -3670,7 +3704,7 @@ describe("match_tracking.ts", () => {
     );
   });
 
-  test("同一matchIdの結果取得待ちが複数guildにあるとき、1回の処理ではRiot試合取得を共有しつつ各guildの通知と状態更新を継続する", async () => {
+  test("同一matchIdの結果取得待ちが複数guildにあるとき、guildごとのBackend Result検査で通知と状態更新を継続する", async () => {
     const { client, editSpy } = clientWithSend();
     using _getWatchersStub = stub(
       apiClient,
@@ -3715,8 +3749,8 @@ describe("match_tracking.ts", () => {
 
     await matchTracker.processMatchWatchers(client);
 
-    assertSpyCalls(getAccountStub, 1);
-    assertSpyCalls(matchStub, 1);
+    assertSpyCalls(getAccountStub, 2);
+    assertSpyCalls(matchStub, 2);
     assertSpyCalls(editSpy, 2);
     assertSpyCalls(updateStub, 2);
     assertEquals(updateStub.calls[0].args[0], "guild-1");

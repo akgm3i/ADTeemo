@@ -23,7 +23,9 @@ import type {
   Event,
   LeagueEntry,
   MatchRankSnapshot,
+  MatchTrackingNotificationIntent,
   MatchTrackingRankSummary,
+  MatchTrackingStateTransition,
   MatchWatcher,
   OpggMatchDetail,
   RiotAccount,
@@ -130,6 +132,8 @@ const matchWatchersContractRoutes = new Hono()
       return c.json({
         account: {} as RiotAccount,
         activeGame: null as ActiveGame | null,
+        notificationIntent: null as MatchTrackingNotificationIntent | null,
+        stateTransition: null as MatchTrackingStateTransition | null,
       }, 200);
     },
   )
@@ -144,6 +148,8 @@ const matchWatchersContractRoutes = new Hono()
         match: null as RiotMatch | null,
         rankSummary: null as MatchTrackingRankSummary | null,
         opggDetail: null as OpggMatchDetail | null,
+        notificationIntent: null as MatchTrackingNotificationIntent | null,
+        stateTransition: null as MatchTrackingStateTransition | null,
       }, 200);
     },
   )

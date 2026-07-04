@@ -133,7 +133,23 @@ describe("services/match_tracking.ts", () => {
       currentGameId: null,
     });
 
-    assertEquals(result, { status: "ok", account, activeGame });
+    assertEquals(result, {
+      status: "ok",
+      account,
+      activeGame,
+      notificationIntent: { kind: "started", activeGame },
+      stateTransition: {
+        state: {
+          lastState: "IN_GAME",
+          currentGameId: "12345",
+          currentMatchId: null,
+          gameStartedAt: new Date("2023-11-14T22:13:20.000Z"),
+          lastInGameNotifiedAt: new Date("2026-01-01T00:00:00.000Z"),
+          lastCheckedAt: new Date("2026-01-01T00:00:00.000Z"),
+        },
+        messageIdField: "currentNotificationMessageId",
+      },
+    });
     assertEquals(calls, [
       "account:target-1",
       "activeGame:jp1:puuid-1",
@@ -188,6 +204,7 @@ describe("services/match_tracking.ts", () => {
         resolveAndSave: () => Promise.resolve(null),
       },
       logger: { warn: () => {} },
+      clock: { now: () => new Date("2026-01-01T00:05:00.000Z") },
     });
 
     const result = await service.inspectActiveGame({
@@ -197,8 +214,60 @@ describe("services/match_tracking.ts", () => {
       currentGameId: "12345",
     });
 
-    assertEquals(result, { status: "ok", account, activeGame });
+    assertEquals(result, {
+      status: "ok",
+      account,
+      activeGame,
+      notificationIntent: null,
+      stateTransition: null,
+    });
     assertEquals(calls, []);
+  });
+
+  test("同じ進行中試合で通知間隔を過ぎると、progress intentと通知時刻更新用transitionを返す", async () => {
+    const service = createMatchTrackingInspectionService({
+      dbActions: {
+        getRiotAccountByDiscordId: () => Promise.resolve(account),
+        upsertPendingRankSnapshots: () => Promise.resolve(),
+        finalizeMatchRankSnapshots: () =>
+          Promise.resolve({ before: [], after: [] }),
+      },
+      riotApi: {
+        getActiveGameByPuuid: () => Promise.resolve(activeGame),
+        getLeagueEntriesByPuuid: () => Promise.resolve(entries),
+        getMatchById: () => Promise.resolve(null),
+      },
+      opggMatchDetailService: {
+        resolveAndSave: () => Promise.resolve(null),
+      },
+      logger: { warn: () => {} },
+      clock: { now: () => new Date("2026-01-01T00:10:00.000Z") },
+    });
+
+    const result = await service.inspectActiveGame({
+      guildId: "guild-1",
+      targetDiscordId: "target-1",
+      lastState: "IN_GAME",
+      currentGameId: "12345",
+      lastInGameNotifiedAt: new Date("2026-01-01T00:00:00.000Z"),
+      inGameNotifyIntervalMs: 5 * 60_000,
+    });
+
+    assertEquals(result, {
+      status: "ok",
+      account,
+      activeGame,
+      notificationIntent: { kind: "progress", activeGame },
+      stateTransition: {
+        state: {
+          lastState: "IN_GAME",
+          currentGameId: "12345",
+          lastInGameNotifiedAt: new Date("2026-01-01T00:10:00.000Z"),
+          lastCheckedAt: new Date("2026-01-01T00:10:00.000Z"),
+        },
+        messageIdField: "currentNotificationMessageId",
+      },
+    });
   });
 
   test("結果取得待ちの試合がMatch-v5に未反映のとき、rankとOP.GGを解決せずmatch nullを返す", async () => {
@@ -230,6 +299,7 @@ describe("services/match_tracking.ts", () => {
         },
       },
       logger: { warn: () => {} },
+      clock: { now: () => new Date("2026-01-01T00:05:00.000Z") },
     });
 
     const result = await service.inspectResult({
@@ -244,6 +314,16 @@ describe("services/match_tracking.ts", () => {
       match: null,
       rankSummary: null,
       opggDetail: null,
+      notificationIntent: null,
+      stateTransition: {
+        state: {
+          pendingResultMatchId: "JP1_12345",
+          pendingResultNotificationMessageId: null,
+          pendingResultStartedAt: null,
+          lastCheckedAt: new Date("2026-01-01T00:05:00.000Z"),
+        },
+        messageIdField: null,
+      },
     });
     assertEquals(calls, ["match:asia:JP1_12345"]);
   });
@@ -314,6 +394,25 @@ describe("services/match_tracking.ts", () => {
         after: afterSnapshot,
       },
       opggDetail,
+      notificationIntent: {
+        kind: "result",
+        match,
+        rankSummary: {
+          queueType: "RANKED_SOLO_5x5",
+          before: beforeSnapshot,
+          after: afterSnapshot,
+        },
+        opggDetail,
+      },
+      stateTransition: {
+        state: {
+          pendingResultMatchId: null,
+          pendingResultNotificationMessageId: null,
+          pendingResultStartedAt: null,
+          lastCheckedAt: new Date("2026-01-01T00:05:00.000Z"),
+        },
+        messageIdField: null,
+      },
     });
     assertEquals(calls, [
       "match:asia:JP1_12345",
