@@ -331,6 +331,120 @@ describe("match_tracking_service.ts", () => {
     assertEquals(finalState[2].pendingResultMatchId, null);
   });
 
+  test("試合終了直後にpending通知IDが確定したとき、そのIDでBackendのResult検査と状態更新を行う", async () => {
+    const resultInspectionCalls: unknown[] = [];
+    const stateUpdates: unknown[] = [];
+    const now = new Date("2026-01-01T00:05:00Z");
+    const targetWatcher = watcher({
+      lastState: "IN_GAME",
+      currentGameId: "12345",
+      currentNotificationMessageId: null,
+      gameStartedAt: new Date("2026-01-01T00:00:00Z"),
+    });
+    const account = {
+      discordId: "target-1",
+      puuid: "puuid-1",
+      gameName: "Teemo",
+      tagLine: "JP1",
+      platform: "jp1" as const,
+      region: "asia" as const,
+      createdAt: new Date("2026-01-01T00:00:00Z"),
+      updatedAt: null,
+    };
+    const service = createMatchTrackingService({
+      apiClient: {
+        getEnabledMatchWatchers: () =>
+          Promise.resolve({
+            success: true as const,
+            watchers: [targetWatcher],
+          }),
+        getRiotAccount: () =>
+          Promise.resolve({ success: true as const, account }),
+        inspectMatchWatcherActiveGame: () =>
+          Promise.resolve({
+            success: true as const,
+            account,
+            activeGame: null,
+            notificationIntent: {
+              kind: "resultPending" as const,
+              matchId: "JP1_12345",
+            },
+            stateTransition: null,
+          }),
+        inspectMatchWatcherResult: (...args) => {
+          resultInspectionCalls.push(args);
+          return Promise.resolve({
+            success: true as const,
+            account,
+            match: null,
+            rankSummary: null,
+            opggDetail: null,
+            notificationIntent: null,
+            stateTransition: null,
+          });
+        },
+        updateMatchWatcherState: (...args) => {
+          stateUpdates.push(args);
+          return Promise.resolve({ success: true as const });
+        },
+      },
+      notifier: {
+        sendOrEditWatcherMessage: () => Promise.resolve("message-pending-new"),
+      },
+      renderer: {
+        activeGame: () => {
+          throw new Error("renderer.activeGame should not be called");
+        },
+        resultPending: () => new EmbedBuilder(),
+        resultFetchTimeout: () => new EmbedBuilder(),
+        matchResult: () => {
+          throw new Error("renderer.matchResult should not be called");
+        },
+      },
+      clock: { now: () => now },
+      logger: {
+        warn: () => {},
+        error: () => {},
+      },
+      config: {
+        pollIntervalMs: 60_000,
+        inGameNotifyIntervalMs: 300_000,
+        resultFetchTimeoutMs: 10 * 60_000,
+        riotLongWindowLimit: 100,
+        riotLongWindowMs: 120_000,
+      },
+    });
+
+    await service.processMatchWatchers();
+
+    assertEquals(resultInspectionCalls, [[
+      "guild-1",
+      "target-1",
+      {
+        matchId: "JP1_12345",
+        messageId: "message-pending-new",
+        startedAt: new Date("2026-01-01T00:00:00Z"),
+        resultFetchTimeoutMs: 10 * 60_000,
+      },
+    ]]);
+    assertEquals(stateUpdates.at(-1), [
+      "guild-1",
+      "target-1",
+      {
+        lastState: "IDLE",
+        currentGameId: null,
+        currentMatchId: null,
+        currentNotificationMessageId: null,
+        gameStartedAt: null,
+        lastInGameNotifiedAt: null,
+        pendingResultMatchId: "JP1_12345",
+        pendingResultNotificationMessageId: "message-pending-new",
+        pendingResultStartedAt: new Date("2026-01-01T00:00:00Z"),
+        lastCheckedAt: now,
+      },
+    ]);
+  });
+
   test("同一targetとmatchIdでもguildごとに異なるmessageIdでBackend Result検査を行う", async () => {
     const resultInspectionCalls: unknown[] = [];
     const targetWatchers = [

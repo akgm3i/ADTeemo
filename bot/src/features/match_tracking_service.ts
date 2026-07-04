@@ -405,18 +405,15 @@ async function inspectActiveGameForWatcher(
 
 function resultInspectionCacheKey(
   watcher: MatchWatcher,
-  matchId: string,
+  pending: PendingResult,
   resultFetchTimeoutMs: number,
 ) {
   return JSON.stringify({
     guildId: watcher.guildId,
     targetDiscordId: watcher.targetDiscordId,
-    matchId,
-    messageId: watcher.pendingResultNotificationMessageId ??
-      watcher.currentNotificationMessageId ??
-      null,
-    startedAt: (watcher.pendingResultStartedAt ?? watcher.gameStartedAt)
-      ?.toISOString() ?? null,
+    matchId: pending.matchId,
+    messageId: pending.messageId ?? null,
+    startedAt: pending.startedAt?.toISOString() ?? null,
     resultFetchTimeoutMs,
   });
 }
@@ -425,11 +422,11 @@ async function inspectResultForWatcher(
   dependencies: MatchTrackingServiceDependencies,
   context: MatchWatcherProcessingContext,
   watcher: MatchWatcher,
-  matchId: string,
+  pending: PendingResult,
 ) {
   const cacheKey = resultInspectionCacheKey(
     watcher,
-    matchId,
+    pending,
     dependencies.config.resultFetchTimeoutMs,
   );
   let promise = context.resultInspectionsByTargetAndMatchId.get(cacheKey);
@@ -438,10 +435,9 @@ async function inspectResultForWatcher(
       watcher.guildId,
       watcher.targetDiscordId,
       {
-        matchId,
-        messageId: watcher.pendingResultNotificationMessageId ??
-          watcher.currentNotificationMessageId,
-        startedAt: watcher.pendingResultStartedAt ?? watcher.gameStartedAt,
+        matchId: pending.matchId,
+        messageId: pending.messageId,
+        startedAt: pending.startedAt,
         resultFetchTimeoutMs: dependencies.config.resultFetchTimeoutMs,
       },
     );
@@ -566,7 +562,7 @@ async function tryFetchAndNotifyResult(
     dependencies,
     context,
     watcher,
-    pending.matchId,
+    pending,
   );
   if (!result.success) {
     dependencies.logger.warn("match_tracking.riot_account_not_found", {
