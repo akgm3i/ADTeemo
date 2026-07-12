@@ -2,9 +2,9 @@
 
 ADTeemoの詳細な未実装・改善作業はGitHub Issuesを正として追跡する。このファイルは、現在の主要テーマとローカル文書から見た要約Roadmapである。
 
-作業を追加・完了するときは、原則として関連issueを更新する。issue化されていない技術課題だけ、このファイルの「Issue化前の技術課題」に短く残す。
+Issueの詳細と状態はGitHub Issuesを正とする。issue化されていない技術課題だけ、このファイルの「Issue化前の技術課題」に短く残し、ここではRoadmapの要約だけを管理する。
 
-## Open Issues
+## Tracked Issues
 
 - [x] [#28 試合結果・試合中表示の拡張](https://github.com/akgm3i/ADTeemo/issues/28)
   - [x] `CS/min` を試合結果Embedに表示する。
@@ -48,20 +48,22 @@ ADTeemoの詳細な未実装・改善作業はGitHub Issuesを正として追跡
   - [ ] 参加者確定、チーム分け、VC移動までのイベント状態遷移を設計する。
   - [ ] Message Componentsでキャンセル、再マッチング、次ゲームを操作できるようにする。
   - [ ] 募集チャンネル、VC、ロールIDなどのギルド設定を永続化する。
-- [ ] [#69 Botの外部サービス・DB直接依存をBackend APIへ集約する](https://github.com/akgm3i/ADTeemo/issues/69)
-  - [ ] [#72 Riot静的データ取得をBackend APIへ集約する](https://github.com/akgm3i/ADTeemo/issues/72)
-  - [ ] [#73 OP.GG試合詳細の解決・保存をBackend APIへ集約する](https://github.com/akgm3i/ADTeemo/issues/73)
-- [ ] [#71 Backend/Botの依存注入と試合監視モジュールを段階的に整理する](https://github.com/akgm3i/ADTeemo/issues/71)
+- [x] [#69 Botの外部サービス・DB直接依存をBackend APIへ集約する](https://github.com/akgm3i/ADTeemo/issues/69)
+  - [x] [#72 Riot静的データ取得をBackend APIへ集約する](https://github.com/akgm3i/ADTeemo/issues/72)
+  - [x] [#73 OP.GG試合詳細の解決・保存をBackend APIへ集約する](https://github.com/akgm3i/ADTeemo/issues/73)
+- [x] [#71 Backend/Botの依存注入と試合監視モジュールを段階的に整理する](https://github.com/akgm3i/ADTeemo/issues/71)
   - [x] [#76 DB factoryとDB actions factoryを導入する](https://github.com/akgm3i/ADTeemo/issues/76)
   - [x] [#78 createAppとroute factoryでBackend依存を注入する](https://github.com/akgm3i/ADTeemo/issues/78)
-  - [ ] [#79 DB actionsをドメイン別repositoryへ分割する](https://github.com/akgm3i/ADTeemo/issues/79)
-  - [ ] [#75 API client factoryと共通transport処理を導入する](https://github.com/akgm3i/ADTeemo/issues/75)
-  - [ ] [#74 API clientをBackend resource別clientへ分割する](https://github.com/akgm3i/ADTeemo/issues/74)
-  - [ ] [#77 record-match参加者取得をmatch trackingから分離する](https://github.com/akgm3i/ADTeemo/issues/77)
-  - [ ] [#80 match trackingの純粋な状態・通知判定を抽出する](https://github.com/akgm3i/ADTeemo/issues/80)
-  - [ ] [#81 match trackingのEmbed生成とDiscord通知境界を分離する](https://github.com/akgm3i/ADTeemo/issues/81)
-  - [ ] [#82 MatchTrackingServiceへ監視オーケストレーションを集約する](https://github.com/akgm3i/ADTeemo/issues/82)
-  - [ ] [#83 match tracking workerとrate-budget監視をinstance化する](https://github.com/akgm3i/ADTeemo/issues/83)
+  - [x] [#79 DB actionsをドメイン別repositoryへ分割する](https://github.com/akgm3i/ADTeemo/issues/79)
+  - [x] [#87 API contractをBackend implementationから分離する](https://github.com/akgm3i/ADTeemo/issues/87)
+  - [x] [#75 API client factoryと共通transport処理を導入する](https://github.com/akgm3i/ADTeemo/issues/75)
+  - [x] [#74 API clientをBackend resource別clientへ分割する](https://github.com/akgm3i/ADTeemo/issues/74)
+  - [x] [#77 record-match参加者取得をmatch trackingから分離する](https://github.com/akgm3i/ADTeemo/issues/77)
+  - [x] [#80 match trackingの純粋な状態・通知判定を抽出する](https://github.com/akgm3i/ADTeemo/issues/80)
+  - [x] [#81 match trackingのEmbed生成とDiscord通知境界を分離する](https://github.com/akgm3i/ADTeemo/issues/81)
+  - [x] [#82 MatchTrackingServiceへ監視オーケストレーションを集約する](https://github.com/akgm3i/ADTeemo/issues/82)
+  - [x] [#83 match tracking workerとrate-budget監視をinstance化する](https://github.com/akgm3i/ADTeemo/issues/83)
+  - [x] [#106 match trackingの監視オーケストレーションをBackend use caseへ寄せる](https://github.com/akgm3i/ADTeemo/issues/106)
 
 ## Issue化前の技術課題
 
@@ -69,12 +71,10 @@ ADTeemoの詳細な未実装・改善作業はGitHub Issuesを正として追跡
 
 - [ ] CI要件を整理し、GitHub Actionsで `deno task quality` を実行するworkflowを追加する。
 - [ ] Docker内テストの標準コマンド `docker compose --profile dev run --rm dev deno task test:all` をCIまたはREADMEに組み込むか判断する。
-- [ ] `deno task test:all` が必要とする `--allow-sys` / `--allow-ffi` 権限を、DB factory導入後に縮小できるか確認する。
+- [ ] `deno task test:all` が必要とする `--allow-sys` / `--allow-ffi` 権限を縮小できるか確認する。
 
 ### API・DB
 
-- [ ] `api/src/db/index.ts` の module-level `db` singletonを段階的に解消し、`createDb(url)` と `createApp({ dbActions })` を導入する。
-- [ ] DB action tests を一時 SQLite DBで隔離できるようにする。
 - [ ] `users.riotId` のレガシー性を整理し、不要であれば削除または正しいモデル名へ移行する。
 - [ ] `matches` はグローバル戦績として維持しつつ、開催元の `guild_id` または `custom_game_event_id` を参照できるようにする。
 - [ ] ギルド固有設定テーブルとAPIを設計する。対象は募集チャンネル、Lobby/Red/Blue VC、ロールID、イベント操作権限など。

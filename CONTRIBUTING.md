@@ -33,6 +33,14 @@
 - Discord Bot tokenとapplication client ID
 - Riot API key
 
+## 依存関係の管理
+
+依存元はrootまたは対象workspaceの `deno.json` の `imports` に登録します。共有依存はroot、workspace固有の依存は対象workspaceへ追加してください。
+
+- JSRで提供される依存は `jsr:` を優先します。JSRに適切なpackageがない場合だけ `npm:` を使います。
+- ソースコードでは `@std/assert` や `@std/testing/bdd` のようなimport map上のbare specifierを使い、version付き `jsr:` / `npm:` を直書きしません。
+- `https:` のmodule importと `deno.land/x` は新規追加しません。通常のHTTP API URL文字列はこの規則の対象外です。
+
 ## Environment Files
 
 `.env.example` をテンプレートとして利用できます。
@@ -77,9 +85,11 @@ cp .env.example .env
 
 ```bash
 deno task db:push
-deno task deploy-commands
+deno task dev:deploy-commands
 deno task dev:all
 ```
+
+`db:push` は対象DBへschemaを反映し、`dev:deploy-commands` は `.env.dev` の認証情報でDiscordへslash commandを登録する状態変更操作です。ローカル開発用の対象DBを確認してから実行してください。
 
 APIのみ、Botのみを起動する場合は次を使います。
 
@@ -92,23 +102,24 @@ Backend APIは既定で `http://localhost:8000` に公開されます。
 
 ## Deno Tasks
 
-| Task                  | Description                                                                           |
-| --------------------- | ------------------------------------------------------------------------------------- |
-| `dev:all`             | APIとBotを開発モードで起動します。                                                    |
-| `dev:api`             | APIのみ開発モードで起動します。                                                       |
-| `dev:bot`             | Botのみ開発モードで起動します。                                                       |
-| `dev:deploy-commands` | `.env.dev` を使ってslash commandを登録します。                                        |
-| `deploy-commands`     | `.env` を使ってslash commandを登録します。                                            |
-| `fmt:check`           | フォーマット差分を確認します。                                                        |
-| `lint`                | Deno lintを実行します。                                                               |
-| `check`               | 主要entrypointの型チェックを実行します。                                              |
-| `test:all`            | `.env.example` を読み込み、coverage付きで全テストを実行します。                       |
-| `test:riot-live`      | 実Riot APIで疎通確認を行います。通常はopt-inで使用します。                            |
-| `quality`             | `fmt:check` / `lint` / `check` / `check:messages` / `test:all` をまとめて実行します。 |
-| `check:messages`      | メッセージ定義の整合性を確認します。                                                  |
-| `db:push`             | Drizzle schemaをDBに反映します。                                                      |
-| `db:generate`         | Drizzle migrationを生成します。                                                       |
-| `db:migrate`          | Drizzle migrationを適用します。                                                       |
+| Task                  | Description                                                                   |
+| --------------------- | ----------------------------------------------------------------------------- |
+| `dev:all`             | APIとBotを開発モードで起動します。                                            |
+| `dev:api`             | APIのみ開発モードで起動します。                                               |
+| `dev:bot`             | Botのみ開発モードで起動します。                                               |
+| `dev:deploy-commands` | `.env.dev` を使ってslash commandを登録します。                                |
+| `deploy-commands`     | `.env` を使ってslash commandを登録します。                                    |
+| `fmt:check`           | フォーマット差分を確認します。                                                |
+| `lint`                | Deno lintを実行します。                                                       |
+| `check`               | 主要entrypointの型チェックを実行します。                                      |
+| `test:all`            | `.env.example` を読み込み、coverage付きで全テストを実行します。               |
+| `test:riot-live`      | 実Riot APIで疎通確認を行います。通常はopt-inで使用します。                    |
+| `quality`             | root `deno.json` のdependenciesに定義された品質確認をまとめて実行します。     |
+| `check:bot-boundary`  | Bot runtimeからBackend実装・DB・外部I/Oへ直接依存していないことを確認します。 |
+| `check:messages`      | メッセージ定義の整合性を確認します。                                          |
+| `db:push`             | Drizzle schemaをDBに反映します。                                              |
+| `db:generate`         | Drizzle migrationを生成します。                                               |
+| `db:migrate`          | Drizzle migrationを適用します。                                               |
 
 ## Docker
 
@@ -159,3 +170,17 @@ deno task quality
 ```
 
 フォーマット差分がある場合は内容を確認してから `deno fmt` を実行し、その後に再度 `deno task fmt:check` を確認します。
+
+## Git workflow
+
+ブランチは `<type>/<kebab-topic>` 形式を使います。
+
+commit messageは日本語のConventional Commits形式を使います。
+
+```text
+<type>[optional scope]: <description>
+
+<背景・問題・判断理由・期待される効果・既知のリスク>
+```
+
+`type` は `feat`, `fix`, `refactor`, `perf`, `style`, `test`, `docs`, `build`, `ci`, `chore` を使います。`scope` は必要に応じて `api`, `bot`, `messages`, `db`, `docker` などを使います。
