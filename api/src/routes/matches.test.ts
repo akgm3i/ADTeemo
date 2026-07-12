@@ -3,7 +3,10 @@ import { assert, assertEquals } from "@std/assert";
 import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
 import { testClient } from "@hono/hono/testing";
 import { createApp } from "../app.ts";
-import { createTestDependencies } from "../test_utils.ts";
+import {
+  createTestDependencies,
+  TEST_BOT_SERVICE_AUTH_HEADERS,
+} from "../test_utils.ts";
 import type { Lane } from "../db/schema.ts";
 import {
   OpggMatchParticipantMismatchError,
@@ -14,7 +17,9 @@ describe("routes/matches.ts", () => {
   const deps = createTestDependencies();
   const app = createApp(deps);
   const { dbActions, opggMatchDetailService, logger } = deps;
-  const client = testClient(app);
+  const client = testClient(app, {}, undefined, {
+    headers: TEST_BOT_SERVICE_AUTH_HEADERS,
+  });
 
   describe("POST /matches/rank-snapshots/pending", () => {
     test("Active Game検知時のbeforeスナップショットを受け取ったとき、204を返す", async () => {
@@ -41,7 +46,10 @@ describe("routes/matches.ts", () => {
       // Act
       const res = await app.request("/matches/rank-snapshots/pending", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          ...TEST_BOT_SERVICE_AUTH_HEADERS,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(payload),
       });
 
@@ -56,7 +64,10 @@ describe("routes/matches.ts", () => {
       // Arrange / Act
       const res = await app.request("/matches/rank-snapshots/pending", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          ...TEST_BOT_SERVICE_AUTH_HEADERS,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           platform: "jp1",
           gameId: "12345",
@@ -128,7 +139,10 @@ describe("routes/matches.ts", () => {
         "/matches/JP1_12345/rank-snapshots/finalize",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            ...TEST_BOT_SERVICE_AUTH_HEADERS,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(payload),
         },
       );
@@ -186,7 +200,10 @@ describe("routes/matches.ts", () => {
         "/matches/JP1_12345/external-details/opgg/resolve",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            ...TEST_BOT_SERVICE_AUTH_HEADERS,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(payload),
         },
       );
@@ -217,7 +234,10 @@ describe("routes/matches.ts", () => {
         "/matches/JP1_12345/external-details/opgg/resolve",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            ...TEST_BOT_SERVICE_AUTH_HEADERS,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(payload),
         },
       );
@@ -241,7 +261,10 @@ describe("routes/matches.ts", () => {
         "/matches/JP1_12345/external-details/opgg/resolve",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            ...TEST_BOT_SERVICE_AUTH_HEADERS,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify({
             ...payload,
             match: { ...payload.match, gameDuration: -1 },
@@ -279,7 +302,10 @@ describe("routes/matches.ts", () => {
         "/matches/JP1_12345/external-details/opgg/resolve",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            ...TEST_BOT_SERVICE_AUTH_HEADERS,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(payload),
         },
       );
@@ -309,7 +335,10 @@ describe("routes/matches.ts", () => {
         "/matches/JP1_12345/external-details/opgg/resolve",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            ...TEST_BOT_SERVICE_AUTH_HEADERS,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(payload),
         },
       );
@@ -336,7 +365,10 @@ describe("routes/matches.ts", () => {
         "/matches/JP1_12345/external-details/opgg/resolve",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            ...TEST_BOT_SERVICE_AUTH_HEADERS,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(payload),
         },
       );
@@ -415,7 +447,10 @@ describe("routes/matches.ts", () => {
           `http://localhost/matches/${matchId}/participants`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              ...TEST_BOT_SERVICE_AUTH_HEADERS,
+              "Content-Type": "application/json",
+            },
             body: JSON.stringify(invalidData),
           },
         );

@@ -1,7 +1,16 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import {
+  assertEquals,
+  assertRejects,
+  assertStrictEquals,
+  assertThrows,
+} from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { type Client } from "@adteemo/api/contract";
-import { createApiClient, createApiResourceClients } from "./api_client.ts";
+import {
+  createApiClient,
+  createApiResourceClients,
+  createApiRpcClients,
+} from "./api_client.ts";
 import { dateOrNull } from "./api_clients/transport.ts";
 
 type RpcCall = {
@@ -113,6 +122,63 @@ describe("apiClient", () => {
         }
       }
     });
+
+    test("Bot service credentialを設定すると、public clientと認証済みservice clientを分離して生成する", () => {
+      // Arrange
+      const apiUrl = "http://api:8000";
+      const credential =
+        "test-bot-service-token-00000000000000000000000000000000";
+      const publicRpc = createRpcClientStub([]).rpcClient;
+      const serviceRpc = createRpcClientStub([]).rpcClient;
+      const queuedClients = [publicRpc, serviceRpc];
+      const calls: Array<{
+        apiUrl: string;
+        options?: { headers?: Record<string, string> };
+      }> = [];
+
+      // Act
+      const clients = createApiRpcClients({
+        apiUrl,
+        credential,
+        createRpcClient: (calledApiUrl, options) => {
+          calls.push({ apiUrl: calledApiUrl, options });
+          const client = queuedClients.shift();
+          if (!client) throw new Error("Unexpected client factory call");
+          return client;
+        },
+      });
+
+      // Assert
+      assertStrictEquals(clients.publicRpcClient, publicRpc);
+      assertStrictEquals(clients.botServiceRpcClient, serviceRpc);
+      assertEquals(calls, [
+        { apiUrl, options: undefined },
+        {
+          apiUrl,
+          options: {
+            headers: { Authorization: `Bearer ${credential}` },
+          },
+        },
+      ]);
+    });
+
+    test("Bot service credentialが32文字未満の場合、秘密値を含まない設定エラーを返す", () => {
+      // Arrange
+      const credential = "too-short";
+
+      // Act / Assert
+      const error = assertThrows(
+        () =>
+          createApiRpcClients({
+            apiUrl: "http://api:8000",
+            credential,
+            createRpcClient: () => createRpcClientStub([]).rpcClient,
+          }),
+        Error,
+        "BOT_SERVICE_TOKEN must be at least 32 characters",
+      );
+      assertEquals(error.message.includes(credential), false);
+    });
   });
 
   describe("createApiResourceClients", () => {
@@ -147,6 +213,36 @@ describe("apiClient", () => {
           }],
         },
       ]);
+    });
+
+    test("public health checkとBot service呼び出しに別々のRPC clientを使用する", async () => {
+      // Arrange
+      const publicRpc = createRpcClientStub([
+        response({ message: "Healthy" }),
+      ]);
+      const serviceRpc = createRpcClientStub([response(null, 204)]);
+      const resources = createApiResourceClients({
+        rpcClient: serviceRpc.rpcClient,
+        publicRpcClient: publicRpc.rpcClient,
+      });
+
+      // Act
+      const healthResult = await resources.health.checkHealth();
+      const usersResult = await resources.users.setMainRole(
+        "user-1",
+        "guild-1",
+        "Top",
+      );
+
+      // Assert
+      assertEquals(healthResult, { success: true, message: "Healthy" });
+      assertEquals(usersResult.success, true);
+      assertEquals(publicRpc.calls, [{
+        method: "$get",
+        path: "/health",
+        args: [],
+      }]);
+      assertEquals(serviceRpc.calls[0].path, "/users/:userId/main-role");
     });
   });
 

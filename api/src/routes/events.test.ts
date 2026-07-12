@@ -4,13 +4,18 @@ import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, stub } from "@std/testing/mock";
 import { z } from "zod";
 import { createApp } from "../app.ts";
-import { createTestDependencies } from "../test_utils.ts";
+import {
+  createTestDependencies,
+  TEST_BOT_SERVICE_AUTH_HEADERS,
+} from "../test_utils.ts";
 
 describe("routes/events.ts", () => {
   const deps = createTestDependencies();
   const app = createApp(deps);
   const { dbActions } = deps;
-  const client = testClient(app);
+  const client = testClient(app, {}, undefined, {
+    headers: TEST_BOT_SERVICE_AUTH_HEADERS,
+  });
   const FIXED_DATE = "2025-09-27T10:00:00.000Z";
 
   const eventsResponseSchema = z.object({
@@ -64,7 +69,10 @@ describe("routes/events.ts", () => {
         const invalidData = { name: "Test Event" }; // Missing required fields
         const req = new Request("http://localhost/events", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            ...TEST_BOT_SERVICE_AUTH_HEADERS,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(invalidData),
         });
 

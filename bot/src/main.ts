@@ -6,13 +6,13 @@ import {
   Interaction,
   MessageFlags,
 } from "discord.js";
-import { hcWithType } from "@adteemo/api/contract";
 import { ensureRoles } from "./features/role-management.ts";
 import { loadCommands } from "./common/command_loader.ts";
 import {
   apiClient,
   configureApiClient,
   createApiClient,
+  createApiRpcClients,
 } from "./api_client.ts";
 import { matchTracker } from "./features/match_tracking.ts";
 import { messageHandler, messageKeys } from "./messages.ts";
@@ -248,8 +248,8 @@ client.on(Events.GuildCreate, async (guild) => {
 
 // Main function to start the bot
 async function startBot() {
-  const token = Deno.env.get("DISCORD_TOKEN");
-  if (!token) {
+  const discordToken = Deno.env.get("DISCORD_TOKEN");
+  if (!discordToken) {
     botLogger.error("bot.start.missing_token");
     Deno.exit(1);
   }
@@ -258,13 +258,25 @@ async function startBot() {
     botLogger.error("bot.start.missing_api_url");
     Deno.exit(1);
   }
-  configureApiClient(createApiClient({ rpcClient: hcWithType(apiUrl) }));
+  const botServiceCredential = Deno.env.get("BOT_SERVICE_TOKEN");
+  if (!botServiceCredential) {
+    botLogger.error("bot.start.missing_service_credential");
+    Deno.exit(1);
+  }
+  const { publicRpcClient, botServiceRpcClient } = createApiRpcClients({
+    apiUrl,
+    credential: botServiceCredential,
+  });
+  configureApiClient(createApiClient({
+    rpcClient: botServiceRpcClient,
+    publicRpcClient,
+  }));
 
   const commands = await loadCommands();
   for (const command of commands) {
     client.commands.set(command.data.name, command);
   }
-  client.login(token);
+  client.login(discordToken);
 }
 
 // Run the bot only when this file is the main module

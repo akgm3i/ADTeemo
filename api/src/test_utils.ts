@@ -1,5 +1,11 @@
 import type { AppDependencies } from "./dependencies.ts";
 
+export const TEST_BOT_SERVICE_TOKEN =
+  "test-bot-service-token-00000000000000000000000000000000";
+export const TEST_BOT_SERVICE_AUTH_HEADERS = {
+  Authorization: `Bearer ${TEST_BOT_SERVICE_TOKEN}`,
+} as const;
+
 type TestDependencyOverrides = {
   dbActions?: Partial<AppDependencies["dbActions"]>;
   riotApi?: Omit<Partial<AppDependencies["riotApi"]>, "__testing"> & {
@@ -107,7 +113,8 @@ export function createTestDependencies(
       ...overrides.opggMatchDetailService,
     },
     env: {
-      get: () => undefined,
+      get: (key: string) =>
+        key === "BOT_SERVICE_TOKEN" ? TEST_BOT_SERVICE_TOKEN : undefined,
       ...overrides.env,
     },
     logger: {

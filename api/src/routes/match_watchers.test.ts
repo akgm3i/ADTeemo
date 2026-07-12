@@ -3,14 +3,19 @@ import { assert, assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, stub } from "@std/testing/mock";
 import { createApp } from "../app.ts";
-import { createTestDependencies } from "../test_utils.ts";
+import {
+  createTestDependencies,
+  TEST_BOT_SERVICE_AUTH_HEADERS,
+} from "../test_utils.ts";
 import { MatchWatcherLimitError, RecordNotFoundError } from "../errors.ts";
 
 describe("routes/match_watchers.ts", () => {
   const deps = createTestDependencies();
   const app = createApp(deps);
   const { dbActions } = deps;
-  const client = testClient(app);
+  const client = testClient(app, {}, undefined, {
+    headers: TEST_BOT_SERVICE_AUTH_HEADERS,
+  });
   const watcher = {
     guildId: "guild-1",
     targetDiscordId: "target-1",

@@ -3,7 +3,10 @@ import { describe, test } from "@std/testing/bdd";
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import { assertSpyCall, stub } from "@std/testing/mock";
 import { createApp } from "../app.ts";
-import { createTestDependencies } from "../test_utils.ts";
+import {
+  createTestDependencies,
+  TEST_BOT_SERVICE_AUTH_HEADERS,
+} from "../test_utils.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 
 describe("routes/auth.ts", () => {
@@ -28,7 +31,9 @@ describe("routes/auth.ts", () => {
           "getAuthorizationUrl",
           (state: string) => `https://mock.auth.url/authorize?state=${state}`,
         );
-        const client = testClient(app);
+        const client = testClient(app, {}, undefined, {
+          headers: TEST_BOT_SERVICE_AUTH_HEADERS,
+        });
         const discordId = "discord-123";
 
         // Act
@@ -90,7 +95,9 @@ describe("routes/auth.ts", () => {
           "deleteAuthState",
           () => Promise.resolve(),
         );
-        const client = testClient(app);
+        const client = testClient(app, {}, undefined, {
+          headers: TEST_BOT_SERVICE_AUTH_HEADERS,
+        });
 
         // Act
         const res = await client.auth.rso.callback.$get({
@@ -126,7 +133,9 @@ describe("routes/auth.ts", () => {
           "formatMessage",
           () => "Invalid state.",
         );
-        const client = testClient(app);
+        const client = testClient(app, {}, undefined, {
+          headers: TEST_BOT_SERVICE_AUTH_HEADERS,
+        });
 
         // Act
         const res = await client.auth.rso.callback.$get({
@@ -167,7 +176,9 @@ describe("routes/auth.ts", () => {
           "formatMessage",
           () => "Internal server error.",
         );
-        const client = testClient(app);
+        const client = testClient(app, {}, undefined, {
+          headers: TEST_BOT_SERVICE_AUTH_HEADERS,
+        });
 
         // Act
         const res = await client.auth.rso.callback.$get({
