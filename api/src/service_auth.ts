@@ -10,6 +10,10 @@ const UNAUTHORIZED_RESPONSE = {
   error: "Unauthorized",
 } as const;
 const encoder = new TextEncoder();
+const BEARER_REGEX = new RegExp(
+  `^${BOT_SERVICE_AUTH_SCHEME} ([^\\s]+)$`,
+  "i",
+);
 
 function validateCredential(
   credential: string | undefined,
@@ -59,7 +63,9 @@ async function digestCredential(credential: string): Promise<Uint8Array> {
   );
 }
 
-function equalDigest(left: Uint8Array, right: Uint8Array): boolean {
+export function equalDigest(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.length !== right.length) return false;
+
   let difference = 0;
   for (let index = 0; index < left.length; index++) {
     difference |= left[index] ^ right[index];
@@ -69,8 +75,7 @@ function equalDigest(left: Uint8Array, right: Uint8Array): boolean {
 
 function bearerCredential(header: string | undefined): string | undefined {
   if (!header) return undefined;
-  const match = new RegExp(`^${BOT_SERVICE_AUTH_SCHEME} ([^\\s]+)$`, "i")
-    .exec(header);
+  const match = BEARER_REGEX.exec(header);
   return match?.[1];
 }
 
@@ -78,7 +83,13 @@ export function createBotServiceAuthMiddleware(
   deps: Pick<AppDependencies, "env" | "logger">,
 ) {
   const credentials = readBotServiceCredentials(deps.env);
-  const configuredDigests = Promise.all(credentials.map(digestCredential));
+  let resolvedConfiguredDigests: readonly Uint8Array[] | undefined;
+  const configuredDigestsPromise = Promise.all(
+    credentials.map(digestCredential),
+  ).then((digests) => {
+    resolvedConfiguredDigests = digests;
+    return digests;
+  });
 
   return createMiddleware(async (c, next) => {
     const authorization = c.req.header("Authorization");
@@ -87,7 +98,9 @@ export function createBotServiceAuthMiddleware(
 
     if (candidate) {
       const candidateDigest = await digestCredential(candidate);
-      for (const configuredDigest of await configuredDigests) {
+      const configuredDigests = resolvedConfiguredDigests ??
+        await configuredDigestsPromise;
+      for (const configuredDigest of configuredDigests) {
         authorized = equalDigest(candidateDigest, configuredDigest) ||
           authorized;
       }

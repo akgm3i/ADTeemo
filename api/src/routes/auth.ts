@@ -15,6 +15,7 @@ type AuthDbActions = Pick<
 type AuthRouteDependencies = {
   dbActions: AuthDbActions;
   rso: AppDependencies["rso"];
+  logger: AppDependencies["logger"];
 };
 
 export function authBotServiceRoutes(deps: AuthRouteDependencies) {
@@ -107,7 +108,7 @@ export function authCallbackRoutes(deps: AuthRouteDependencies) {
           </html>
         `);
       } catch (error) {
-        console.error("Error during RSO callback:", error);
+        deps.logger.error("auth.rso_callback.failed", {}, error);
         return c.json(
           {
             error: messageHandler.formatMessage(

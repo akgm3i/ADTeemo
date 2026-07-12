@@ -156,6 +156,7 @@ describe("routes/auth.ts", () => {
       test("RSOトークン交換に失敗した場合、500とエラーメッセージを返しsuccessフラグは含めない", async () => {
         // Arrange
         const state = "valid-state-123";
+        const error = new Error("RSO error");
         using _getAuthStateStub = stub(
           dbActions,
           "getAuthState",
@@ -169,8 +170,9 @@ describe("routes/auth.ts", () => {
         using _exchangeCodeForTokensStub = stub(
           rso,
           "exchangeCodeForTokens",
-          () => Promise.reject(new Error("RSO error")),
+          () => Promise.reject(error),
         );
+        using errorStub = stub(deps.logger, "error", () => {});
         using formatMessageStub = stub(
           messageHandler,
           "formatMessage",
@@ -192,6 +194,9 @@ describe("routes/auth.ts", () => {
         assertFalse("success" in body);
         assertSpyCall(formatMessageStub, 0, {
           args: [messageKeys.common.error.internalServerError],
+        });
+        assertSpyCall(errorStub, 0, {
+          args: ["auth.rso_callback.failed", {}, error],
         });
       });
     });
