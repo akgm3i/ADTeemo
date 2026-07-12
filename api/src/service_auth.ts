@@ -20,13 +20,21 @@ const BEARER_REGEX = new RegExp(
 function validateCredential(
   credential: string | undefined,
   envName: string,
+  required: true,
+): string;
+function validateCredential(
+  credential: string | undefined,
+  envName: string,
+  required: false,
+): string | undefined;
+function validateCredential(
+  credential: string | undefined,
+  envName: string,
   required: boolean,
 ): string | undefined {
   if (!credential) {
     if (required) {
-      throw new Error(
-        `${envName} must be at least ${BOT_SERVICE_TOKEN_MIN_LENGTH} characters`,
-      );
+      throw new Error(`${envName} is required`);
     }
     return undefined;
   }
@@ -57,10 +65,6 @@ export function readBotServiceCredentials(env: EnvReader): readonly string[] {
     "BOT_SERVICE_TOKEN_PREVIOUS",
     false,
   );
-
-  if (!current) {
-    throw new Error("BOT_SERVICE_TOKEN is required");
-  }
 
   return previous && previous !== current ? [current, previous] : [current];
 }

@@ -216,6 +216,18 @@ describe("app.ts", () => {
       assertEquals(res.status, 400);
       assertSpyCalls(getAuthStateStub, 1);
     });
+
+    test("未登録pathへcredentialなしでアクセスしたとき、認証middlewareを実行せず404を返す", async () => {
+      // Arrange
+      using warnStub = stub(deps.logger, "warn", () => {});
+
+      // Act
+      const res = await app.request("/does-not-exist");
+
+      // Assert
+      assertEquals(res.status, 404);
+      assertSpyCalls(warnStub, 0);
+    });
   });
 
   describe("Bot service authentication", () => {
@@ -348,18 +360,23 @@ describe("app.ts", () => {
       assertSpyCalls(repositoryStub, 1);
     });
 
-    test("現行credentialが未設定の場合、秘密値を含まない設定エラーで起動を拒否する", () => {
-      // Arrange
-      const missingCredentialDeps = createTestDependencies({
-        env: { get: () => undefined },
-      });
+    test("現行credentialが未設定または空文字の場合、秘密値を含まない必須エラーで起動を拒否する", () => {
+      for (const credential of [undefined, ""]) {
+        // Arrange
+        const missingCredentialDeps = createTestDependencies({
+          env: {
+            get: (key: string) =>
+              key === "BOT_SERVICE_TOKEN" ? credential : undefined,
+          },
+        });
 
-      // Act / Assert
-      assertThrows(
-        () => createApp(missingCredentialDeps),
-        Error,
-        "BOT_SERVICE_TOKEN must be at least 32 characters",
-      );
+        // Act / Assert
+        assertThrows(
+          () => createApp(missingCredentialDeps),
+          Error,
+          "BOT_SERVICE_TOKEN is required",
+        );
+      }
     });
 
     test("現行credentialが256文字を超える場合、設定エラーで起動を拒否する", () => {

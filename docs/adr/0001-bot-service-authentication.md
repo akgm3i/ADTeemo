@@ -12,11 +12,13 @@ Backend APIには、health check、Riot Sign Onのbrowser callback、Discord Bot
 
 routeを次の3分類に分け、Honoのサブアプリとして構成する。
 
-| 分類 | route | 認証 |
-| --- | --- | --- |
-| public | `GET /health` | 不要 |
-| browser callback | `GET /auth/rso/callback` | service credentialは不要。RSOの`state`で検証する |
-| Bot service | 上記以外の全endpoint | `Authorization: Bearer <credential>`が必須 |
+| 分類             | route                      | 認証                                             |
+| ---------------- | -------------------------- | ------------------------------------------------ |
+| public           | `GET /health`              | 不要                                             |
+| browser callback | `GET /auth/rso/callback`   | service credentialは不要。RSOの`state`で検証する |
+| Bot service      | 上記以外の登録済みendpoint | `Authorization: Bearer <credential>`が必須       |
+
+未登録pathは認証対象に含めず`404 Not Found`を返す。Bot service認証は既知のroute prefixへ一箇所で適用し、contract testで分類済みの全endpointがhandlerより先に`401 Unauthorized`を返すことを走査する。これにより、新しいBot service routeで認証の適用を漏らした場合はテスト失敗として検出する。
 
 Bot service credentialにはDiscord token、Riot API key、RSO secretを流用せず、32〜256文字のランダム値を`BOT_SERVICE_TOKEN`へ設定する。APIはrotation中だけ`BOT_SERVICE_TOKEN_PREVIOUS`も受理し、Botは常に`BOT_SERVICE_TOKEN`だけを送信する。
 
