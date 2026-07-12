@@ -1,4 +1,5 @@
 import {
+  BOT_SERVICE_TOKEN_MAX_LENGTH,
   BOT_SERVICE_TOKEN_MIN_LENGTH,
   botServiceAuthorization,
   hcWithType,
@@ -74,6 +75,12 @@ export function createApiRpcClients(
   if (credential.length < BOT_SERVICE_TOKEN_MIN_LENGTH) {
     throw new Error(
       `BOT_SERVICE_TOKEN must be at least ${BOT_SERVICE_TOKEN_MIN_LENGTH} characters`,
+    );
+  }
+
+  if (credential.length > BOT_SERVICE_TOKEN_MAX_LENGTH) {
+    throw new Error(
+      `BOT_SERVICE_TOKEN must be at most ${BOT_SERVICE_TOKEN_MAX_LENGTH} characters`,
     );
   }
 

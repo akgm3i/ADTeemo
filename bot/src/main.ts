@@ -247,7 +247,7 @@ client.on(Events.GuildCreate, async (guild) => {
 });
 
 // Main function to start the bot
-async function startBot() {
+export async function startBot() {
   const discordToken = Deno.env.get("DISCORD_TOKEN");
   if (!discordToken) {
     botLogger.error("bot.start.missing_token");
@@ -263,10 +263,17 @@ async function startBot() {
     botLogger.error("bot.start.missing_service_credential");
     Deno.exit(1);
   }
-  const { publicRpcClient, botServiceRpcClient } = createApiRpcClients({
-    apiUrl,
-    credential: botServiceCredential,
-  });
+  let rpcClients: ReturnType<typeof createApiRpcClients>;
+  try {
+    rpcClients = createApiRpcClients({
+      apiUrl,
+      credential: botServiceCredential,
+    });
+  } catch (error) {
+    botLogger.error("bot.start.invalid_service_credential", {}, error);
+    Deno.exit(1);
+  }
+  const { publicRpcClient, botServiceRpcClient } = rpcClients;
   configureApiClient(createApiClient({
     rpcClient: botServiceRpcClient,
     publicRpcClient,

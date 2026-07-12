@@ -8,7 +8,7 @@ import {
   assertThrows,
 } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
-import { assertSpyCalls, stub } from "@std/testing/mock";
+import { assertSpyCalls, spy, stub } from "@std/testing/mock";
 import {
   createApp,
   createClassifiedRoutes,
@@ -272,6 +272,21 @@ describe("app.ts", () => {
       );
     });
 
+    test("credentialが256文字を超える場合、digestを実行せず401を返す", async () => {
+      // Arrange
+      const oversizedCredential = "a".repeat(257);
+      using digestSpy = spy(crypto.subtle, "digest");
+
+      // Act
+      const res = await app.request("/users/user-1/riot-account", {
+        headers: { Authorization: `Bearer ${oversizedCredential}` },
+      });
+
+      // Assert
+      assertEquals(res.status, 401);
+      assertSpyCalls(digestSpy, 0);
+    });
+
     test("正しい現行credentialの場合、既存のhandlerとrepositoryを実行する", async () => {
       // Arrange
       const account = {
@@ -344,6 +359,23 @@ describe("app.ts", () => {
         () => createApp(missingCredentialDeps),
         Error,
         "BOT_SERVICE_TOKEN must be at least 32 characters",
+      );
+    });
+
+    test("現行credentialが256文字を超える場合、設定エラーで起動を拒否する", () => {
+      // Arrange
+      const oversizedCredentialDeps = createTestDependencies({
+        env: {
+          get: (key: string) =>
+            key === "BOT_SERVICE_TOKEN" ? "a".repeat(257) : undefined,
+        },
+      });
+
+      // Act / Assert
+      assertThrows(
+        () => createApp(oversizedCredentialDeps),
+        Error,
+        "BOT_SERVICE_TOKEN must be at most 256 characters",
       );
     });
   });

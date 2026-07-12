@@ -61,7 +61,7 @@ cp .env.example .env
 | `DISCORD_CLIENT_ID`                                        | Discord application client ID                                                                    |
 | `DISCORD_GUILD_ID`                                         | 指定時はguild commandとしてslash commandを登録します。未指定時はglobal commandとして登録します。 |
 | `API_URL`                                                  | Botから参照するBackend API URL                                                                   |
-| `BOT_SERVICE_TOKEN`                                        | Bot service route用の32文字以上のランダムBearer credential。APIとBotへ同じ現行値を設定します。   |
+| `BOT_SERVICE_TOKEN`                                        | Bot service route用の32〜256文字のランダムBearer credential。APIとBotへ同じ現行値を設定します。  |
 | `BOT_SERVICE_TOKEN_PREVIOUS`                               | credential rotation中にAPIだけが追加で受理する旧値。通常は空にします。                           |
 | `DATABASE_URL`                                             | SQLite DB URL。例: `file:./data/sqlite.db`                                                       |
 | `RIOT_API_KEY`                                             | Backend APIが使用するRiot API key                                                                |

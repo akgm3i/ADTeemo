@@ -1,7 +1,9 @@
 import { createMiddleware } from "@hono/hono/factory";
 import {
   BOT_SERVICE_AUTH_SCHEME,
+  BOT_SERVICE_TOKEN_MAX_LENGTH,
   BOT_SERVICE_TOKEN_MIN_LENGTH,
+  isBotServiceCredentialLengthValid,
 } from "./contract/service_auth.ts";
 import type { AppDependencies, EnvReader } from "./dependencies.ts";
 
@@ -32,6 +34,12 @@ function validateCredential(
   if (credential.length < BOT_SERVICE_TOKEN_MIN_LENGTH) {
     throw new Error(
       `${envName} must be at least ${BOT_SERVICE_TOKEN_MIN_LENGTH} characters`,
+    );
+  }
+
+  if (credential.length > BOT_SERVICE_TOKEN_MAX_LENGTH) {
+    throw new Error(
+      `${envName} must be at most ${BOT_SERVICE_TOKEN_MAX_LENGTH} characters`,
     );
   }
 
@@ -96,7 +104,7 @@ export function createBotServiceAuthMiddleware(
     const candidate = bearerCredential(authorization);
     let authorized = false;
 
-    if (candidate) {
+    if (candidate && isBotServiceCredentialLengthValid(candidate)) {
       const candidateDigest = await digestCredential(candidate);
       const configuredDigests = resolvedConfiguredDigests ??
         await configuredDigestsPromise;

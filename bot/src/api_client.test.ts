@@ -179,6 +179,24 @@ describe("apiClient", () => {
       );
       assertEquals(error.message.includes(credential), false);
     });
+
+    test("Bot service credentialが256文字を超える場合、秘密値を含まない設定エラーを返す", () => {
+      // Arrange
+      const credential = "a".repeat(257);
+
+      // Act / Assert
+      const error = assertThrows(
+        () =>
+          createApiRpcClients({
+            apiUrl: "http://api:8000",
+            credential,
+            createRpcClient: () => createRpcClientStub([]).rpcClient,
+          }),
+        Error,
+        "BOT_SERVICE_TOKEN must be at most 256 characters",
+      );
+      assertEquals(error.message.includes(credential), false);
+    });
   });
 
   describe("createApiResourceClients", () => {

@@ -18,7 +18,7 @@ routeを次の3分類に分け、Honoのサブアプリとして構成する。
 | browser callback | `GET /auth/rso/callback` | service credentialは不要。RSOの`state`で検証する |
 | Bot service | 上記以外の全endpoint | `Authorization: Bearer <credential>`が必須 |
 
-Bot service credentialにはDiscord token、Riot API key、RSO secretを流用せず、32文字以上のランダム値を`BOT_SERVICE_TOKEN`へ設定する。APIはrotation中だけ`BOT_SERVICE_TOKEN_PREVIOUS`も受理し、Botは常に`BOT_SERVICE_TOKEN`だけを送信する。
+Bot service credentialにはDiscord token、Riot API key、RSO secretを流用せず、32〜256文字のランダム値を`BOT_SERVICE_TOKEN`へ設定する。APIはrotation中だけ`BOT_SERVICE_TOKEN_PREVIOUS`も受理し、Botは常に`BOT_SERVICE_TOKEN`だけを送信する。
 
 APIはcredentialをSHA-256 digestへ変換して固定長で比較し、現行値と旧値の両方を毎回評価する。credentialなし、不正なscheme、不一致はいずれも`401`と共通JSONエラーを返す。
 
