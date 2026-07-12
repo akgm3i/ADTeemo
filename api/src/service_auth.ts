@@ -13,7 +13,7 @@ const UNAUTHORIZED_RESPONSE = {
 } as const;
 const encoder = new TextEncoder();
 const BEARER_REGEX = new RegExp(
-  `^${BOT_SERVICE_AUTH_SCHEME} ([^\\s]+)$`,
+  `^${BOT_SERVICE_AUTH_SCHEME} +([^\\s]+)$`,
   "i",
 );
 

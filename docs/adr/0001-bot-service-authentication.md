@@ -18,11 +18,13 @@ routeを次の3分類に分け、Honoのサブアプリとして構成する。
 | browser callback | `GET /auth/rso/callback`   | service credentialは不要。RSOの`state`で検証する |
 | Bot service      | 上記以外の登録済みendpoint | `Authorization: Bearer <credential>`が必須       |
 
-未登録pathは認証対象に含めず`404 Not Found`を返す。Bot service認証は既知のroute prefixへ一箇所で適用し、contract testで分類済みの全endpointがhandlerより先に`401 Unauthorized`を返すことを走査する。これにより、新しいBot service routeで認証の適用を漏らした場合はテスト失敗として検出する。
+Bot service認証は`botServiceRoutes`サブアプリ全体へ適用し、個別endpointやpath prefixには設定しない。public routeとbrowser callbackを先にmountするため、これらはservice credentialなしで利用できる。それ以外のリクエストはdefault-denyのBot service境界を通り、未登録pathもcredentialなしでは`401 Unauthorized`、正しいcredentialがあれば`404 Not Found`となる。内部サービスAPIでは未認証時の404より、新しいrouteを設定追加なしで保護できる構造を優先する。
 
 Bot service credentialにはDiscord token、Riot API key、RSO secretを流用せず、32〜256文字のランダム値を`BOT_SERVICE_TOKEN`へ設定する。APIはrotation中だけ`BOT_SERVICE_TOKEN_PREVIOUS`も受理し、Botは常に`BOT_SERVICE_TOKEN`だけを送信する。
 
 APIはcredentialをSHA-256 digestへ変換して固定長で比較し、現行値と旧値の両方を毎回評価する。credentialなし、不正なscheme、不一致はいずれも`401`と共通JSONエラーを返す。
+
+Bearer schemeとcredentialの区切りは、[RFC 9110 Section 11.4](https://www.rfc-editor.org/rfc/rfc9110.html#section-11.4)および[RFC 6750 Section 2.1](https://www.rfc-editor.org/rfc/rfc6750.html#section-2.1)の`1*SP`に従い、1個以上のASCII spaceだけを受理する。tabやその他の空白文字は不正なheaderとして扱う。
 
 ```json
 { "code": "UNAUTHORIZED", "error": "Unauthorized" }

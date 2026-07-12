@@ -63,12 +63,7 @@ export function createClassifiedRoutes(deps: AppDependencies) {
 
   const auth = createBotServiceAuthMiddleware(deps);
   const botServiceRoutes = new Hono()
-    .use("/users/*", auth)
-    .use("/events/*", auth)
-    .use("/matches/*", auth)
-    .use("/match-watchers/*", auth)
-    .use("/riot/*", auth)
-    .use("/auth/rso/login-url", auth)
+    .use(auth)
     .route("/users", usersRoutes(deps))
     .route("/events", eventsRoutes(deps))
     .route("/matches", matchesRoutes(deps))

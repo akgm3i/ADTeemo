@@ -217,16 +217,22 @@ describe("app.ts", () => {
       assertSpyCalls(getAuthStateStub, 1);
     });
 
-    test("未登録pathへcredentialなしでアクセスしたとき、認証middlewareを実行せず404を返す", async () => {
+    test("Bot serviceサブアプリへ新規endpointを追加したとき、path別設定なしで認証middlewareを適用する", async () => {
       // Arrange
-      using warnStub = stub(deps.logger, "warn", () => {});
+      const { botServiceRoutes } = createClassifiedRoutes(deps);
+      const futureRoute = {
+        handle: () => new Response(null, { status: 204 }),
+      };
+      using handlerSpy = spy(futureRoute, "handle");
+      botServiceRoutes.get("/future", futureRoute.handle);
+      const futureApp = new Hono().route("/", botServiceRoutes);
 
       // Act
-      const res = await app.request("/does-not-exist");
+      const res = await futureApp.request("/future");
 
       // Assert
-      assertEquals(res.status, 404);
-      assertSpyCalls(warnStub, 0);
+      assertEquals(res.status, 401);
+      assertSpyCalls(handlerSpy, 0);
     });
   });
 
@@ -297,6 +303,46 @@ describe("app.ts", () => {
       // Assert
       assertEquals(res.status, 401);
       assertSpyCalls(digestSpy, 0);
+    });
+
+    test("Bearer schemeとcredentialを複数のASCII spaceで区切った場合、認証してhandlerを実行する", async () => {
+      // Arrange
+      using repositoryStub = stub(
+        deps.dbActions,
+        "getRiotAccountByDiscordId",
+        () => Promise.resolve(undefined),
+      );
+
+      // Act
+      const res = await app.request("/users/user-1/riot-account", {
+        headers: {
+          Authorization: `Bearer   ${TEST_BOT_SERVICE_TOKEN}`,
+        },
+      });
+
+      // Assert
+      assertEquals(res.status, 404);
+      assertSpyCalls(repositoryStub, 1);
+    });
+
+    test("Bearer schemeとcredentialをtabで区切った場合、不正なheaderとして401を返す", async () => {
+      // Arrange
+      using repositoryStub = stub(
+        deps.dbActions,
+        "getRiotAccountByDiscordId",
+        () => Promise.resolve(undefined),
+      );
+
+      // Act
+      const res = await app.request("/users/user-1/riot-account", {
+        headers: {
+          Authorization: `Bearer\t${TEST_BOT_SERVICE_TOKEN}`,
+        },
+      });
+
+      // Assert
+      assertEquals(res.status, 401);
+      assertSpyCalls(repositoryStub, 0);
     });
 
     test("正しい現行credentialの場合、既存のhandlerとrepositoryを実行する", async () => {
