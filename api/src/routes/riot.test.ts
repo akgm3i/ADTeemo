@@ -2,7 +2,10 @@ import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, stub } from "@std/testing/mock";
 import { createApp } from "../app.ts";
-import { createTestDependencies } from "../test_utils.ts";
+import {
+  createTestDependencies,
+  TEST_BOT_SERVICE_AUTH_HEADERS,
+} from "../test_utils.ts";
 
 describe("routes/riot.ts", () => {
   const deps = createTestDependencies();
@@ -33,6 +36,7 @@ describe("routes/riot.ts", () => {
     // Act
     const res = await app.request(
       "/riot/active-games/jp1/puuid-1",
+      { headers: TEST_BOT_SERVICE_AUTH_HEADERS },
     );
 
     // Assert
@@ -52,6 +56,7 @@ describe("routes/riot.ts", () => {
     // Act
     const res = await app.request(
       "/riot/active-games/jp1/puuid-1",
+      { headers: TEST_BOT_SERVICE_AUTH_HEADERS },
     );
 
     // Assert
@@ -98,6 +103,7 @@ describe("routes/riot.ts", () => {
     // Act
     const res = await app.request(
       "/riot/matches/asia/JP1_12345",
+      { headers: TEST_BOT_SERVICE_AUTH_HEADERS },
     );
 
     // Assert
@@ -125,6 +131,7 @@ describe("routes/riot.ts", () => {
     // Act
     const res = await app.request(
       "/riot/league-entries/jp1/puuid-1",
+      { headers: TEST_BOT_SERVICE_AUTH_HEADERS },
     );
 
     // Assert
@@ -144,6 +151,7 @@ describe("routes/riot.ts", () => {
     // Act
     const res = await app.request(
       "/riot/active-games/invalid/puuid-1",
+      { headers: TEST_BOT_SERVICE_AUTH_HEADERS },
     );
 
     // Assert
@@ -165,6 +173,7 @@ describe("routes/riot.ts", () => {
     // Act
     const res = await app.request(
       "/riot/active-games/jp1/puuid-1",
+      { headers: TEST_BOT_SERVICE_AUTH_HEADERS },
     );
 
     // Assert

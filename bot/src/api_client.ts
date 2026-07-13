@@ -1,3 +1,9 @@
+import {
+  BOT_SERVICE_TOKEN_MAX_LENGTH,
+  BOT_SERVICE_TOKEN_MIN_LENGTH,
+  botServiceAuthorization,
+  hcWithType,
+} from "@adteemo/api/contract";
 import { type AuthApiClient, createAuthApiClient } from "./api_clients/auth.ts";
 import {
   createEventsApiClient,
@@ -46,11 +52,59 @@ export type ApiResourceClients = {
   auth: AuthApiClient;
 };
 
+export type ApiRpcClientOptions = {
+  headers?: Record<string, string>;
+};
+
+export type ApiRpcClientFactory = (
+  apiUrl: string,
+  options?: ApiRpcClientOptions,
+) => ApiRpcClient;
+
+export function createApiRpcClients(
+  {
+    apiUrl,
+    credential,
+    createRpcClient = hcWithType,
+  }: {
+    apiUrl: string;
+    credential: string;
+    createRpcClient?: ApiRpcClientFactory;
+  },
+) {
+  if (credential.length < BOT_SERVICE_TOKEN_MIN_LENGTH) {
+    throw new Error(
+      `BOT_SERVICE_TOKEN must be at least ${BOT_SERVICE_TOKEN_MIN_LENGTH} characters`,
+    );
+  }
+
+  if (credential.length > BOT_SERVICE_TOKEN_MAX_LENGTH) {
+    throw new Error(
+      `BOT_SERVICE_TOKEN must be at most ${BOT_SERVICE_TOKEN_MAX_LENGTH} characters`,
+    );
+  }
+
+  const publicRpcClient = createRpcClient(apiUrl);
+  const botServiceRpcClient = createRpcClient(apiUrl, {
+    headers: {
+      Authorization: botServiceAuthorization(credential),
+    },
+  });
+
+  return { publicRpcClient, botServiceRpcClient };
+}
+
 export function createApiResourceClients(
-  { rpcClient }: { rpcClient: ApiRpcClient },
+  {
+    rpcClient,
+    publicRpcClient = rpcClient,
+  }: {
+    rpcClient: ApiRpcClient;
+    publicRpcClient?: ApiRpcClient;
+  },
 ): ApiResourceClients {
   return {
-    health: createHealthApiClient({ rpcClient }),
+    health: createHealthApiClient({ rpcClient: publicRpcClient }),
     users: createUsersApiClient({ rpcClient }),
     events: createEventsApiClient({ rpcClient }),
     matches: createMatchesApiClient({ rpcClient }),
@@ -60,8 +114,16 @@ export function createApiResourceClients(
   };
 }
 
-export function createApiClient({ rpcClient }: { rpcClient: ApiRpcClient }) {
-  const resources = createApiResourceClients({ rpcClient });
+export function createApiClient(
+  {
+    rpcClient,
+    publicRpcClient = rpcClient,
+  }: {
+    rpcClient: ApiRpcClient;
+    publicRpcClient?: ApiRpcClient;
+  },
+) {
+  const resources = createApiResourceClients({ rpcClient, publicRpcClient });
 
   return {
     ...resources.users,

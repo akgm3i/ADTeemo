@@ -61,6 +61,8 @@ cp .env.example .env
 | `DISCORD_CLIENT_ID`                                        | Discord application client ID                                                                    |
 | `DISCORD_GUILD_ID`                                         | 指定時はguild commandとしてslash commandを登録します。未指定時はglobal commandとして登録します。 |
 | `API_URL`                                                  | Botから参照するBackend API URL                                                                   |
+| `BOT_SERVICE_TOKEN`                                        | Bot service route用の32〜256文字のランダムBearer credential。APIとBotへ同じ現行値を設定します。  |
+| `BOT_SERVICE_TOKEN_PREVIOUS`                               | credential rotation中にAPIだけが追加で受理する旧値。通常は空にします。                           |
 | `DATABASE_URL`                                             | SQLite DB URL。例: `file:./data/sqlite.db`                                                       |
 | `RIOT_API_KEY`                                             | Backend APIが使用するRiot API key                                                                |
 | `RIOT_DEFAULT_PLATFORM`                                    | Riot platform routing。例: `jp1`                                                                 |
@@ -155,11 +157,24 @@ docker compose --profile dev down
 
 本番profileはAPIとBotを分けて起動し、APIのhealthcheck成功後にBotを起動します。DBは `prod-db-data` volumeの `/app/data/sqlite.db` に保存されます。
 
+起動前にDiscord tokenやRiot API keyとは別のcredentialを生成し、`BOT_SERVICE_TOKEN`へ設定します。例えば `openssl rand -hex 32` で64文字のランダム値を生成できます。値をshell history、ログ、Issue、テスト出力へ貼り付けないでください。
+
 ```bash
 docker compose --profile prod up -d --build
 docker compose --profile prod logs -f
 docker compose --profile prod down
 ```
+
+production APIのport `8000` はhostの `127.0.0.1` だけへbindされ、外部networkへ直接公開されません。BotはDocker network内の `http://api:8000` を利用します。RSO callbackを外部から受ける場合は、同一hostのTLS reverse proxyから `/auth/rso/callback` だけを `http://127.0.0.1:8000` へ転送してください。Bot service routeをreverse proxyの公開対象へ追加しないでください。
+
+credentialは次の順序でrotationします。
+
+1. 新しいcredentialを生成する。
+2. APIの `BOT_SERVICE_TOKEN` を新しい値、`BOT_SERVICE_TOKEN_PREVIOUS` を旧値にしてAPIを再起動する。
+3. Botを新しい `BOT_SERVICE_TOKEN` で再起動する。
+4. 旧Botが停止したことを確認し、`BOT_SERVICE_TOKEN_PREVIOUS` を空にしてAPIを再起動する。
+
+APIより先にBotを切り替えると新credentialが拒否されるため、API、Bot、旧credential削除の順序を維持してください。判断理由と認証境界は [ADR 0001](./docs/adr/0001-bot-service-authentication.md) を参照してください。
 
 ## 品質確認
 

@@ -2,7 +2,10 @@ import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
 import { createApp } from "../app.ts";
-import { createTestDependencies } from "../test_utils.ts";
+import {
+  createTestDependencies,
+  TEST_BOT_SERVICE_AUTH_HEADERS,
+} from "../test_utils.ts";
 
 describe("POST /riot/static-data/resolve", () => {
   const deps = createTestDependencies();
@@ -28,7 +31,10 @@ describe("POST /riot/static-data/resolve", () => {
     // Act
     const res = await app.request("/riot/static-data/resolve", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        ...TEST_BOT_SERVICE_AUTH_HEADERS,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({
         locale: "ja_JP",
         championIds: [17],
@@ -69,7 +75,10 @@ describe("POST /riot/static-data/resolve", () => {
     // Act
     const res = await app.request("/riot/static-data/resolve", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        ...TEST_BOT_SERVICE_AUTH_HEADERS,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ championIds: [-1] }),
     });
 
@@ -92,7 +101,10 @@ describe("POST /riot/static-data/resolve", () => {
     // Act
     const res = await app.request("/riot/static-data/resolve", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        ...TEST_BOT_SERVICE_AUTH_HEADERS,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ championIds: [17] }),
     });
 

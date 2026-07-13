@@ -3,7 +3,10 @@ import { describe, test } from "@std/testing/bdd";
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import { assertSpyCall, stub } from "@std/testing/mock";
 import { createApp } from "../app.ts";
-import { createTestDependencies } from "../test_utils.ts";
+import {
+  createTestDependencies,
+  TEST_BOT_SERVICE_AUTH_HEADERS,
+} from "../test_utils.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 
 describe("routes/auth.ts", () => {
@@ -28,7 +31,9 @@ describe("routes/auth.ts", () => {
           "getAuthorizationUrl",
           (state: string) => `https://mock.auth.url/authorize?state=${state}`,
         );
-        const client = testClient(app);
+        const client = testClient(app, {}, undefined, {
+          headers: TEST_BOT_SERVICE_AUTH_HEADERS,
+        });
         const discordId = "discord-123";
 
         // Act
@@ -90,7 +95,9 @@ describe("routes/auth.ts", () => {
           "deleteAuthState",
           () => Promise.resolve(),
         );
-        const client = testClient(app);
+        const client = testClient(app, {}, undefined, {
+          headers: TEST_BOT_SERVICE_AUTH_HEADERS,
+        });
 
         // Act
         const res = await client.auth.rso.callback.$get({
@@ -126,7 +133,9 @@ describe("routes/auth.ts", () => {
           "formatMessage",
           () => "Invalid state.",
         );
-        const client = testClient(app);
+        const client = testClient(app, {}, undefined, {
+          headers: TEST_BOT_SERVICE_AUTH_HEADERS,
+        });
 
         // Act
         const res = await client.auth.rso.callback.$get({
@@ -147,6 +156,7 @@ describe("routes/auth.ts", () => {
       test("RSOトークン交換に失敗した場合、500とエラーメッセージを返しsuccessフラグは含めない", async () => {
         // Arrange
         const state = "valid-state-123";
+        const error = new Error("RSO error");
         using _getAuthStateStub = stub(
           dbActions,
           "getAuthState",
@@ -160,14 +170,17 @@ describe("routes/auth.ts", () => {
         using _exchangeCodeForTokensStub = stub(
           rso,
           "exchangeCodeForTokens",
-          () => Promise.reject(new Error("RSO error")),
+          () => Promise.reject(error),
         );
+        using errorStub = stub(deps.logger, "error", () => {});
         using formatMessageStub = stub(
           messageHandler,
           "formatMessage",
           () => "Internal server error.",
         );
-        const client = testClient(app);
+        const client = testClient(app, {}, undefined, {
+          headers: TEST_BOT_SERVICE_AUTH_HEADERS,
+        });
 
         // Act
         const res = await client.auth.rso.callback.$get({
@@ -181,6 +194,9 @@ describe("routes/auth.ts", () => {
         assertFalse("success" in body);
         assertSpyCall(formatMessageStub, 0, {
           args: [messageKeys.common.error.internalServerError],
+        });
+        assertSpyCall(errorStub, 0, {
+          args: ["auth.rso_callback.failed", {}, error],
         });
       });
     });

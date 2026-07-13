@@ -12,9 +12,13 @@ type AuthDbActions = Pick<
   "createAuthState" | "getAuthState" | "deleteAuthState" | "linkUserWithRiotId"
 >;
 
-export function authRoutes(
-  deps: { dbActions: AuthDbActions; rso: AppDependencies["rso"] },
-) {
+type AuthRouteDependencies = {
+  dbActions: AuthDbActions;
+  rso: AppDependencies["rso"];
+  logger: AppDependencies["logger"];
+};
+
+export function authBotServiceRoutes(deps: AuthRouteDependencies) {
   const { dbActions, rso } = deps;
   return new Hono()
     .get(
@@ -30,54 +34,58 @@ export function authRoutes(
 
         return c.json({ url: authorizationUrl });
       },
-    )
-    .get(
-      "/rso/callback",
-      zValidator("query", callbackQuerySchema),
-      async (c) => {
-        const { code, state } = c.req.valid("query");
+    );
+}
 
-        // 1. Validate state and get discordId
-        const authState = await dbActions.getAuthState(state);
-        const stateMaxAge = 5 * 60 * 1000; // 5 minutes
-        if (
-          !authState ||
-          new Date().getTime() - authState.createdAt.getTime() > stateMaxAge
-        ) {
-          if (authState) {
-            // Clean up expired state to prevent it from being used again
-            await dbActions.deleteAuthState(state);
-          }
-          return c.json({
-            error: messageHandler.formatMessage(
-              messageKeys.riotAccount.link.error.invalidState,
-            ),
-          }, 400);
-        }
-        const { discordId } = authState;
+export function authCallbackRoutes(deps: AuthRouteDependencies) {
+  const { dbActions, rso } = deps;
+  return new Hono().get(
+    "/rso/callback",
+    zValidator("query", callbackQuerySchema),
+    async (c) => {
+      const { code, state } = c.req.valid("query");
 
-        try {
-          // 2. Exchange code for tokens
-          const { accessToken } = await rso.exchangeCodeForTokens(code);
-
-          // 3. Get user info (Riot ID)
-          const { sub: riotId } = await rso.getUserInfo(accessToken);
-
-          // 4. Update user's Riot ID in DB
-          await dbActions.linkUserWithRiotId(discordId, riotId);
-
-          // 5. Clean up auth state
+      // 1. Validate state and get discordId
+      const authState = await dbActions.getAuthState(state);
+      const stateMaxAge = 5 * 60 * 1000; // 5 minutes
+      if (
+        !authState ||
+        new Date().getTime() - authState.createdAt.getTime() > stateMaxAge
+      ) {
+        if (authState) {
+          // Clean up expired state to prevent it from being used again
           await dbActions.deleteAuthState(state);
+        }
+        return c.json({
+          error: messageHandler.formatMessage(
+            messageKeys.riotAccount.link.error.invalidState,
+          ),
+        }, 400);
+      }
+      const { discordId } = authState;
 
-          // 6. Return success page
-          return c.html(`
+      try {
+        // 2. Exchange code for tokens
+        const { accessToken } = await rso.exchangeCodeForTokens(code);
+
+        // 3. Get user info (Riot ID)
+        const { sub: riotId } = await rso.getUserInfo(accessToken);
+
+        // 4. Update user's Riot ID in DB
+        await dbActions.linkUserWithRiotId(discordId, riotId);
+
+        // 5. Clean up auth state
+        await dbActions.deleteAuthState(state);
+
+        // 6. Return success page
+        return c.html(`
           <html>
             <head>
               <title>${
-            messageHandler.formatMessage(
-              messageKeys.riotAccount.link.success.title,
-            )
-          }</title>
+          messageHandler.formatMessage(
+            messageKeys.riotAccount.link.success.title,
+          )
+        }</title>
               <style>
                 body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
                 .container { text-align: center; }
@@ -86,30 +94,30 @@ export function authRoutes(
             <body>
               <div class="container">
                 <h1>${
-            messageHandler.formatMessage(
-              messageKeys.riotAccount.link.success.title,
-            )
-          }</h1>
+          messageHandler.formatMessage(
+            messageKeys.riotAccount.link.success.title,
+          )
+        }</h1>
                 <p>${
-            messageHandler.formatMessage(
-              messageKeys.riotAccount.link.success.body,
-            )
-          }</p>
+          messageHandler.formatMessage(
+            messageKeys.riotAccount.link.success.body,
+          )
+        }</p>
               </div>
             </body>
           </html>
         `);
-        } catch (error) {
-          console.error("Error during RSO callback:", error);
-          return c.json(
-            {
-              error: messageHandler.formatMessage(
-                messageKeys.common.error.internalServerError,
-              ),
-            },
-            500,
-          );
-        }
-      },
-    );
+      } catch (error) {
+        deps.logger.error("auth.rso_callback.failed", {}, error);
+        return c.json(
+          {
+            error: messageHandler.formatMessage(
+              messageKeys.common.error.internalServerError,
+            ),
+          },
+          500,
+        );
+      }
+    },
+  );
 }

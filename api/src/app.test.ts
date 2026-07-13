@@ -1,15 +1,53 @@
 import { testClient } from "@hono/hono/testing";
 import { Hono } from "@hono/hono";
-import { assertEquals, assertRejects, assertStrictEquals } from "@std/assert";
+import {
+  assertEquals,
+  assertFalse,
+  assertRejects,
+  assertStrictEquals,
+  assertThrows,
+} from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
-import { assertSpyCalls, stub } from "@std/testing/mock";
-import { createApp, createRequestLoggingMiddleware } from "./app.ts";
-import { createTestDependencies } from "./test_utils.ts";
+import { assertSpyCalls, spy, stub } from "@std/testing/mock";
+import {
+  createApp,
+  createClassifiedRoutes,
+  createRequestLoggingMiddleware,
+} from "./app.ts";
+import {
+  createTestDependencies,
+  TEST_BOT_SERVICE_AUTH_HEADERS,
+  TEST_BOT_SERVICE_TOKEN,
+} from "./test_utils.ts";
+
+type RoutableApp = {
+  routes: ReadonlyArray<{ method: string; path: string }>;
+};
+
+function endpointKeys(app: RoutableApp): string[] {
+  return [
+    ...new Set(
+      app.routes
+        .filter(({ method }) => method !== "ALL")
+        .map(({ method, path }) => `${method} ${path}`),
+    ),
+  ].sort();
+}
+
+function requestTarget(endpointKey: string) {
+  const separator = endpointKey.indexOf(" ");
+  return {
+    method: endpointKey.slice(0, separator),
+    path: endpointKey.slice(separator + 1).replaceAll(/:[^/]+/g, "test"),
+  };
+}
 
 describe("app.ts", () => {
   const deps = createTestDependencies();
   const app = createApp(deps);
-  const client = testClient(app);
+  const client = testClient(app, {}, undefined, {
+    headers: TEST_BOT_SERVICE_AUTH_HEADERS,
+  });
 
   describe("GET /health", () => {
     describe("正常系", () => {
@@ -21,6 +59,14 @@ describe("app.ts", () => {
         assertEquals(res.status, 200);
         const body = await res.json();
         assertEquals(body.message, "This API is healthy!");
+      });
+
+      test("credentialなしでリクエストを送信したとき、public routeとして200を返す", async () => {
+        // Act
+        const res = await app.request("/health");
+
+        // Assert
+        assertEquals(res.status, 200);
       });
 
       test("リクエストを送信したとき、HTTPメソッドとパス、ステータスを含むログを注入loggerへ出力する", async () => {
@@ -101,6 +147,299 @@ describe("app.ts", () => {
         assertEquals(typeof logContext?.durationMs, "number");
         assertStrictEquals(loggedError, error);
       });
+    });
+  });
+
+  describe("route classification", () => {
+    test("全endpointをpublic、browser callback、Bot serviceのいずれか一つへ分類する", () => {
+      // Arrange
+      const classified = createClassifiedRoutes(deps);
+      const publicEndpoints = endpointKeys(classified.publicRoutes);
+      const callbackEndpoints = endpointKeys(classified.callbackRoutes);
+      const botServiceEndpoints = endpointKeys(classified.botServiceRoutes);
+      const allClassifiedEndpoints = [
+        ...publicEndpoints,
+        ...callbackEndpoints,
+        ...botServiceEndpoints,
+      ];
+
+      // Act
+      const uniqueClassifiedEndpoints = [...new Set(allClassifiedEndpoints)]
+        .sort();
+
+      // Assert
+      assertEquals(publicEndpoints, ["GET /health"]);
+      assertEquals(callbackEndpoints, ["GET /auth/rso/callback"]);
+      assertEquals(
+        botServiceEndpoints.includes("GET /auth/rso/login-url"),
+        true,
+      );
+      assertEquals(
+        uniqueClassifiedEndpoints.length,
+        allClassifiedEndpoints.length,
+      );
+      assertEquals(uniqueClassifiedEndpoints, endpointKeys(app));
+    });
+
+    test("Bot serviceへ分類した全endpointはcredentialなしの場合にhandlerより先に401を返す", async () => {
+      // Arrange
+      const { botServiceRoutes } = createClassifiedRoutes(deps);
+
+      // Act / Assert
+      for (const endpointKey of endpointKeys(botServiceRoutes)) {
+        const { method, path } = requestTarget(endpointKey);
+        const res = await app.request(path, { method });
+        assertEquals(res.status, 401, endpointKey);
+        assertEquals(await res.json(), {
+          code: "UNAUTHORIZED",
+          error: "Unauthorized",
+        });
+      }
+    });
+
+    test("credentialなしでbrowser callbackへアクセスしたとき、認証middlewareを通さずcallback handlerを実行する", async () => {
+      // Arrange
+      const callbackDeps = createTestDependencies();
+      using getAuthStateStub = stub(
+        callbackDeps.dbActions,
+        "getAuthState",
+        () => Promise.resolve(undefined),
+      );
+      const callbackApp = createApp(callbackDeps);
+
+      // Act
+      const res = await callbackApp.request(
+        "/auth/rso/callback?code=code&state=state",
+      );
+
+      // Assert
+      assertEquals(res.status, 400);
+      assertSpyCalls(getAuthStateStub, 1);
+    });
+
+    test("Bot serviceサブアプリへ新規endpointを追加したとき、path別設定なしで認証middlewareを適用する", async () => {
+      // Arrange
+      const { botServiceRoutes } = createClassifiedRoutes(deps);
+      const futureRoute = {
+        handle: () => new Response(null, { status: 204 }),
+      };
+      using handlerSpy = spy(futureRoute, "handle");
+      botServiceRoutes.get("/future", futureRoute.handle);
+      const futureApp = new Hono().route("/", botServiceRoutes);
+
+      // Act
+      const res = await futureApp.request("/future");
+
+      // Assert
+      assertEquals(res.status, 401);
+      assertSpyCalls(handlerSpy, 0);
+    });
+  });
+
+  describe("Bot service authentication", () => {
+    test("credentialなしの場合、401を返してrepositoryを呼ばない", async () => {
+      // Arrange
+      using repositoryStub = stub(
+        deps.dbActions,
+        "getRiotAccountByDiscordId",
+        () => Promise.resolve(undefined),
+      );
+
+      // Act
+      const res = await app.request("/users/user-1/riot-account");
+
+      // Assert
+      assertEquals(res.status, 401);
+      assertEquals(await res.json(), {
+        code: "UNAUTHORIZED",
+        error: "Unauthorized",
+      });
+      assertSpyCalls(repositoryStub, 0);
+    });
+
+    test("不正なcredentialの場合、秘密値をレスポンスとログへ含めず401を返す", async () => {
+      // Arrange
+      const invalidCredential =
+        "invalid-bot-service-token-0000000000000000000000000000";
+      using repositoryStub = stub(
+        deps.dbActions,
+        "getRiotAccountByDiscordId",
+        () => Promise.resolve(undefined),
+      );
+      using infoStub = stub(deps.logger, "info", () => {});
+      using warnStub = stub(deps.logger, "warn", () => {});
+
+      // Act
+      const res = await app.request("/users/user-1/riot-account", {
+        headers: { Authorization: `Bearer ${invalidCredential}` },
+      });
+      const responseBody = await res.text();
+
+      // Assert
+      assertEquals(res.status, 401);
+      assertEquals(JSON.parse(responseBody), {
+        code: "UNAUTHORIZED",
+        error: "Unauthorized",
+      });
+      assertSpyCalls(repositoryStub, 0);
+      assertFalse(responseBody.includes(invalidCredential));
+      assertFalse(
+        JSON.stringify([...infoStub.calls, ...warnStub.calls]).includes(
+          invalidCredential,
+        ),
+      );
+    });
+
+    test("credentialが256文字を超える場合、digestを実行せず401を返す", async () => {
+      // Arrange
+      const oversizedCredential = "a".repeat(257);
+      using digestSpy = spy(crypto.subtle, "digest");
+
+      // Act
+      const res = await app.request("/users/user-1/riot-account", {
+        headers: { Authorization: `Bearer ${oversizedCredential}` },
+      });
+
+      // Assert
+      assertEquals(res.status, 401);
+      assertSpyCalls(digestSpy, 0);
+    });
+
+    test("Bearer schemeとcredentialを複数のASCII spaceで区切った場合、認証してhandlerを実行する", async () => {
+      // Arrange
+      using repositoryStub = stub(
+        deps.dbActions,
+        "getRiotAccountByDiscordId",
+        () => Promise.resolve(undefined),
+      );
+
+      // Act
+      const res = await app.request("/users/user-1/riot-account", {
+        headers: {
+          Authorization: `Bearer   ${TEST_BOT_SERVICE_TOKEN}`,
+        },
+      });
+
+      // Assert
+      assertEquals(res.status, 404);
+      assertSpyCalls(repositoryStub, 1);
+    });
+
+    test("Bearer schemeとcredentialをtabで区切った場合、不正なheaderとして401を返す", async () => {
+      // Arrange
+      using repositoryStub = stub(
+        deps.dbActions,
+        "getRiotAccountByDiscordId",
+        () => Promise.resolve(undefined),
+      );
+
+      // Act
+      const res = await app.request("/users/user-1/riot-account", {
+        headers: {
+          Authorization: `Bearer\t${TEST_BOT_SERVICE_TOKEN}`,
+        },
+      });
+
+      // Assert
+      assertEquals(res.status, 401);
+      assertSpyCalls(repositoryStub, 0);
+    });
+
+    test("正しい現行credentialの場合、既存のhandlerとrepositoryを実行する", async () => {
+      // Arrange
+      const account = {
+        discordId: "user-1",
+        puuid: "puuid-1",
+        gameName: "Teemo",
+        tagLine: "JP1",
+        platform: "jp1" as const,
+        region: "asia" as const,
+        createdAt: new Date("2026-07-12T00:00:00.000Z"),
+        updatedAt: new Date("2026-07-12T00:00:00.000Z"),
+      };
+      using repositoryStub = stub(
+        deps.dbActions,
+        "getRiotAccountByDiscordId",
+        () => Promise.resolve(account),
+      );
+
+      // Act
+      const res = await app.request("/users/user-1/riot-account", {
+        headers: TEST_BOT_SERVICE_AUTH_HEADERS,
+      });
+
+      // Assert
+      assertEquals(res.status, 200);
+      assertEquals((await res.json()).account.puuid, account.puuid);
+      assertSpyCalls(repositoryStub, 1);
+    });
+
+    test("rotation中の旧credentialの場合、既存のhandlerとrepositoryを実行する", async () => {
+      // Arrange
+      const previousCredential =
+        "previous-bot-service-token-00000000000000000000000000";
+      const rotatingDeps = createTestDependencies({
+        env: {
+          get: (key: string) => {
+            if (key === "BOT_SERVICE_TOKEN") return TEST_BOT_SERVICE_TOKEN;
+            if (key === "BOT_SERVICE_TOKEN_PREVIOUS") {
+              return previousCredential;
+            }
+            return undefined;
+          },
+        },
+      });
+      using repositoryStub = stub(
+        rotatingDeps.dbActions,
+        "getRiotAccountByDiscordId",
+        () => Promise.resolve(undefined),
+      );
+      const rotatingApp = createApp(rotatingDeps);
+
+      // Act
+      const res = await rotatingApp.request("/users/user-1/riot-account", {
+        headers: { Authorization: `Bearer ${previousCredential}` },
+      });
+
+      // Assert
+      assertEquals(res.status, 404);
+      assertSpyCalls(repositoryStub, 1);
+    });
+
+    test("現行credentialが未設定または空文字の場合、秘密値を含まない必須エラーで起動を拒否する", () => {
+      for (const credential of [undefined, ""]) {
+        // Arrange
+        const missingCredentialDeps = createTestDependencies({
+          env: {
+            get: (key: string) =>
+              key === "BOT_SERVICE_TOKEN" ? credential : undefined,
+          },
+        });
+
+        // Act / Assert
+        assertThrows(
+          () => createApp(missingCredentialDeps),
+          Error,
+          "BOT_SERVICE_TOKEN is required",
+        );
+      }
+    });
+
+    test("現行credentialが256文字を超える場合、設定エラーで起動を拒否する", () => {
+      // Arrange
+      const oversizedCredentialDeps = createTestDependencies({
+        env: {
+          get: (key: string) =>
+            key === "BOT_SERVICE_TOKEN" ? "a".repeat(257) : undefined,
+        },
+      });
+
+      // Act / Assert
+      assertThrows(
+        () => createApp(oversizedCredentialDeps),
+        Error,
+        "BOT_SERVICE_TOKEN must be at most 256 characters",
+      );
     });
   });
 });

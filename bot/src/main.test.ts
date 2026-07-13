@@ -1,13 +1,53 @@
-import { assertEquals } from "@std/assert";
+import {
+  assertEquals,
+  assertFalse,
+  assertInstanceOf,
+  assertRejects,
+} from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
 import { Collection, SlashCommandBuilder } from "discord.js";
 import { MockInteractionBuilder } from "./test_utils.ts";
 import type { Command } from "./types.ts";
 import { messageHandler, messageKeys } from "./messages.ts";
-import { handleInteractionCreate } from "./main.ts";
+import { handleInteractionCreate, startBot } from "./main.ts";
+import { botLogger } from "./logger.ts";
 
 describe("Main Bot Logic", () => {
+  describe("startBot", () => {
+    test("Bot service credentialが不正な場合、構造化エラーを記録してcode 1で終了する", async () => {
+      // Arrange
+      const credential = "too-short";
+      const exitError = new Error("Deno.exit(1)");
+      using _envStub = stub(
+        Deno.env,
+        "get",
+        (key: string) => {
+          if (key === "DISCORD_TOKEN") return "test-discord-token";
+          if (key === "API_URL") return "http://api:8000";
+          if (key === "BOT_SERVICE_TOKEN") return credential;
+          return undefined;
+        },
+      );
+      using errorStub = stub(botLogger, "error", () => {});
+      using exitStub = stub(Deno, "exit", (_code?: number): never => {
+        throw exitError;
+      });
+
+      // Act
+      await assertRejects(() => startBot(), Error, exitError.message);
+
+      // Assert
+      assertSpyCalls(errorStub, 1);
+      const [message, context, error] = errorStub.calls[0].args;
+      assertEquals(message, "bot.start.invalid_service_credential");
+      assertEquals(context, {});
+      assertInstanceOf(error, Error);
+      assertFalse(error.message.includes(credential));
+      assertSpyCall(exitStub, 0, { args: [1] });
+    });
+  });
+
   describe("handleInteractionCreate", () => {
     test("登録済みのコマンドが実行されると、対応するexecute関数が呼び出される", async () => {
       // Arrange
