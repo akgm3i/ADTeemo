@@ -93,6 +93,14 @@ deno task dev:all
 
 `db:push` は対象DBへschemaを反映し、`dev:deploy-commands` は `.env.dev` の認証情報でDiscordへslash commandを登録する状態変更操作です。ローカル開発用の対象DBを確認してから実行してください。
 
+slash commandの登録はBot起動とは分離されています。production向けに登録する場合は、期待するcommand名と差分を確認したうえで、Botと同じimageを使うone-shot serviceを明示的に実行します。
+
+```bash
+docker compose --profile commands run --rm --build command-deployer
+```
+
+commandの読込に1件でも失敗がある場合、または有効commandが0件の場合はDiscord APIを呼びません。現在値と期待値が同一の場合もPUTを省略します。通常の `docker compose --profile prod up` やBot再起動はslash command定義を変更しません。
+
 APIのみ、Botのみを起動する場合は次を使います。
 
 ```bash
@@ -155,7 +163,7 @@ docker compose --profile dev down
 
 ### Production
 
-本番profileはAPIとBotを分けて起動し、APIのhealthcheck成功後にBotを起動します。DBは `prod-db-data` volumeの `/app/data/sqlite.db` に保存されます。
+本番profileはAPIとBotを分けて起動し、APIのhealthcheck成功後にBotを起動します。DBは `prod-db-data` volumeの `/app/data/sqlite.db` に保存されます。Bot起動時にslash commandは登録しません。command定義を変更したreleaseだけ、上記のone-shot serviceを先に実行してください。
 
 起動前にDiscord tokenやRiot API keyとは別のcredentialを生成し、`BOT_SERVICE_TOKEN`へ設定します。例えば `openssl rand -hex 32` で64文字のランダム値を生成できます。値をshell history、ログ、Issue、テスト出力へ貼り付けないでください。
 

@@ -40,4 +40,4 @@ COPY --from=builder --chown=deno:deno /app /app
 
 RUN mkdir -p /app/data /app/node_modules
 
-CMD ["sh", "-c", "deno run --allow-net --allow-read --allow-env --allow-sys --allow-ffi src/deploy-commands.ts && exec deno run -A src/main.ts"]
+CMD ["deno", "run", "-A", "src/main.ts"]
