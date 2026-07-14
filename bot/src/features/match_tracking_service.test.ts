@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { EmbedBuilder } from "discord.js";
 import type { MatchWatcher } from "@adteemo/api/contract";
+import { markFailureLogged } from "../api_clients/transport.ts";
 import { createMatchTrackingService } from "./match_tracking_service.ts";
 
 function watcher(overrides: Partial<MatchWatcher> = {}): MatchWatcher {
@@ -773,5 +774,55 @@ describe("match_tracking_service.ts", () => {
 
     assertEquals(inspectionCalls, ["target-1", "target-2"]);
     assertEquals(errors.length, 1);
+  });
+
+  test("transportで記録済みの取得失敗は、worker境界で重複記録しない", async () => {
+    const events: string[] = [];
+    const service = createMatchTrackingService({
+      apiClient: {
+        getEnabledMatchWatchers: () =>
+          Promise.resolve(markFailureLogged({
+            success: false as const,
+            error: "Failed to communicate with API",
+          })),
+        getRiotAccount: () => {
+          throw new Error("getRiotAccount should not be called");
+        },
+        inspectMatchWatcherActiveGame: () => {
+          throw new Error("inspectMatchWatcherActiveGame should not be called");
+        },
+        inspectMatchWatcherResult: () => {
+          throw new Error("inspectMatchWatcherResult should not be called");
+        },
+        updateMatchWatcherState: () => {
+          throw new Error("updateMatchWatcherState should not be called");
+        },
+      },
+      notifier: {
+        sendOrEditWatcherMessage: () => Promise.resolve(null),
+      },
+      renderer: {
+        activeGame: () => Promise.resolve(new EmbedBuilder()),
+        resultPending: () => new EmbedBuilder(),
+        resultFetchTimeout: () => new EmbedBuilder(),
+        matchResult: () => Promise.resolve(new EmbedBuilder()),
+      },
+      clock: { now: () => new Date("2026-01-01T00:00:00Z") },
+      logger: {
+        warn: (event) => events.push(event),
+        error: (event) => events.push(event),
+      },
+      config: {
+        pollIntervalMs: 60_000,
+        inGameNotifyIntervalMs: 300_000,
+        resultFetchTimeoutMs: 10_000,
+        riotLongWindowLimit: 100,
+        riotLongWindowMs: 120_000,
+      },
+    });
+
+    await service.processMatchWatchers();
+
+    assertEquals(events, []);
   });
 });
