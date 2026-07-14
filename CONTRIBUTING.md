@@ -167,6 +167,8 @@ docker compose --profile prod down
 
 production APIのport `8000` はhostの `127.0.0.1` だけへbindされ、外部networkへ直接公開されません。BotはDocker network内の `http://api:8000` を利用します。RSO callbackを外部から受ける場合は、同一hostのTLS reverse proxyから `/auth/rso/callback` だけを `http://127.0.0.1:8000` へ転送してください。Bot service routeをreverse proxyの公開対象へ追加しないでください。
 
+Riot APIのrate limit queueとbucket stateはBackend API process内だけで共有されます。productionではBackend APIを1 processで稼働させてください。複数replicaや複数workerへ拡張する場合は、先に分散queueと共有rate-limit stateを設計する必要があります。
+
 credentialは次の順序でrotationします。
 
 1. 新しいcredentialを生成する。
