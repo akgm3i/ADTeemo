@@ -1,9 +1,17 @@
 import * as path from "@std/path";
 import { z } from "zod";
+import { createLogger, type StructuredLogger } from "../../lib/logger/mod.ts";
 import systemMessages from "../ja_JP/system.json" with {
   type: "json",
 };
 import { get as getMessageValue } from "./object-path.ts";
+
+let messagesLogger: StructuredLogger | undefined;
+
+function getMessagesLogger(): StructuredLogger {
+  messagesLogger ??= createLogger("messages");
+  return messagesLogger;
+}
 
 // Zod schema for a single message entry, which can be a string or a nested object.
 type MessageValue = string | { [key: string]: MessageValue };
@@ -56,8 +64,12 @@ function loadMessages(
       // Return empty object if file not found, so fallback can be used.
       return {};
     }
-    console.error(
-      `Failed to load or validate message file: ${filePath}`,
+    getMessagesLogger().error(
+      "messages.load_failed",
+      {
+        errorCategory: "validation",
+        filePath,
+      },
       error,
     );
     return {};
@@ -102,7 +114,7 @@ export function initializeMessages(options: InitializeMessagesOptions) {
       getMessage(defaultMessages, key);
 
     if (message === undefined) {
-      console.warn(`Message key not found: ${key}`);
+      getMessagesLogger().warn("messages.key_not_found", { messageKey: key });
       return key;
     }
 
