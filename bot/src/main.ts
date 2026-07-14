@@ -7,7 +7,10 @@ import {
   MessageFlags,
 } from "discord.js";
 import { ensureRoles } from "./features/role-management.ts";
-import { loadCommands } from "./common/command_loader.ts";
+import {
+  formatCommandLoadErrors,
+  loadCommands,
+} from "./common/command_loader.ts";
 import {
   apiClient,
   configureApiClient,
@@ -17,6 +20,7 @@ import {
 import { matchTracker } from "./features/match_tracking.ts";
 import { messageHandler, messageKeys } from "./messages.ts";
 import { botLogger } from "./logger.ts";
+import type { Command } from "./types.ts";
 
 // Create a new client instance
 const client = new Client({
@@ -246,49 +250,152 @@ client.on(Events.GuildCreate, async (guild) => {
   }
 });
 
+export class BotStartupError extends Error {
+  constructor(
+    readonly code:
+      | "MISSING_CONFIGURATION"
+      | "INVALID_SERVICE_CREDENTIAL"
+      | "COMMAND_LOAD_FAILED",
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "BotStartupError";
+  }
+}
+
+type EnvReader = { get(name: string): string | undefined };
+
+interface StartBotDependencies {
+  env: EnvReader;
+  client: Client;
+  loadCommands: typeof loadCommands;
+  createApiRpcClients: typeof createApiRpcClients;
+  createApiClient: typeof createApiClient;
+  configureApiClient: typeof configureApiClient;
+}
+
+type StartupLogger = {
+  error(
+    event: string,
+    context?: Record<string, unknown>,
+    error?: unknown,
+  ): void;
+};
+
+interface BotEntrypointDependencies {
+  startBot(): Promise<void>;
+  logger: StartupLogger;
+  correlationId(): string;
+  setExitCode(code: number): void;
+}
+
+const defaultStartBotDependencies: StartBotDependencies = {
+  env: Deno.env,
+  client,
+  loadCommands,
+  createApiRpcClients,
+  createApiClient,
+  configureApiClient,
+};
+
 // Main function to start the bot
-export async function startBot() {
-  const discordToken = Deno.env.get("DISCORD_TOKEN");
+export async function startBot(
+  overrides: Partial<StartBotDependencies> = {},
+) {
+  const dependencies = { ...defaultStartBotDependencies, ...overrides };
+  const discordToken = dependencies.env.get("DISCORD_TOKEN");
   if (!discordToken) {
-    botLogger.error("bot.start.missing_token");
-    Deno.exit(1);
+    throw new BotStartupError(
+      "MISSING_CONFIGURATION",
+      "DISCORD_TOKEN is required",
+    );
   }
-  const apiUrl = Deno.env.get("API_URL");
+  const apiUrl = dependencies.env.get("API_URL");
   if (!apiUrl) {
-    botLogger.error("bot.start.missing_api_url");
-    Deno.exit(1);
+    throw new BotStartupError(
+      "MISSING_CONFIGURATION",
+      "API_URL is required",
+    );
   }
-  const botServiceCredential = Deno.env.get("BOT_SERVICE_TOKEN");
+  const botServiceCredential = dependencies.env.get("BOT_SERVICE_TOKEN");
   if (!botServiceCredential) {
-    botLogger.error("bot.start.missing_service_credential");
-    Deno.exit(1);
+    throw new BotStartupError(
+      "MISSING_CONFIGURATION",
+      "BOT_SERVICE_TOKEN is required",
+    );
   }
   let rpcClients: ReturnType<typeof createApiRpcClients>;
   try {
-    rpcClients = createApiRpcClients({
+    rpcClients = dependencies.createApiRpcClients({
       apiUrl,
       credential: botServiceCredential,
     });
   } catch (error) {
-    botLogger.error("bot.start.invalid_service_credential", {}, error);
-    Deno.exit(1);
+    throw new BotStartupError(
+      "INVALID_SERVICE_CREDENTIAL",
+      "BOT_SERVICE_TOKEN is invalid",
+      { cause: error },
+    );
   }
+
+  const loadResult = await dependencies.loadCommands();
+  if (!loadResult.ok) {
+    throw new BotStartupError(
+      "COMMAND_LOAD_FAILED",
+      `Failed to load slash commands: ${
+        formatCommandLoadErrors(loadResult.errors)
+      }`,
+    );
+  }
+  const nextCommands = new Collection<string, Command>();
+  for (const command of loadResult.commands) {
+    nextCommands.set(command.data.name, command);
+  }
+
   const { publicRpcClient, botServiceRpcClient } = rpcClients;
-  configureApiClient(createApiClient({
+  dependencies.configureApiClient(dependencies.createApiClient({
     rpcClient: botServiceRpcClient,
     publicRpcClient,
   }));
+  dependencies.client.commands = nextCommands;
+  await dependencies.client.login(discordToken);
+}
 
-  const commands = await loadCommands();
-  for (const command of commands) {
-    client.commands.set(command.data.name, command);
+const defaultEntrypointDependencies: BotEntrypointDependencies = {
+  startBot: () => startBot(),
+  logger: botLogger,
+  correlationId: () => crypto.randomUUID(),
+  setExitCode: (code) => {
+    Deno.exitCode = code;
+  },
+};
+
+export async function runBotEntrypoint(
+  dependencies: BotEntrypointDependencies = defaultEntrypointDependencies,
+): Promise<void> {
+  const correlationId = dependencies.correlationId();
+  try {
+    await dependencies.startBot();
+  } catch (error) {
+    dependencies.logger.error(
+      "bot.start.failed",
+      {
+        correlationId,
+        errorCategory: error instanceof BotStartupError &&
+            error.code !== "COMMAND_LOAD_FAILED"
+          ? "validation"
+          : "unexpected",
+      },
+      error,
+    );
+    dependencies.setExitCode(1);
   }
-  client.login(discordToken);
 }
 
 // Run the bot only when this file is the main module
 if (import.meta.main) {
-  startBot();
+  await runBotEntrypoint();
 }
 
 export { client };
