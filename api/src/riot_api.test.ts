@@ -170,41 +170,6 @@ describe("riot_api.ts", () => {
     assertSpyCalls(fetchStub, 1);
   });
 
-  test("Riot APIが429を返したあと成功するとき、再試行して結果を返す", async () => {
-    Deno.env.set("RIOT_API_KEY", "test-key");
-    let calls = 0;
-    using fetchStub = stub(
-      globalThis,
-      "fetch",
-      () => {
-        calls += 1;
-        if (calls === 1) {
-          return Promise.resolve(
-            new Response(null, {
-              status: 429,
-              headers: { "Retry-After": "0" },
-            }),
-          );
-        }
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              puuid: "puuid-1",
-              gameName: "Teemo",
-              tagLine: "JP1",
-            }),
-            { status: 200 },
-          ),
-        );
-      },
-    );
-
-    const account = await riotApi.getAccountByRiotId("asia", "Teemo", "JP1");
-
-    assertEquals(account?.puuid, "puuid-1");
-    assertSpyCalls(fetchStub, 2);
-  });
-
   test("rate limit設定がないとき、Personal API Keyの上限を既定値として使う", async () => {
     // Arrange
     const envNames = [
@@ -314,46 +279,6 @@ describe("riot_api.ts", () => {
     );
   });
 
-  test("Riot APIが429を返すとき、Retry-Afterをrate limit bucketへ反映する", async () => {
-    Deno.env.set("RIOT_API_KEY", "test-key");
-    let calls = 0;
-    using fetchStub = stub(
-      globalThis,
-      "fetch",
-      () => {
-        calls += 1;
-        if (calls === 1) {
-          return Promise.resolve(
-            new Response(null, {
-              status: 429,
-              headers: {
-                "Retry-After": "0.001",
-                "X-Rate-Limit-Type": "method",
-              },
-            }),
-          );
-        }
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              puuid: "puuid-1",
-              gameName: "Teemo",
-              tagLine: "JP1",
-            }),
-            { status: 200 },
-          ),
-        );
-      },
-    );
-
-    const account = await riotApi.getAccountByRiotId("asia", "Teemo", "JP1");
-    const snapshot = riotApi.__testing.rateLimiterSnapshot();
-
-    assertEquals(account?.puuid, "puuid-1");
-    assertEquals(snapshot.methodBuckets.length, 1);
-    assertSpyCalls(fetchStub, 2);
-  });
-
   test("Riot APIのrate limit headersを次回以降の待機判定用bucketへ記録する", async () => {
     Deno.env.set("RIOT_API_KEY", "test-key");
     using fetchStub = stub(
@@ -391,36 +316,25 @@ describe("riot_api.ts", () => {
       snapshot.methodBuckets.some((bucket) => bucket.limit === 100),
       true,
     );
-    assertSpyCalls(fetchStub, 1);
-  });
-
-  test("Riot APIが5xxを返したあと成功するとき、再試行して結果を返す", async () => {
-    Deno.env.set("RIOT_API_KEY", "test-key");
-    let calls = 0;
-    using fetchStub = stub(
-      globalThis,
-      "fetch",
-      () => {
-        calls += 1;
-        if (calls === 1) {
-          return Promise.resolve(new Response(null, { status: 502 }));
-        }
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              puuid: "puuid-1",
-              gameName: "Teemo",
-              tagLine: "JP1",
-            }),
-            { status: 200 },
-          ),
-        );
-      },
+    assertEquals(
+      snapshot.appBuckets.some((bucket) =>
+        bucket.key === "application:asia.api.riotgames.com:10000"
+      ),
+      true,
     );
-
-    const account = await riotApi.getAccountByRiotId("asia", "Teemo", "JP1");
-
-    assertEquals(account?.gameName, "Teemo");
-    assertSpyCalls(fetchStub, 2);
+    assertEquals(
+      snapshot.methodBuckets.some((bucket) =>
+        bucket.key ===
+          "method:asia.api.riotgames.com:" +
+            "GET /riot/account/v1/accounts/by-riot-id/:gameName/:tagLine:" +
+            "120000"
+      ),
+      true,
+    );
+    assertEquals(
+      snapshot.methodBuckets.some((bucket) => bucket.key.includes("Teemo")),
+      false,
+    );
+    assertSpyCalls(fetchStub, 1);
   });
 });

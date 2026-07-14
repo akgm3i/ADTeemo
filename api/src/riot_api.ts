@@ -76,28 +76,11 @@ const leagueEntrySchema = z.object({
   losses: z.number().int(),
 });
 
-function riotApiKey() {
-  const apiKey = Deno.env.get("RIOT_API_KEY");
-  if (!apiKey) {
-    throw new Error("RIOT_API_KEY is not set");
-  }
-  return apiKey;
-}
-
-function retryAfterMs(res: Response, fallbackMs: number) {
-  const retryAfter = res.headers.get("Retry-After");
-  if (!retryAfter) return fallbackMs;
-  const seconds = Number(retryAfter);
-  return Number.isFinite(seconds) ? seconds * 1000 : fallbackMs;
-}
-
-async function sleep(ms: number) {
-  if (ms <= 0) return;
-  await new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 type RateBucket = {
   key: string;
+  scope: "application" | "method";
+  hostname: string;
+  method?: string;
   limit: number;
   windowMs: number;
   count: number;
@@ -109,84 +92,104 @@ const DEFAULT_SHORT_LIMIT = 20;
 const DEFAULT_SHORT_WINDOW_MS = 1_000;
 const DEFAULT_LONG_LIMIT = 100;
 const DEFAULT_LONG_WINDOW_MS = 120_000;
+const ATTEMPT_TIMEOUT_MS = 5_000;
+const OVERALL_DEADLINE_MS = 30_000;
+const RETRY_BACKOFF_STEP_MS = 500;
+const NORMAL_MAX_ATTEMPTS = 3;
+const MATCH_MAX_ATTEMPTS = 5;
 
-const appBuckets = new Map<string, RateBucket>();
-const methodBuckets = new Map<string, RateBucket>();
-let riotQueue = Promise.resolve();
+export type RiotApiRequestErrorReason =
+  | "deadline"
+  | "http"
+  | "network"
+  | "parse"
+  | "schema"
+  | "timeout";
 
-function numberEnv(name: string, fallback: number) {
-  const value = Number(Deno.env.get(name));
-  return Number.isFinite(value) && value > 0 ? value : fallback;
-}
+export class RiotApiRequestError extends Error {
+  readonly retryable: boolean;
 
-function nowMs() {
-  return Date.now();
-}
-
-function defaultAppBuckets(now = nowMs()) {
-  return [
-    {
-      key: "app:short",
-      limit: numberEnv(
-        "RIOT_RATE_LIMIT_SHORT_WINDOW_LIMIT",
-        DEFAULT_SHORT_LIMIT,
-      ),
-      windowMs: numberEnv(
-        "RIOT_RATE_LIMIT_SHORT_WINDOW_MS",
-        DEFAULT_SHORT_WINDOW_MS,
-      ),
-      count: 0,
-      resetAt: now + numberEnv(
-        "RIOT_RATE_LIMIT_SHORT_WINDOW_MS",
-        DEFAULT_SHORT_WINDOW_MS,
-      ),
-      cooldownUntil: 0,
-    },
-    {
-      key: "app:long",
-      limit: numberEnv("RIOT_RATE_LIMIT_LONG_WINDOW_LIMIT", DEFAULT_LONG_LIMIT),
-      windowMs: numberEnv(
-        "RIOT_RATE_LIMIT_LONG_WINDOW_MS",
-        DEFAULT_LONG_WINDOW_MS,
-      ),
-      count: 0,
-      resetAt: now + numberEnv(
-        "RIOT_RATE_LIMIT_LONG_WINDOW_MS",
-        DEFAULT_LONG_WINDOW_MS,
-      ),
-      cooldownUntil: 0,
-    },
-  ];
-}
-
-function ensureAppBuckets(now = nowMs()) {
-  if (appBuckets.size === 0) {
-    for (const bucket of defaultAppBuckets(now)) {
-      appBuckets.set(bucket.key, bucket);
-    }
+  constructor(
+    readonly reason: RiotApiRequestErrorReason,
+    readonly methodKey: string,
+    readonly status?: number,
+  ) {
+    const guidance = status === 403
+      ? "; authorization rejected; verify RIOT_API_KEY and endpoint access"
+      : "";
+    const message = reason === "http"
+      ? `Riot API request failed: ${status} (${methodKey})${guidance}`
+      : reason === "timeout"
+      ? `Riot API request timed out (${methodKey})`
+      : reason === "deadline"
+      ? `Riot API request deadline exceeded (${methodKey})`
+      : reason === "network"
+      ? `Riot API network request failed (${methodKey})`
+      : reason === "parse"
+      ? `Riot API response parsing failed (${methodKey})`
+      : `Riot API response validation failed (${methodKey})`;
+    super(message);
+    this.name = "RiotApiRequestError";
+    this.retryable = reason === "network" || reason === "timeout" ||
+      (reason === "http" &&
+        (status === 429 || (status !== undefined && status >= 500)));
   }
-  return [...appBuckets.values()];
 }
 
-function normalizeMethodKey(url: URL) {
-  let path = url.pathname;
-  path = path.replace(
-    /\/lol\/spectator\/v5\/active-games\/by-summoner\/[^/]+$/,
-    "/lol/spectator/v5/active-games/by-summoner/:puuid",
-  );
-  path = path.replace(
-    /\/lol\/match\/v5\/matches\/[^/]+$/,
-    "/lol/match/v5/matches/:matchId",
-  );
-  path = path.replace(
-    /\/lol\/league\/v4\/entries\/by-puuid\/[^/]+$/,
-    "/lol/league/v4/entries/by-puuid/:puuid",
-  );
-  path = path.replace(
-    /\/riot\/account\/v1\/accounts\/by-riot-id\/[^/]+\/[^/]+$/,
-    "/riot/account/v1/accounts/by-riot-id/:gameName/:tagLine",
-  );
-  return `${url.hostname}${path}`;
+export type RiotApiClock = {
+  now(): number;
+};
+
+export type RiotApiSleeper = (
+  ms: number,
+  signal?: AbortSignal,
+) => Promise<void>;
+
+export type RiotApiEnv = {
+  get(key: string): string | undefined;
+};
+
+export type RiotApiLogger = {
+  warn(event: string, context?: Record<string, unknown>): void;
+};
+
+export type CreateRiotApiDependencies = {
+  fetch: typeof fetch;
+  clock: RiotApiClock;
+  sleeper: RiotApiSleeper;
+  env: RiotApiEnv;
+  logger: RiotApiLogger;
+};
+
+export function defaultSleeper(
+  ms: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(complete, ms);
+
+    function complete() {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }
+
+    function abort() {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+      reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+    }
+
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
+function methodKey(hostname: string, method: string) {
+  return `${hostname}${method.slice(method.indexOf(" ") + 1)}`;
 }
 
 function parseRateLimitHeader(value: string | null) {
@@ -207,14 +210,14 @@ function parseRateCountHeader(value: string | null) {
   });
 }
 
-function resetExpiredBucket(bucket: RateBucket, now = nowMs()) {
+function resetExpiredBucket(bucket: RateBucket, now: number) {
   if (now >= bucket.resetAt) {
     bucket.count = 0;
     bucket.resetAt = now + bucket.windowMs;
   }
 }
 
-function waitMsForBucket(bucket: RateBucket, now = nowMs()) {
+function waitMsForBucket(bucket: RateBucket, now: number) {
   resetExpiredBucket(bucket, now);
   return Math.max(
     bucket.cooldownUntil - now,
@@ -223,51 +226,27 @@ function waitMsForBucket(bucket: RateBucket, now = nowMs()) {
   );
 }
 
-async function waitForRiotRateLimit(methodKey: string) {
-  while (true) {
-    const now = nowMs();
-    const buckets = [
-      ...ensureAppBuckets(now),
-      ...[...methodBuckets.values()].filter((bucket) =>
-        bucket.key.startsWith(`method:${methodKey}:`)
-      ),
-    ];
-    const waitMs = Math.max(
-      ...buckets.map((bucket) => waitMsForBucket(bucket, now)),
-      0,
-    );
-    if (waitMs <= 0) return;
-    await sleep(waitMs);
-  }
-}
-
-function incrementBuckets(methodKey: string) {
-  const now = nowMs();
-  for (const bucket of ensureAppBuckets(now)) {
-    resetExpiredBucket(bucket, now);
-    bucket.count += 1;
-  }
-  for (const bucket of methodBuckets.values()) {
-    if (!bucket.key.startsWith(`method:${methodKey}:`)) continue;
-    resetExpiredBucket(bucket, now);
-    bucket.count += 1;
-  }
-}
-
 function upsertHeaderBuckets(
   target: Map<string, RateBucket>,
-  prefix: string,
+  scope: "application" | "method",
+  hostname: string,
+  method: string | undefined,
   limits: { limit: number; windowMs: number }[],
   counts: { count: number; windowMs: number }[],
+  now: number,
 ) {
-  const now = nowMs();
   for (const limit of limits) {
-    const key = `${prefix}:${limit.windowMs}`;
-    const count = counts.find((item) => item.windowMs === limit.windowMs)
-      ?.count ?? 0;
+    const key = scope === "application"
+      ? `${scope}:${hostname}:${limit.windowMs}`
+      : `${scope}:${hostname}:${method}:${limit.windowMs}`;
     const existing = target.get(key);
+    const count = counts.find((item) => item.windowMs === limit.windowMs)
+      ?.count ?? existing?.count ?? 1;
     target.set(key, {
       key,
+      scope,
+      hostname,
+      method,
       limit: limit.limit,
       windowMs: limit.windowMs,
       count,
@@ -279,192 +258,573 @@ function upsertHeaderBuckets(
   }
 }
 
-function applyRiotRateHeaders(res: Response, methodKey: string) {
-  const appLimits = parseRateLimitHeader(res.headers.get("X-App-Rate-Limit"));
-  const appCounts = parseRateCountHeader(
-    res.headers.get("X-App-Rate-Limit-Count"),
-  );
-  const methodLimits = parseRateLimitHeader(
-    res.headers.get("X-Method-Rate-Limit"),
-  );
-  const methodCounts = parseRateCountHeader(
-    res.headers.get("X-Method-Rate-Limit-Count"),
-  );
+type AttemptResult<T> =
+  | { kind: "http"; status: number; retryAfterMs: number }
+  | { kind: "network" }
+  | { kind: "not_found" }
+  | { kind: "parse" }
+  | { kind: "schema" }
+  | { kind: "success"; data: T }
+  | { kind: "timeout" };
 
-  if (appLimits.length > 0) {
-    upsertHeaderBuckets(appBuckets, "app", appLimits, appCounts);
+export function createRiotApi(dependencies: CreateRiotApiDependencies) {
+  const appBuckets = new Map<string, RateBucket>();
+  const methodBuckets = new Map<string, RateBucket>();
+  let riotQueue = Promise.resolve();
+
+  function numberEnv(name: string, fallback: number) {
+    const value = Number(dependencies.env.get(name));
+    return Number.isFinite(value) && value > 0 ? value : fallback;
   }
-  if (methodLimits.length > 0) {
-    upsertHeaderBuckets(
-      methodBuckets,
-      `method:${methodKey}`,
-      methodLimits,
-      methodCounts,
+
+  function riotApiKey() {
+    const apiKey = dependencies.env.get("RIOT_API_KEY");
+    if (!apiKey) throw new Error("RIOT_API_KEY is not set");
+    return apiKey;
+  }
+
+  function retryAfterMs(response: Response, fallbackMs: number) {
+    const retryAfter = response.headers.get("Retry-After");
+    if (!retryAfter) return fallbackMs;
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1_000;
+    const date = Date.parse(retryAfter);
+    return Number.isFinite(date)
+      ? Math.max(date - dependencies.clock.now(), 0)
+      : fallbackMs;
+  }
+
+  function defaultAppBuckets(hostname: string, now: number): RateBucket[] {
+    const shortWindowMs = numberEnv(
+      "RIOT_RATE_LIMIT_SHORT_WINDOW_MS",
+      DEFAULT_SHORT_WINDOW_MS,
     );
+    const longWindowMs = numberEnv(
+      "RIOT_RATE_LIMIT_LONG_WINDOW_MS",
+      DEFAULT_LONG_WINDOW_MS,
+    );
+    return [
+      {
+        key: `application:${hostname}:${shortWindowMs}`,
+        scope: "application",
+        hostname,
+        limit: numberEnv(
+          "RIOT_RATE_LIMIT_SHORT_WINDOW_LIMIT",
+          DEFAULT_SHORT_LIMIT,
+        ),
+        windowMs: shortWindowMs,
+        count: 0,
+        resetAt: now + shortWindowMs,
+        cooldownUntil: 0,
+      },
+      {
+        key: `application:${hostname}:${longWindowMs}`,
+        scope: "application",
+        hostname,
+        limit: numberEnv(
+          "RIOT_RATE_LIMIT_LONG_WINDOW_LIMIT",
+          DEFAULT_LONG_LIMIT,
+        ),
+        windowMs: longWindowMs,
+        count: 0,
+        resetAt: now + longWindowMs,
+        cooldownUntil: 0,
+      },
+    ];
   }
-}
 
-function applyRetryAfterCooldown(
-  res: Response,
-  methodKey: string,
-  fallbackMs: number,
-) {
-  const cooldownUntil = nowMs() + retryAfterMs(res, fallbackMs);
-  const rateLimitType = res.headers.get("X-Rate-Limit-Type");
-  let buckets = rateLimitType === "method"
-    ? [...methodBuckets.values()].filter((bucket) =>
-      bucket.key.startsWith(`method:${methodKey}:`)
-    )
-    : ensureAppBuckets();
-  if (rateLimitType === "method" && buckets.length === 0) {
-    const key = `method:${methodKey}:retry-after`;
-    const bucket = {
-      key,
-      limit: 1,
-      windowMs: retryAfterMs(res, fallbackMs),
-      count: 1,
-      resetAt: cooldownUntil,
-      cooldownUntil,
-    };
-    methodBuckets.set(key, bucket);
-    buckets = [bucket];
+  function ensureAppBuckets(hostname: string, now = dependencies.clock.now()) {
+    let buckets = [...appBuckets.values()].filter((bucket) =>
+      bucket.hostname === hostname
+    );
+    if (buckets.length === 0) {
+      for (const bucket of defaultAppBuckets(hostname, now)) {
+        appBuckets.set(bucket.key, bucket);
+      }
+      buckets = [...appBuckets.values()].filter((bucket) =>
+        bucket.hostname === hostname
+      );
+    }
+    return buckets;
   }
-  for (const bucket of buckets) {
-    bucket.cooldownUntil = Math.max(bucket.cooldownUntil, cooldownUntil);
+
+  function endpointBuckets(hostname: string, method: string, now: number) {
+    return [
+      ...ensureAppBuckets(hostname, now),
+      ...[...methodBuckets.values()].filter((bucket) =>
+        bucket.hostname === hostname && bucket.method === method
+      ),
+    ];
   }
-  apiLogger.warn("riot_api.rate_limited", {
-    rateLimitType: rateLimitType ?? "application",
-    methodKey,
-    retryAfterMs: Math.max(cooldownUntil - nowMs(), 0),
-  });
-}
 
-function riotRequestError(status: number, methodKey: string) {
-  const guidance = status === 403
-    ? "; authorization rejected; verify RIOT_API_KEY and endpoint access"
-    : "";
-  return new Error(
-    `Riot API request failed: ${status} (${methodKey})${guidance}`,
-  );
-}
+  function deadlineError(methodKey: string) {
+    return new RiotApiRequestError("deadline", methodKey);
+  }
 
-async function scheduleRiotRequest<T>(task: () => Promise<T>) {
-  const run = riotQueue.then(task, task);
-  riotQueue = run.then(() => undefined, () => undefined);
-  return await run;
-}
+  function assertBeforeDeadline(deadline: number, methodKey: string) {
+    if (dependencies.clock.now() >= deadline) throw deadlineError(methodKey);
+  }
 
-async function fetchRiotJson(
-  url: URL,
-  options: { retries?: number; notFoundAsNull?: boolean } = {},
-) {
-  return await scheduleRiotRequest(async () => {
-    const retries = options.retries ?? 2;
-    const methodKey = normalizeMethodKey(url);
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      await waitForRiotRateLimit(methodKey);
-      incrementBuckets(methodKey);
+  async function sleepWithinDeadline(
+    requestedMs: number,
+    deadline: number,
+    methodKey: string,
+  ) {
+    if (requestedMs <= 0) return;
+    const remainingMs = deadline - dependencies.clock.now();
+    if (remainingMs <= 0) throw deadlineError(methodKey);
+    const sleepMs = Math.min(requestedMs, remainingMs);
+    await dependencies.sleeper(sleepMs);
+    if (requestedMs > sleepMs || dependencies.clock.now() >= deadline) {
+      throw deadlineError(methodKey);
+    }
+  }
 
-      const res = await fetch(url, {
-        headers: {
-          "X-Riot-Token": riotApiKey(),
-        },
+  async function waitForRiotRateLimit(
+    hostname: string,
+    method: string,
+    deadline: number,
+    methodKey: string,
+  ) {
+    while (true) {
+      assertBeforeDeadline(deadline, methodKey);
+      const now = dependencies.clock.now();
+      const waitMs = Math.max(
+        ...endpointBuckets(hostname, method, now).map((bucket) =>
+          waitMsForBucket(bucket, now)
+        ),
+        0,
+      );
+      if (waitMs <= 0) return;
+      await sleepWithinDeadline(waitMs, deadline, methodKey);
+    }
+  }
+
+  function incrementBuckets(hostname: string, method: string) {
+    const now = dependencies.clock.now();
+    for (const bucket of endpointBuckets(hostname, method, now)) {
+      resetExpiredBucket(bucket, now);
+      bucket.count += 1;
+    }
+  }
+
+  function replaceHeaderBucketWindows(
+    target: Map<string, RateBucket>,
+    hostname: string,
+    method: string | undefined,
+    windows: Set<number>,
+  ) {
+    for (const [key, bucket] of target) {
+      if (
+        bucket.hostname === hostname && bucket.method === method &&
+        !windows.has(bucket.windowMs)
+      ) target.delete(key);
+    }
+  }
+
+  function applyRiotRateHeaders(
+    response: Response,
+    hostname: string,
+    method: string,
+  ) {
+    const appLimits = parseRateLimitHeader(
+      response.headers.get("X-App-Rate-Limit"),
+    );
+    const appCounts = parseRateCountHeader(
+      response.headers.get("X-App-Rate-Limit-Count"),
+    );
+    const methodLimits = parseRateLimitHeader(
+      response.headers.get("X-Method-Rate-Limit"),
+    );
+    const methodCounts = parseRateCountHeader(
+      response.headers.get("X-Method-Rate-Limit-Count"),
+    );
+    const now = dependencies.clock.now();
+
+    if (appLimits.length > 0) {
+      replaceHeaderBucketWindows(
+        appBuckets,
+        hostname,
+        undefined,
+        new Set(appLimits.map(({ windowMs }) => windowMs)),
+      );
+      upsertHeaderBuckets(
+        appBuckets,
+        "application",
+        hostname,
+        undefined,
+        appLimits,
+        appCounts,
+        now,
+      );
+    }
+    if (methodLimits.length > 0) {
+      replaceHeaderBucketWindows(
+        methodBuckets,
+        hostname,
+        method,
+        new Set(methodLimits.map(({ windowMs }) => windowMs)),
+      );
+      upsertHeaderBuckets(
+        methodBuckets,
+        "method",
+        hostname,
+        method,
+        methodLimits,
+        methodCounts,
+        now,
+      );
+    }
+  }
+
+  function applyRetryAfterCooldown(
+    response: Response,
+    hostname: string,
+    method: string,
+    methodKey: string,
+    fallbackMs: number,
+  ) {
+    const now = dependencies.clock.now();
+    const cooldownMs = retryAfterMs(response, fallbackMs);
+    const cooldownUntil = now + cooldownMs;
+    const rateLimitType = response.headers.get("X-Rate-Limit-Type");
+    let buckets = rateLimitType === "method"
+      ? [...methodBuckets.values()].filter((bucket) =>
+        bucket.hostname === hostname && bucket.method === method
+      )
+      : ensureAppBuckets(hostname, now);
+    if (rateLimitType === "method" && buckets.length === 0) {
+      const windowMs = Math.max(cooldownMs, 1);
+      const key = `method:${hostname}:${method}:${windowMs}`;
+      const bucket: RateBucket = {
+        key,
+        scope: "method",
+        hostname,
+        method,
+        limit: 1,
+        windowMs,
+        count: 1,
+        resetAt: cooldownUntil,
+        cooldownUntil,
+      };
+      methodBuckets.set(key, bucket);
+      buckets = [bucket];
+    }
+    for (const bucket of buckets) {
+      bucket.cooldownUntil = Math.max(bucket.cooldownUntil, cooldownUntil);
+    }
+    try {
+      dependencies.logger.warn("riot_api.rate_limited", {
+        rateLimitType: rateLimitType ?? "application",
+        methodKey,
+        retryAfterMs: cooldownMs,
       });
-      applyRiotRateHeaders(res, methodKey);
+    } catch {
+      // Logging must not prevent the queue tail from being released.
+    }
+  }
 
-      if (res.status === 404 && options.notFoundAsNull) {
-        await res.body?.cancel();
-        return null;
-      }
+  function cancelBody(response: Response) {
+    try {
+      response.body?.cancel().catch(() => undefined);
+    } catch {
+      // A failed body cancellation does not change the request result.
+    }
+  }
 
-      if (res.ok) {
-        return await res.json();
-      }
-
-      if ((res.status === 429 || res.status >= 500) && attempt < retries) {
-        await res.body?.cancel();
-        if (res.status === 429) {
-          applyRetryAfterCooldown(res, methodKey, 500 * (attempt + 1));
-        }
-        await sleep(retryAfterMs(res, 500 * (attempt + 1)));
-        continue;
-      }
-
-      await res.body?.cancel();
-      throw riotRequestError(res.status, methodKey);
+  async function performAttempt<T>(
+    url: URL,
+    schema: z.ZodType<T>,
+    apiKey: string,
+    requestController: AbortController,
+    fallbackCooldownMs: number,
+    method: string,
+    methodKey: string,
+  ): Promise<AttemptResult<T>> {
+    let response: Response;
+    try {
+      response = await dependencies.fetch(url, {
+        headers: { "X-Riot-Token": apiKey },
+        signal: requestController.signal,
+      });
+    } catch {
+      return requestController.signal.aborted
+        ? { kind: "timeout" }
+        : { kind: "network" };
+    }
+    if (requestController.signal.aborted) {
+      cancelBody(response);
+      return { kind: "timeout" };
     }
 
-    throw new Error("Failed to fetch Riot API");
-  });
-}
+    applyRiotRateHeaders(response, url.hostname, method);
+    if (response.status === 429) {
+      applyRetryAfterCooldown(
+        response,
+        url.hostname,
+        method,
+        methodKey,
+        fallbackCooldownMs,
+      );
+    }
+    if (response.status === 404) {
+      cancelBody(response);
+      return { kind: "not_found" };
+    }
+    if (!response.ok) {
+      const status = response.status;
+      const retryDelayMs = retryAfterMs(response, fallbackCooldownMs);
+      cancelBody(response);
+      return { kind: "http", status, retryAfterMs: retryDelayMs };
+    }
 
-async function getAccountByRiotId(
-  region: RiotRegion,
-  gameName: string,
-  tagLine: string,
-) {
-  const url = new URL(
-    `https://${region}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${
-      encodeURIComponent(gameName)
-    }/${encodeURIComponent(tagLine)}`,
-  );
+    let text: string;
+    try {
+      text = await response.text();
+    } catch {
+      return { kind: "network" };
+    }
+    let raw: unknown;
+    try {
+      raw = JSON.parse(text);
+    } catch {
+      return { kind: "parse" };
+    }
+    const parsed = schema.safeParse(raw);
+    if (!parsed.success) return { kind: "schema" };
+    return { kind: "success", data: parsed.data };
+  }
 
-  const data = await fetchRiotJson(url, { notFoundAsNull: true });
-  if (!data) return null;
-  return riotAccountSchema.parse(data);
-}
+  async function attempt<T>(
+    url: URL,
+    schema: z.ZodType<T>,
+    apiKey: string,
+    deadline: number,
+    fallbackCooldownMs: number,
+    method: string,
+    methodKeyValue: string,
+  ): Promise<AttemptResult<T>> {
+    assertBeforeDeadline(deadline, methodKeyValue);
+    const attemptDeadline = Math.min(
+      deadline,
+      dependencies.clock.now() + ATTEMPT_TIMEOUT_MS,
+    );
+    const requestController = new AbortController();
+    const operation = performAttempt(
+      url,
+      schema,
+      apiKey,
+      requestController,
+      fallbackCooldownMs,
+      method,
+      methodKeyValue,
+    );
+    let settled = false;
+    void operation.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    // Immediate fake responses may require several promise jobs to read JSON.
+    // Let them settle before arming an injected sleeper that advances fake time.
+    for (let index = 0; index < 10 && !settled; index++) {
+      await Promise.resolve();
+    }
+    if (settled) return await operation;
 
-async function getActiveGameByPuuid(platform: RiotPlatform, puuid: string) {
-  const url = new URL(
-    `https://${platform}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/${
-      encodeURIComponent(puuid)
-    }`,
-  );
-  const data = await fetchRiotJson(url, { notFoundAsNull: true });
-  if (!data) return null;
-  return activeGameSchema.parse(data);
-}
+    const sleepController = new AbortController();
+    const timeoutPromise = dependencies.sleeper(
+      Math.max(attemptDeadline - dependencies.clock.now(), 0),
+      sleepController.signal,
+    ).then(
+      () => ({ kind: "timeout" } as const),
+      () => ({ kind: "timeout" } as const),
+    );
+    try {
+      const result = await Promise.race([operation, timeoutPromise]);
+      if (result.kind === "timeout") requestController.abort();
+      return result;
+    } finally {
+      sleepController.abort();
+    }
+  }
 
-async function getMatchById(region: RiotRegion, matchId: string) {
-  const url = new URL(
-    `https://${region}.api.riotgames.com/lol/match/v5/matches/${
-      encodeURIComponent(matchId)
-    }`,
-  );
-  const data = await fetchRiotJson(url, { notFoundAsNull: true, retries: 4 });
-  if (!data) return null;
-  return matchSchema.parse(data);
-}
+  async function scheduleRiotRequest<T>(
+    methodKey: string,
+    task: (deadline: number) => Promise<T>,
+  ) {
+    const deadline = dependencies.clock.now() + OVERALL_DEADLINE_MS;
+    const previous = riotQueue;
+    let releaseQueue!: () => void;
+    riotQueue = new Promise<void>((resolve) => {
+      releaseQueue = resolve;
+    });
+    await previous;
+    try {
+      assertBeforeDeadline(deadline, methodKey);
+      return await task(deadline);
+    } finally {
+      releaseQueue();
+    }
+  }
 
-async function getLeagueEntriesByPuuid(platform: RiotPlatform, puuid: string) {
-  const url = new URL(
-    `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${
-      encodeURIComponent(puuid)
-    }`,
-  );
-  const data = await fetchRiotJson(url, { notFoundAsNull: true });
-  if (!data) return [];
-  return z.array(leagueEntrySchema).parse(data);
-}
-
-export const riotApi = {
-  getAccountByRiotId,
-  getActiveGameByPuuid,
-  getMatchById,
-  getLeagueEntriesByPuuid,
-  __testing: {
-    resetRateLimiter() {
-      appBuckets.clear();
-      methodBuckets.clear();
-      riotQueue = Promise.resolve();
+  async function fetchRiotJson<T>(
+    url: URL,
+    schema: z.ZodType<T>,
+    options: {
+      method: string;
+      maxAttempts?: number;
+      notFoundAsNull?: boolean;
     },
-    rateLimiterSnapshot() {
-      return {
-        appBuckets: [...appBuckets.values()].map((bucket) => ({ ...bucket })),
-        methodBuckets: [...methodBuckets.values()].map((bucket) => ({
-          ...bucket,
-        })),
-      };
+  ): Promise<T | null> {
+    const requestMethodKey = methodKey(url.hostname, options.method);
+    return await scheduleRiotRequest(requestMethodKey, async (deadline) => {
+      const apiKey = riotApiKey();
+      const maxAttempts = options.maxAttempts ?? NORMAL_MAX_ATTEMPTS;
+      const method = options.method;
+      let attemptNumber = 1;
+      while (true) {
+        assertBeforeDeadline(deadline, requestMethodKey);
+        await waitForRiotRateLimit(
+          url.hostname,
+          method,
+          deadline,
+          requestMethodKey,
+        );
+        incrementBuckets(url.hostname, method);
+        const fallbackMs = RETRY_BACKOFF_STEP_MS * attemptNumber;
+        const result = await attempt(
+          url,
+          schema,
+          apiKey,
+          deadline,
+          fallbackMs,
+          method,
+          requestMethodKey,
+        );
+        assertBeforeDeadline(deadline, requestMethodKey);
+
+        if (result.kind === "success") {
+          return result.data;
+        }
+        if (result.kind === "not_found" && options.notFoundAsNull) return null;
+        if (result.kind === "parse" || result.kind === "schema") {
+          throw new RiotApiRequestError(result.kind, requestMethodKey);
+        }
+        if (result.kind === "not_found") {
+          throw new RiotApiRequestError("http", requestMethodKey, 404);
+        }
+        const retryable = result.kind === "network" ||
+          result.kind === "timeout" ||
+          (result.kind === "http" &&
+            (result.status === 429 || result.status >= 500));
+        if (!retryable || attemptNumber >= maxAttempts) {
+          throw new RiotApiRequestError(
+            result.kind,
+            requestMethodKey,
+            result.kind === "http" ? result.status : undefined,
+          );
+        }
+        const linearBackoffMs = RETRY_BACKOFF_STEP_MS * attemptNumber;
+        const retryDelayMs = result.kind === "http"
+          ? Math.max(linearBackoffMs, result.retryAfterMs)
+          : linearBackoffMs;
+        await sleepWithinDeadline(
+          retryDelayMs,
+          deadline,
+          requestMethodKey,
+        );
+        attemptNumber += 1;
+      }
+    });
+  }
+
+  async function getAccountByRiotId(
+    region: RiotRegion,
+    gameName: string,
+    tagLine: string,
+  ) {
+    const url = new URL(
+      `https://${region}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${
+        encodeURIComponent(gameName)
+      }/${encodeURIComponent(tagLine)}`,
+    );
+    return await fetchRiotJson(url, riotAccountSchema, {
+      method: "GET /riot/account/v1/accounts/by-riot-id/:gameName/:tagLine",
+      notFoundAsNull: true,
+    });
+  }
+
+  async function getActiveGameByPuuid(platform: RiotPlatform, puuid: string) {
+    const url = new URL(
+      `https://${platform}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/${
+        encodeURIComponent(puuid)
+      }`,
+    );
+    return await fetchRiotJson(url, activeGameSchema, {
+      method: "GET /lol/spectator/v5/active-games/by-summoner/:puuid",
+      notFoundAsNull: true,
+    });
+  }
+
+  async function getMatchById(region: RiotRegion, matchId: string) {
+    const url = new URL(
+      `https://${region}.api.riotgames.com/lol/match/v5/matches/${
+        encodeURIComponent(matchId)
+      }`,
+    );
+    return await fetchRiotJson(url, matchSchema, {
+      method: "GET /lol/match/v5/matches/:matchId",
+      maxAttempts: MATCH_MAX_ATTEMPTS,
+      notFoundAsNull: true,
+    });
+  }
+
+  async function getLeagueEntriesByPuuid(
+    platform: RiotPlatform,
+    puuid: string,
+  ) {
+    const url = new URL(
+      `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${
+        encodeURIComponent(puuid)
+      }`,
+    );
+    return (await fetchRiotJson(url, z.array(leagueEntrySchema), {
+      method: "GET /lol/league/v4/entries/by-puuid/:puuid",
+      notFoundAsNull: true,
+    })) ?? [];
+  }
+
+  return {
+    getAccountByRiotId,
+    getActiveGameByPuuid,
+    getMatchById,
+    getLeagueEntriesByPuuid,
+    __testing: {
+      resetRateLimiter() {
+        appBuckets.clear();
+        methodBuckets.clear();
+        riotQueue = Promise.resolve();
+      },
+      rateLimiterSnapshot() {
+        return {
+          appBuckets: [...appBuckets.values()].map((bucket) => ({ ...bucket })),
+          methodBuckets: [...methodBuckets.values()].map((bucket) => ({
+            ...bucket,
+          })),
+        };
+      },
     },
-  },
-};
+  };
+}
+
+export const riotApi = createRiotApi({
+  fetch: (input, init) => globalThis.fetch(input, init),
+  clock: { now: () => Date.now() },
+  sleeper: defaultSleeper,
+  env: Deno.env,
+  logger: apiLogger,
+});
