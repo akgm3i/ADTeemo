@@ -64,13 +64,16 @@ Issueの詳細と状態はGitHub Issuesを正とする。issue化されていな
   - [x] [#82 MatchTrackingServiceへ監視オーケストレーションを集約する](https://github.com/akgm3i/ADTeemo/issues/82)
   - [x] [#83 match tracking workerとrate-budget監視をinstance化する](https://github.com/akgm3i/ADTeemo/issues/83)
   - [x] [#106 match trackingの監視オーケストレーションをBackend use caseへ寄せる](https://github.com/akgm3i/ADTeemo/issues/106)
+- [ ] [#122 Deno runtimeとGitHub Actionsを固定して再現可能なCIを構築する](https://github.com/akgm3i/ADTeemo/issues/122)
+  - [ ] `.dvmrc`、GitHub Actions、DockerのDeno versionを同期する。
+  - [ ] Pull Requestと`main`へのpushで固定job名`quality`を実行する。
+  - [ ] `.env.example`を使うtargeted/full testとfrozen lockfileをCIの標準にする。
+  - [ ] root `.dockerignore`で秘密情報と生成物をbuild contextから除外する。
 
 ## Issue化前の技術課題
 
 ### 開発体験・CI
 
-- [ ] CI要件を整理し、GitHub Actionsで `deno task quality` を実行するworkflowを追加する。
-- [ ] Docker内テストの標準コマンド `docker compose --profile dev run --rm dev deno task test:all` をCIまたはREADMEに組み込むか判断する。
 - [ ] `deno task test:all` が必要とする `--allow-sys` / `--allow-ffi` 権限を縮小できるか確認する。
 
 ### API・DB
