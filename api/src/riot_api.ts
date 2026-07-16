@@ -78,6 +78,7 @@ const leagueEntrySchema = z.object({
 
 type RateBucket = {
   key: string;
+  kind: "quota" | "cooldown";
   scope: "application" | "method";
   hostname: string;
   method?: string;
@@ -211,6 +212,7 @@ function parseRateCountHeader(value: string | null) {
 }
 
 function resetExpiredBucket(bucket: RateBucket, now: number) {
+  if (bucket.kind === "cooldown") return;
   if (now >= bucket.resetAt) {
     bucket.count = 0;
     bucket.resetAt = now + bucket.windowMs;
@@ -218,6 +220,9 @@ function resetExpiredBucket(bucket: RateBucket, now: number) {
 }
 
 function waitMsForBucket(bucket: RateBucket, now: number) {
+  if (bucket.kind === "cooldown") {
+    return Math.max(bucket.cooldownUntil - now, 0);
+  }
   resetExpiredBucket(bucket, now);
   return Math.max(
     bucket.cooldownUntil - now,
@@ -244,6 +249,7 @@ function upsertHeaderBuckets(
       ?.count ?? existing?.count ?? 1;
     target.set(key, {
       key,
+      kind: "quota",
       scope,
       hostname,
       method,
@@ -306,6 +312,7 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
     return [
       {
         key: `application:${hostname}:${shortWindowMs}`,
+        kind: "quota",
         scope: "application",
         hostname,
         limit: numberEnv(
@@ -319,6 +326,7 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
       },
       {
         key: `application:${hostname}:${longWindowMs}`,
+        kind: "quota",
         scope: "application",
         hostname,
         limit: numberEnv(
@@ -349,6 +357,14 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
   }
 
   function endpointBuckets(hostname: string, method: string, now: number) {
+    for (const [key, bucket] of methodBuckets) {
+      if (
+        bucket.kind === "cooldown" && bucket.hostname === hostname &&
+        bucket.method === method && now >= bucket.cooldownUntil
+      ) {
+        methodBuckets.delete(key);
+      }
+    }
     return [
       ...ensureAppBuckets(hostname, now),
       ...[...methodBuckets.values()].filter((bucket) =>
@@ -403,6 +419,7 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
   function incrementBuckets(hostname: string, method: string) {
     const now = dependencies.clock.now();
     for (const bucket of endpointBuckets(hostname, method, now)) {
+      if (bucket.kind === "cooldown") continue;
       resetExpiredBucket(bucket, now);
       bucket.count += 1;
     }
@@ -498,6 +515,7 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
       const key = `method:${hostname}:${method}:${windowMs}`;
       const bucket: RateBucket = {
         key,
+        kind: "cooldown",
         scope: "method",
         hostname,
         method,
@@ -659,11 +677,37 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
     const deadline = dependencies.clock.now() + OVERALL_DEADLINE_MS;
     const previous = riotQueue;
     let releaseQueue!: () => void;
-    riotQueue = new Promise<void>((resolve) => {
+    const queueSlot = new Promise<void>((resolve) => {
       releaseQueue = resolve;
     });
-    await previous;
+    riotQueue = previous.then(() => queueSlot);
     try {
+      let previousSettled = false;
+      void previous.then(() => {
+        previousSettled = true;
+      });
+      for (let index = 0; index < 10 && !previousSettled; index++) {
+        await Promise.resolve();
+      }
+      if (!previousSettled) {
+        const sleepController = new AbortController();
+        const deadlineWait = dependencies.sleeper(
+          Math.max(deadline - dependencies.clock.now(), 0),
+          sleepController.signal,
+        ).then(
+          () => {
+            throw deadlineError(methodKey);
+          },
+          () => {
+            throw deadlineError(methodKey);
+          },
+        );
+        try {
+          await Promise.race([previous, deadlineWait]);
+        } finally {
+          sleepController.abort();
+        }
+      }
       assertBeforeDeadline(deadline, methodKey);
       return await task(deadline);
     } finally {

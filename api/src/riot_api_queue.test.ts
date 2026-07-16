@@ -459,6 +459,51 @@ describe("createRiotApi", () => {
     assertEquals(fake.now() - beforeAsia, 10_000);
   });
 
+  test("method headerなしの429 cooldownが終わると、後続の成功要求を恒久的に1件制限しない", async () => {
+    let calls = 0;
+    const fake = createFakeRiotApi(
+      (() => {
+        calls += 1;
+        if (calls <= 3) {
+          return Promise.resolve(
+            new Response(null, {
+              status: 429,
+              headers: {
+                "Retry-After": calls === 3 ? "10" : "0",
+                "X-Rate-Limit-Type": "method",
+              },
+            }),
+          );
+        }
+        return Promise.resolve(
+          accountResponse(calls === 4 ? "FirstSuccess" : "SecondSuccess"),
+        );
+      }) as typeof fetch,
+    );
+
+    await assertRejects(
+      () => fake.api.getAccountByRiotId("asia", "Limited", "JP1"),
+      RiotApiRequestError,
+      "Riot API request failed: 429",
+    );
+    const first = await fake.api.getAccountByRiotId(
+      "asia",
+      "FirstSuccess",
+      "JP1",
+    );
+    const second = await fake.api.getAccountByRiotId(
+      "asia",
+      "SecondSuccess",
+      "JP1",
+    );
+
+    assertEquals(first?.gameName, "FirstSuccess");
+    assertEquals(second?.gameName, "SecondSuccess");
+    assertEquals(calls, 5);
+    assertEquals(fake.sleeps, [500, 1_000, 10_000]);
+    assertEquals(fake.api.__testing.rateLimiterSnapshot().methodBuckets, []);
+  });
+
   test("limit headerだけが返るとき、現在requestをcountして次要求をwindowまで待機する", async () => {
     let calls = 0;
     const fake = createFakeRiotApi(
@@ -554,6 +599,63 @@ describe("createRiotApi", () => {
     assertEquals(firstResult.status, "rejected");
     assertEquals(expiredResult.status, "rejected");
     assertEquals(calls, 1);
+  });
+
+  test("先行要求が応答しないままでも、queue待機中の要求は30秒で失敗する", async () => {
+    const sleeps: Array<{
+      ms: number;
+      resolve(): void;
+    }> = [];
+    const firstResponse = Promise.withResolvers<Response>();
+    let calls = 0;
+    const fake = createFakeRiotApi(
+      (() => {
+        calls += 1;
+        return firstResponse.promise;
+      }) as typeof fetch,
+      {
+        sleeper: (ms, signal) =>
+          new Promise<void>((resolve, reject) => {
+            const abort = () =>
+              reject(
+                signal?.reason ?? new DOMException(
+                  "Aborted",
+                  "AbortError",
+                ),
+              );
+            signal?.addEventListener("abort", abort, { once: true });
+            sleeps.push({
+              ms,
+              resolve() {
+                signal?.removeEventListener("abort", abort);
+                resolve();
+              },
+            });
+          }),
+      },
+    );
+
+    const first = fake.api.getAccountByRiotId("asia", "First", "JP1");
+    const expired = fake.api.getAccountByRiotId("asia", "Expired", "JP1");
+    for (let index = 0; index < 20 && sleeps.length < 2; index++) {
+      await Promise.resolve();
+    }
+    assertEquals(sleeps.map(({ ms }) => ms).sort((a, b) => a - b), [
+      5_000,
+      30_000,
+    ]);
+
+    fake.advance(30_000);
+    sleeps.find(({ ms }) => ms === 30_000)?.resolve();
+    const error = await assertRejects(
+      () => expired,
+      RiotApiRequestError,
+      "Riot API request deadline exceeded",
+    );
+
+    assertEquals(error.reason, "deadline");
+    assertEquals(calls, 1);
+    void first;
   });
 
   test("先行要求が失敗してもqueue tailを解放して後続要求を実行する", async () => {
