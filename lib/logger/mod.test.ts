@@ -116,6 +116,8 @@ describe("logger", () => {
         "Cookie: session=cookie-secret; second=hidden, " +
         'token=token-secret credential="credential secret" ' +
         "apiKey=api-secret sqlParams=[sql-secret] " +
+        "client_secret=client-secret clientSecret=camel-secret " +
+        "botServiceCredential=service-secret " +
         `riotId=Teemo#JP1 puuid=${puuid} ` +
         "discordUserId=123456789012345678",
       {
@@ -146,6 +148,9 @@ describe("logger", () => {
         "credential secret",
         "api-secret",
         "sql-secret",
+        "client-secret",
+        "camel-secret",
+        "service-secret",
         "Teemo#JP1",
         puuid,
         "123456789012345678",
@@ -162,6 +167,33 @@ describe("logger", () => {
     assertEquals(
       parsed.callbackUrl,
       "https://provider.example/by-riot-id/[REDACTED]/[REDACTED]",
+    );
+  });
+
+  test("guild、channel、messageのsnowflakeを記録するとき、非user識別子は診断用に維持する", () => {
+    // Arrange
+    using consoleLogStub = stub(console, "log");
+    initLogger({ component: "discord-context-test", level: "INFO" });
+    const logger = createLogger("discord-context-test");
+
+    // Act
+    logger.info("discord.operation", {
+      guildId: "123456789012345678",
+      channelId: "223456789012345678",
+      messageId: "323456789012345678",
+      actor: {
+        discordUserId: "423456789012345678",
+      },
+    });
+
+    // Assert
+    const parsed = loggedPayload(consoleLogStub.calls[0]);
+    assertEquals(parsed.guildId, "123456789012345678");
+    assertEquals(parsed.channelId, "223456789012345678");
+    assertEquals(parsed.messageId, "323456789012345678");
+    assertEquals(
+      (parsed.actor as Record<string, unknown>).discordUserId,
+      "[REDACTED]",
     );
   });
 

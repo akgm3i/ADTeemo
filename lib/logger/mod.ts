@@ -51,20 +51,10 @@ const REDACTED = "[REDACTED]";
 const CIRCULAR = "[Circular]";
 const MAX_DEPTH = 20;
 const loggerLevels = new Map<string, LogLevel>();
-const SENSITIVE_TEXT_KEY =
-  "(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|credential|" +
-  "secret|password|api[_-]?key|authorization|cookie|oauth[_-]?code|" +
-  "oauth[_-]?state|code|state|sql[_-]?(?:params|parameters)|puuid|" +
-  "riot[_-]?id|discord(?:[_-]?user)?[_-]?id|user[_-]?id|" +
-  "game[_-]?name|tag[_-]?line)";
-const SENSITIVE_QUOTED_TEXT = new RegExp(
-  `(\\b${SENSITIVE_TEXT_KEY}\\b\\s*[:=]\\s*)(["'])(.*?)\\2`,
-  "giu",
-);
-const SENSITIVE_UNQUOTED_TEXT = new RegExp(
-  `(\\b${SENSITIVE_TEXT_KEY}\\b\\s*[:=]\\s*)([^\\s,;)\\]}]+)`,
-  "giu",
-);
+const QUOTED_TEXT_ASSIGNMENT =
+  /(\b([A-Za-z][A-Za-z0-9_-]*)\b\s*[:=]\s*)(["'])(.*?)\3/gu;
+const UNQUOTED_TEXT_ASSIGNMENT =
+  /(\b([A-Za-z][A-Za-z0-9_-]*)\b\s*[:=]\s*)([^\s,;&)\]}]+)/gu;
 
 function environmentValue(name: string): string | undefined {
   try {
@@ -104,6 +94,8 @@ function isSensitiveKey(key: string): boolean {
     normalized.includes("oauthcode") ||
     normalized.includes("oauthstate") ||
     normalized.includes("discordid") ||
+    normalized.includes("discorduserid") ||
+    normalized.endsWith("userid") ||
     normalized.endsWith("params") ||
     normalized.endsWith("parameters")
   ) {
@@ -117,7 +109,6 @@ function isSensitiveKey(key: string): boolean {
     "parameters",
     "sqlparams",
     "sqlparameters",
-    "userid",
     "usertag",
     "gamename",
     "tagline",
@@ -143,16 +134,17 @@ function sanitizeText(value: string): string {
       `$1${REDACTED}@`,
     );
 
-  sanitized = sanitized.replace(
-    SENSITIVE_QUOTED_TEXT,
-    (_match, prefix: string, quote: string) =>
-      `${prefix}${quote}${REDACTED}${quote}`,
-  );
-  sanitized = sanitized.replace(
-    SENSITIVE_UNQUOTED_TEXT,
-    (match, prefix: string, text: string) =>
-      text.includes(REDACTED) ? match : `${prefix}${REDACTED}`,
-  );
+  sanitized = sanitized
+    .replace(
+      QUOTED_TEXT_ASSIGNMENT,
+      (match, prefix: string, key: string, quote: string) =>
+        isSensitiveKey(key) ? `${prefix}${quote}${REDACTED}${quote}` : match,
+    )
+    .replace(
+      UNQUOTED_TEXT_ASSIGNMENT,
+      (match, prefix: string, key: string) =>
+        isSensitiveKey(key) ? `${prefix}${REDACTED}` : match,
+    );
 
   return sanitized
     .replace(
@@ -167,7 +159,6 @@ function sanitizeText(value: string): string {
       /\b[\p{L}\p{N}_.-]{2,16}#[A-Za-z0-9]{3,5}\b/gu,
       REDACTED,
     )
-    .replace(/\b\d{17,20}\b/gu, REDACTED)
     .replace(/\b[A-Za-z0-9_-]{40,}\b/gu, REDACTED);
 }
 
