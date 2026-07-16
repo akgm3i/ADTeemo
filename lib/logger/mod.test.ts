@@ -105,6 +105,66 @@ describe("logger", () => {
     );
   });
 
+  test("Error、文字列cause、URLに秘密値と識別子が含まれるとき、自由形式の値からもredactする", () => {
+    // Arrange
+    using consoleLogStub = stub(console, "log");
+    initLogger({ component: "free-text-redaction-test", level: "ERROR" });
+    const logger = createLogger("free-text-redaction-test");
+    const puuid = "a".repeat(78);
+    const error = new Error(
+      "Authorization: Bearer authorization-secret, " +
+        "Cookie: session=cookie-secret; second=hidden, " +
+        'token=token-secret credential="credential secret" ' +
+        "apiKey=api-secret sqlParams=[sql-secret] " +
+        `riotId=Teemo#JP1 puuid=${puuid} ` +
+        "discordUserId=123456789012345678",
+      {
+        cause: "oauthCode=cause-code oauthState=cause-state",
+      },
+    );
+
+    // Act
+    logger.error(
+      "provider.failed",
+      {
+        callbackUrl: new URL(
+          "https://provider.example/by-riot-id/GameName/TAG" +
+            "?code=url-code&state=url-state",
+        ),
+      },
+      error,
+    );
+
+    // Assert
+    const raw = consoleLogStub.calls[0].args[0] as string;
+    for (
+      const secret of [
+        "authorization-secret",
+        "cookie-secret",
+        "hidden",
+        "token-secret",
+        "credential secret",
+        "api-secret",
+        "sql-secret",
+        "Teemo#JP1",
+        puuid,
+        "123456789012345678",
+        "cause-code",
+        "cause-state",
+        "GameName",
+        "url-code",
+        "url-state",
+      ]
+    ) {
+      assertFalse(raw.includes(secret));
+    }
+    const parsed = loggedPayload(consoleLogStub.calls[0]);
+    assertEquals(
+      parsed.callbackUrl,
+      "https://provider.example/by-riot-id/[REDACTED]/[REDACTED]",
+    );
+  });
+
   test("循環参照、BigInt、Error causeを記録したとき、安全なJSONへ変換する", () => {
     // Arrange
     using consoleLogStub = stub(console, "log");

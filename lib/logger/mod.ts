@@ -51,6 +51,20 @@ const REDACTED = "[REDACTED]";
 const CIRCULAR = "[Circular]";
 const MAX_DEPTH = 20;
 const loggerLevels = new Map<string, LogLevel>();
+const SENSITIVE_TEXT_KEY =
+  "(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|credential|" +
+  "secret|password|api[_-]?key|authorization|cookie|oauth[_-]?code|" +
+  "oauth[_-]?state|code|state|sql[_-]?(?:params|parameters)|puuid|" +
+  "riot[_-]?id|discord(?:[_-]?user)?[_-]?id|user[_-]?id|" +
+  "game[_-]?name|tag[_-]?line)";
+const SENSITIVE_QUOTED_TEXT = new RegExp(
+  `(\\b${SENSITIVE_TEXT_KEY}\\b\\s*[:=]\\s*)(["'])(.*?)\\2`,
+  "giu",
+);
+const SENSITIVE_UNQUOTED_TEXT = new RegExp(
+  `(\\b${SENSITIVE_TEXT_KEY}\\b\\s*[:=]\\s*)([^\\s,;)\\]}]+)`,
+  "giu",
+);
 
 function environmentValue(name: string): string | undefined {
   try {
@@ -110,6 +124,61 @@ function isSensitiveKey(key: string): boolean {
   ].includes(normalized);
 }
 
+function sanitizeText(value: string): string {
+  let sanitized = value
+    .replace(
+      /(\bauthorization\b\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|(?:Bearer|Basic)\s+\S+|\S+)/giu,
+      `$1${REDACTED}`,
+    )
+    .replace(
+      /(\bcookie\b\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\r\n,]+)/giu,
+      `$1${REDACTED}`,
+    )
+    .replace(
+      /\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/giu,
+      REDACTED,
+    )
+    .replace(
+      /(\bhttps?:\/\/)[^/\s:@]+:[^/\s@]+@/giu,
+      `$1${REDACTED}@`,
+    );
+
+  sanitized = sanitized.replace(
+    SENSITIVE_QUOTED_TEXT,
+    (_match, prefix: string, quote: string) =>
+      `${prefix}${quote}${REDACTED}${quote}`,
+  );
+  sanitized = sanitized.replace(
+    SENSITIVE_UNQUOTED_TEXT,
+    (match, prefix: string, text: string) =>
+      text.includes(REDACTED) ? match : `${prefix}${REDACTED}`,
+  );
+
+  return sanitized
+    .replace(
+      /(\/by-riot-id\/)[^/\s?#]+\/[^/\s?#]+/giu,
+      `$1${REDACTED}/${REDACTED}`,
+    )
+    .replace(
+      /(\/(?:by-puuid|by-summoner|users)\/)[^/\s?#]+/giu,
+      `$1${REDACTED}`,
+    )
+    .replace(
+      /\b[\p{L}\p{N}_.-]{2,16}#[A-Za-z0-9]{3,5}\b/gu,
+      REDACTED,
+    )
+    .replace(/\b\d{17,20}\b/gu, REDACTED)
+    .replace(/\b[A-Za-z0-9_-]{40,}\b/gu, REDACTED);
+}
+
+function sanitizeUrl(value: URL): string {
+  try {
+    return sanitizeText(`${value.protocol}//${value.host}${value.pathname}`);
+  } catch {
+    return "[Unserializable]";
+  }
+}
+
 function serializeError(
   error: Error,
   seen: WeakSet<object>,
@@ -117,8 +186,8 @@ function serializeError(
 ): Record<string, unknown> {
   const serialized: Record<string, unknown> = Object.create(null);
   serialized.name = error.name;
-  serialized.message = error.message;
-  if (error.stack) serialized.stack = error.stack;
+  serialized.message = sanitizeText(error.message);
+  if (error.stack) serialized.stack = sanitizeText(error.stack);
   if (error.cause !== undefined) {
     serialized.cause = sanitizeValue(error.cause, seen, depth + 1);
   }
@@ -147,7 +216,7 @@ function sanitizeValue(
     value === null || typeof value === "string" ||
     typeof value === "boolean"
   ) {
-    return value;
+    return typeof value === "string" ? sanitizeText(value) : value;
   }
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value === "bigint") return value.toString();
@@ -167,7 +236,7 @@ function sanitizeValue(
         return "Invalid Date";
       }
     }
-    if (value instanceof URL) return value.toString();
+    if (value instanceof URL) return sanitizeUrl(value);
     if (value instanceof Error) return serializeError(value, seen, depth);
     if (Array.isArray(value)) {
       return value.map((item) => sanitizeValue(item, seen, depth + 1));
