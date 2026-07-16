@@ -27,6 +27,7 @@ describe("quality workflow", () => {
     assertStringIncludes(workflow, "  quality:\n    name: quality");
     assertStringIncludes(workflow, "timeout-minutes: 15");
     assertStringIncludes(workflow, "uses: actions/checkout@v7");
+    assertStringIncludes(workflow, "persist-credentials: false");
     assertStringIncludes(workflow, "uses: denoland/setup-deno@v2");
     assertStringIncludes(workflow, "deno-version-file: .dvmrc");
     assertStringIncludes(workflow, "cache: true");
@@ -52,6 +53,10 @@ describe("test tasks", () => {
     assertEquals(typeof fullTask, "string");
     assertStringIncludes(targetTask as string, "--env-file=.env.example");
     assertStringIncludes(fullTask as string, "--env-file=.env.example");
+    assertStringIncludes(
+      fullTask as string,
+      "--ignore=api/src/riot_api.live.test.ts",
+    );
     assertEquals((targetTask as string).includes("--allow-net"), false);
     assertEquals((fullTask as string).includes("--allow-net"), false);
   });

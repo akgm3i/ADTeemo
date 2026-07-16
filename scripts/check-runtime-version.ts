@@ -5,8 +5,19 @@ export interface RuntimeVersionFiles {
 }
 
 const FIXED_SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const MINIMUM_DENO_VERSION = [2, 5, 0] as const;
 const DENO_FROM =
   /^\s*FROM\s+denoland\/deno(?::([^\s]+))?(?:\s+AS\s+\S+)?\s*$/gim;
+
+function isSupportedDenoVersion(version: string): boolean {
+  const [major, minor, patch] = version.split("-", 1)[0].split(".").map(Number);
+  const actual = [major, minor, patch];
+  for (const [index, minimum] of MINIMUM_DENO_VERSION.entries()) {
+    if (actual[index] > minimum) return true;
+    if (actual[index] < minimum) return false;
+  }
+  return true;
+}
 
 export function validateRuntimeVersionConsistency(
   files: RuntimeVersionFiles,
@@ -17,6 +28,10 @@ export function validateRuntimeVersionConsistency(
 
   if (!hasFixedVersion) {
     errors.push(`.dvmrc は固定semverである必要があります: ${expectedVersion}`);
+  } else if (!isSupportedDenoVersion(expectedVersion)) {
+    errors.push(
+      `.dvmrc はDeno 2.5.0以上である必要があります: ${expectedVersion}`,
+    );
   }
 
   if (!/^\s*-?\s*uses:\s*denoland\/setup-deno@v2\s*$/m.test(files.workflow)) {

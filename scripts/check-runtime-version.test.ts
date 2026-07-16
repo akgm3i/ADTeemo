@@ -110,6 +110,30 @@ describe("validateRuntimeVersionConsistency", () => {
       ".dvmrc は固定semverである必要があります: latest",
     ]);
   });
+
+  test(".dvmrcがDeno 2.5未満の場合、対応runtime範囲外として不整合を返す", () => {
+    // Arrange
+    const files = {
+      dvmrc: "2.4.9\n",
+      workflow: `
+        - uses: denoland/setup-deno@v2
+          with:
+            deno-version-file: .dvmrc
+      `,
+      dockerfiles: {
+        "docker/Dockerfile.dev": "FROM denoland/deno:2.4.9\n",
+        "docker/Dockerfile.prod": "FROM denoland/deno:2.4.9 AS builder\n",
+      },
+    };
+
+    // Act
+    const errors = validateRuntimeVersionConsistency(files);
+
+    // Assert
+    assertEquals(errors, [
+      ".dvmrc はDeno 2.5.0以上である必要があります: 2.4.9",
+    ]);
+  });
 });
 
 describe("checkRepositoryRuntimeVersions", () => {
