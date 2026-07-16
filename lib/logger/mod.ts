@@ -55,6 +55,7 @@ const QUOTED_TEXT_ASSIGNMENT =
   /(["']?\b([A-Za-z][A-Za-z0-9_-]*)\b["']?\s*[:=]\s*)(["'])(.*?)\3/gu;
 const UNQUOTED_TEXT_ASSIGNMENT =
   /(["']?\b([A-Za-z][A-Za-z0-9_-]*)\b["']?\s*[:=]\s*)([^\s,;&)\]}]+)/gu;
+const URL_TEXT = /\bhttps?:\/\/[^\s"'<>),;\]}]+/giu;
 
 function environmentValue(name: string): string | undefined {
   try {
@@ -115,8 +116,28 @@ function isSensitiveKey(key: string): boolean {
   ].includes(normalized);
 }
 
-function sanitizeText(value: unknown): string {
-  if (typeof value !== "string") return "[Unserializable]";
+function sanitizeKnownPathSegments(value: string): string {
+  return value
+    .replace(
+      /(\/by-riot-id\/)([^/\s?#]+)\/([^/\s?#]+)/giu,
+      (
+        _match,
+        prefix: string,
+        gameName: string,
+        tagLine: string,
+      ) =>
+        `${prefix}${gameName.startsWith(":") ? gameName : REDACTED}/${
+          tagLine.startsWith(":") ? tagLine : REDACTED
+        }`,
+    )
+    .replace(
+      /(\/(?:by-puuid|by-summoner|users)\/)([^/\s?#]+)/giu,
+      (_match, prefix: string, identifier: string) =>
+        `${prefix}${identifier.startsWith(":") ? identifier : REDACTED}`,
+    );
+}
+
+function sanitizePlainText(value: string): string {
   let sanitized = value
     .replace(
       /(\bauthorization\b\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|(?:Bearer|Basic)\s+\S+|\S+)/giu,
@@ -131,7 +152,7 @@ function sanitizeText(value: unknown): string {
       REDACTED,
     )
     .replace(
-      /(\bhttps?:\/\/)[^/\s:@]+:[^/\s@]+@/giu,
+      /(\bhttps?:\/\/)[^/\s@]+@/giu,
       `$1${REDACTED}@`,
     );
 
@@ -149,15 +170,7 @@ function sanitizeText(value: unknown): string {
           : match,
     );
 
-  return sanitized
-    .replace(
-      /(\/by-riot-id\/)[^/\s?#]+\/[^/\s?#]+/giu,
-      `$1${REDACTED}/${REDACTED}`,
-    )
-    .replace(
-      /(\/(?:by-puuid|by-summoner|users)\/)[^/\s?#]+/giu,
-      `$1${REDACTED}`,
-    )
+  return sanitizeKnownPathSegments(sanitized)
     .replace(
       /\b[\p{L}\p{N}_.-]{2,16}#[A-Za-z0-9]{3,5}\b/gu,
       REDACTED,
@@ -165,12 +178,58 @@ function sanitizeText(value: unknown): string {
     .replace(/\b[A-Za-z0-9_-]{40,}\b/gu, REDACTED);
 }
 
-function sanitizeUrl(value: URL): string {
+function encodeUrlPart(value: string): string {
+  return encodeURIComponent(value).replaceAll(
+    encodeURIComponent(REDACTED),
+    REDACTED,
+  );
+}
+
+function sanitizeUrlParameters(parameters: URLSearchParams): string {
+  return [...parameters.entries()]
+    .map(([key, value]) => {
+      const sanitized = isSensitiveKey(key) ? REDACTED : sanitizeText(value);
+      return `${encodeURIComponent(key)}=${encodeUrlPart(sanitized)}`;
+    })
+    .join("&");
+}
+
+function sanitizeUrlString(value: string): string {
   try {
-    return sanitizeText(value.toString());
+    const url = new URL(value);
+    const userInfo = url.username || url.password ? `${REDACTED}@` : "";
+    const pathname = sanitizeKnownPathSegments(url.pathname);
+    const query = url.searchParams.size > 0
+      ? `?${sanitizeUrlParameters(url.searchParams)}`
+      : "";
+    const rawFragment = url.hash.slice(1);
+    const fragment = rawFragment.length === 0
+      ? ""
+      : rawFragment.includes("=")
+      ? `#${sanitizeUrlParameters(new URLSearchParams(rawFragment))}`
+      : `#${encodeUrlPart(sanitizeText(rawFragment))}`;
+    return `${url.protocol}//${userInfo}${url.host}${pathname}${query}${fragment}`;
   } catch {
-    return "[Unserializable]";
+    return sanitizePlainText(value);
   }
+}
+
+function sanitizeText(value: unknown): string {
+  if (typeof value !== "string") return "[Unserializable]";
+  let sanitized = "";
+  let lastIndex = 0;
+  for (const match of value.matchAll(URL_TEXT)) {
+    const index = match.index ?? 0;
+    sanitized += sanitizePlainText(value.slice(lastIndex, index));
+    sanitized += sanitizeUrlString(match[0]);
+    lastIndex = index + match[0].length;
+  }
+  sanitized += sanitizePlainText(value.slice(lastIndex));
+  return sanitized;
+}
+
+function sanitizeUrl(value: URL): string {
+  return sanitizeUrlString(value.toString());
 }
 
 function serializeError(

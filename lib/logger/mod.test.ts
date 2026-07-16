@@ -119,7 +119,8 @@ describe("logger", () => {
         "client_secret=client-secret clientSecret=camel-secret " +
         "botServiceCredential=service-secret " +
         `riotId=Teemo#JP1 puuid=${puuid} ` +
-        "discordUserId=123456789012345678",
+        "discordUserId=123456789012345678 " +
+        "callback=https://api-token@provider.example/path",
       {
         cause: "oauthCode=cause-code oauthState=cause-state",
       },
@@ -131,7 +132,8 @@ describe("logger", () => {
       {
         callbackUrl: new URL(
           "https://provider.example/by-riot-id/GameName/TAG" +
-            "?code=url-code&state=url-state",
+            "?code=url-code&state=url-state&locale=ja_JP" +
+            "#token=fragment-token",
         ),
       },
       error,
@@ -159,15 +161,53 @@ describe("logger", () => {
         "GameName",
         "url-code",
         "url-state",
+        "fragment-token",
+        "api-token",
       ]
     ) {
-      assertFalse(raw.includes(secret));
+      assertFalse(raw.includes(secret), `${secret} must be redacted: ${raw}`);
     }
     const parsed = loggedPayload(consoleLogStub.calls[0]);
     assertEquals(
       parsed.callbackUrl,
-      "https://provider.example/by-riot-id/[REDACTED]/[REDACTED]",
+      "https://provider.example/by-riot-id/[REDACTED]/[REDACTED]" +
+        "?code=[REDACTED]&state=[REDACTED]&locale=ja_JP" +
+        "#token=[REDACTED]",
     );
+  });
+
+  test("route templateと実識別子を記録するとき、placeholderを維持して実値だけをredactする", () => {
+    // Arrange
+    using consoleLogStub = stub(console, "log");
+    initLogger({ component: "route-redaction-test", level: "INFO" });
+    const logger = createLogger("route-redaction-test");
+
+    // Act
+    logger.info("request.completed", {
+      routePaths: [
+        "/users/:userId/riot-account",
+        "/riot/account/by-puuid/:puuid",
+        "/riot/account/by-riot-id/:gameName/:tagLine",
+      ],
+      rawPaths: [
+        "/users/private-discord-user/riot-account",
+        "/riot/account/by-puuid/private-puuid",
+        "/riot/account/by-riot-id/GameName/TAG",
+      ],
+    });
+
+    // Assert
+    const parsed = loggedPayload(consoleLogStub.calls[0]);
+    assertEquals(parsed.routePaths, [
+      "/users/:userId/riot-account",
+      "/riot/account/by-puuid/:puuid",
+      "/riot/account/by-riot-id/:gameName/:tagLine",
+    ]);
+    assertEquals(parsed.rawPaths, [
+      "/users/[REDACTED]/riot-account",
+      "/riot/account/by-puuid/[REDACTED]",
+      "/riot/account/by-riot-id/[REDACTED]/[REDACTED]",
+    ]);
   });
 
   test("自由形式文字列にJSON形式の秘密値と既redact値があるとき、秘密値だけを一度redactする", () => {
