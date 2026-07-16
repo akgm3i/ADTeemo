@@ -13,14 +13,14 @@
     "test:riot-live": "RIOT_LIVE_TEST=1 deno test --allow-env --allow-net --env-file=.env api/src/riot_api.live.test.ts",
     "test:allcov": "deno task test:all",
     "quality": {
+      "command": "deno task test:all",
       "dependencies": [
         "fmt:check",
         "lint",
         "check",
         "check:bot-boundary",
         "check:messages",
-        "check:runtime-version",
-        "test:all"
+        "check:runtime-version"
       ]
     },
     "check:bot-boundary": "deno run --allow-run=deno --allow-read=bot/src/commands bot/check-runtime-boundary.ts",

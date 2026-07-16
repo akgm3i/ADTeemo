@@ -55,4 +55,32 @@ describe("test tasks", () => {
     assertEquals((targetTask as string).includes("--allow-net"), false);
     assertEquals((fullTask as string).includes("--allow-net"), false);
   });
+
+  test("quality実行時、coverage testは静的検査の完了後に開始する", async () => {
+    // Arrange
+    const config = JSON.parse(
+      await Deno.readTextFile(new URL("deno.json", root)),
+    ) as {
+      tasks: Record<
+        string,
+        string | { command?: string; dependencies: string[] }
+      >;
+    };
+
+    // Act
+    const qualityTask = config.tasks.quality;
+
+    // Assert
+    assertEquals(typeof qualityTask, "object");
+    assertEquals(
+      (qualityTask as { command?: string }).command,
+      "deno task test:all",
+    );
+    assertEquals(
+      (qualityTask as { dependencies: string[] }).dependencies.includes(
+        "test:all",
+      ),
+      false,
+    );
+  });
 });
