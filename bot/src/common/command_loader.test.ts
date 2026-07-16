@@ -1,11 +1,18 @@
 import { assertEquals, assertFalse, assertStringIncludes } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
-import { SlashCommandBuilder } from "discord.js";
+import {
+  ApplicationIntegrationType,
+  InteractionContextType,
+  SlashCommandBuilder,
+} from "discord.js";
 import {
   type CommandLoaderDependencies,
   loadCommands,
 } from "./command_loader.ts";
-import type { CommandRegistration } from "./command_registry.ts";
+import type {
+  CommandRegistration,
+  EnabledCommandRegistration,
+} from "./command_registry.ts";
 import { enabledCommandRegistrations } from "./command_registry.ts";
 
 function commandModule(name: string) {
@@ -14,6 +21,19 @@ function commandModule(name: string) {
       `${name} command`,
     ),
     execute: () => Promise.resolve(),
+  };
+}
+
+function enabledRegistration(
+  fileName: string,
+  expectedName: string,
+): EnabledCommandRegistration {
+  return {
+    fileName,
+    expectedName,
+    status: "enabled",
+    contexts: [InteractionContextType.Guild],
+    integrationTypes: [ApplicationIntegrationType.GuildInstall],
   };
 }
 
@@ -47,6 +67,34 @@ describe("command loader", () => {
       result.commands.map((command) => command.data.name),
       enabledNames,
     );
+    assertEquals(
+      Object.fromEntries(
+        result.commands.map((command) => {
+          const payload = command.data.toJSON();
+          return [
+            payload.name,
+            {
+              contexts: payload.contexts,
+              integrationTypes: payload.integration_types,
+            },
+          ];
+        }),
+      ),
+      Object.fromEntries(
+        enabledNames.map((name) => [
+          name,
+          {
+            contexts: name === "health" || name === "set-riot-id"
+              ? [
+                InteractionContextType.Guild,
+                InteractionContextType.BotDM,
+              ]
+              : [InteractionContextType.Guild],
+            integrationTypes: [ApplicationIntegrationType.GuildInstall],
+          },
+        ]),
+      ),
+    );
 
     const readme = await Deno.readTextFile(
       new URL("../../../README.md", import.meta.url),
@@ -67,8 +115,8 @@ describe("command loader", () => {
 
   test("全commandが有効なとき、name順の完全な一覧を返す", async () => {
     const registry = [
-      { fileName: "zeta.ts", expectedName: "zeta", status: "enabled" },
-      { fileName: "alpha.ts", expectedName: "alpha", status: "enabled" },
+      enabledRegistration("zeta.ts", "zeta"),
+      enabledRegistration("alpha.ts", "alpha"),
     ] satisfies readonly CommandRegistration[];
 
     const result = await loadCommands(dependencies(registry, {
@@ -87,8 +135,8 @@ describe("command loader", () => {
 
   test("1commandのimportに失敗したとき、部分的なcommandsを公開しない", async () => {
     const registry = [
-      { fileName: "good.ts", expectedName: "good", status: "enabled" },
-      { fileName: "broken.ts", expectedName: "broken", status: "enabled" },
+      enabledRegistration("good.ts", "good"),
+      enabledRegistration("broken.ts", "broken"),
     ] satisfies readonly CommandRegistration[];
 
     const result = await loadCommands(dependencies(registry, {
@@ -104,16 +152,8 @@ describe("command loader", () => {
 
   test("dataまたはexecuteが欠けるとき、loader全体を失敗させる", async () => {
     const registry = [
-      {
-        fileName: "missing-data.ts",
-        expectedName: "missing-data",
-        status: "enabled",
-      },
-      {
-        fileName: "missing-execute.ts",
-        expectedName: "missing-execute",
-        status: "enabled",
-      },
+      enabledRegistration("missing-data.ts", "missing-data"),
+      enabledRegistration("missing-execute.ts", "missing-execute"),
     ] satisfies readonly CommandRegistration[];
 
     const result = await loadCommands(dependencies(registry, {
@@ -135,7 +175,7 @@ describe("command loader", () => {
 
   test("dataがSlashCommandBuilderでないとき、schema不正として全体を失敗させる", async () => {
     const registry = [
-      { fileName: "plain.ts", expectedName: "plain", status: "enabled" },
+      enabledRegistration("plain.ts", "plain"),
     ] satisfies readonly CommandRegistration[];
 
     const result = await loadCommands(dependencies(registry, {
@@ -157,7 +197,7 @@ describe("command loader", () => {
 
   test("builderのschemaが未完成なとき、部分的なcommandsを公開しない", async () => {
     const registry = [
-      { fileName: "invalid.ts", expectedName: "invalid", status: "enabled" },
+      enabledRegistration("invalid.ts", "invalid"),
     ] satisfies readonly CommandRegistration[];
 
     const result = await loadCommands(dependencies(registry, {
@@ -177,11 +217,7 @@ describe("command loader", () => {
 
   test("registryとcommand nameが異なるとき、name不一致として全体を失敗させる", async () => {
     const registry = [
-      {
-        fileName: "renamed.ts",
-        expectedName: "expected-name",
-        status: "enabled",
-      },
+      enabledRegistration("renamed.ts", "expected-name"),
     ] satisfies readonly CommandRegistration[];
 
     const result = await loadCommands(dependencies(registry, {
@@ -198,8 +234,8 @@ describe("command loader", () => {
 
   test("command nameが重複するとき、loader全体を失敗させる", async () => {
     const registry = [
-      { fileName: "first.ts", expectedName: "same", status: "enabled" },
-      { fileName: "second.ts", expectedName: "same", status: "enabled" },
+      enabledRegistration("first.ts", "same"),
+      enabledRegistration("second.ts", "same"),
     ] satisfies readonly CommandRegistration[];
 
     const result = await loadCommands(dependencies(registry, {
@@ -218,7 +254,7 @@ describe("command loader", () => {
 
   test("registry外のcommand fileがあるとき、暗黙にloadせず失敗する", async () => {
     const registry = [
-      { fileName: "known.ts", expectedName: "known", status: "enabled" },
+      enabledRegistration("known.ts", "known"),
     ] satisfies readonly CommandRegistration[];
 
     const result = await loadCommands(
@@ -239,7 +275,7 @@ describe("command loader", () => {
 
   test("disabled commandはregistry整合性を満たすがimportしない", async () => {
     const registry = [
-      { fileName: "enabled.ts", expectedName: "enabled", status: "enabled" },
+      enabledRegistration("enabled.ts", "enabled"),
       {
         fileName: "disabled.ts",
         expectedName: "disabled",

@@ -1,6 +1,11 @@
 import { assertEquals, assertFalse, assertRejects } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
-import { Routes, SlashCommandBuilder } from "discord.js";
+import {
+  ApplicationIntegrationType,
+  InteractionContextType,
+  Routes,
+  SlashCommandBuilder,
+} from "discord.js";
 import type { Command } from "./types.ts";
 import {
   type CommandRestClient,
@@ -8,7 +13,11 @@ import {
   runCommandDeploymentEntrypoint,
   syncApplicationCommands,
 } from "./deploy-commands.ts";
-import type { CommandLoadResult } from "./common/command_loader.ts";
+import {
+  type CommandLoadResult,
+  loadCommands,
+} from "./common/command_loader.ts";
+import type { CommandRegistration } from "./common/command_registry.ts";
 
 function command(name: string, description = `${name} command`): Command {
   return {
@@ -135,6 +144,55 @@ describe("slash command deployment", () => {
     assertEquals(result.status, "unchanged");
     assertEquals(result.diff, { added: [], removed: [], updated: [] });
     assertEquals(rest.putCalls, []);
+  });
+
+  test("global commandに古い公開範囲が残るとき、registryの明示範囲へ更新する", async () => {
+    const registration = {
+      fileName: "health.ts",
+      expectedName: "health",
+      status: "enabled",
+      contexts: [
+        InteractionContextType.Guild,
+        InteractionContextType.BotDM,
+      ],
+      integrationTypes: [ApplicationIntegrationType.GuildInstall],
+    } satisfies CommandRegistration;
+    const loadResult = await loadCommands({
+      registry: [registration],
+      listCommandFiles: () => Promise.resolve(["health.ts"]),
+      importCommand: () =>
+        Promise.resolve({
+          data: new SlashCommandBuilder()
+            .setName("health")
+            .setDescription("health command"),
+          execute: () => Promise.resolve(),
+        }),
+    });
+    const rest = new FakeRest([{
+      name: "health",
+      description: "health command",
+      type: 1,
+      contexts: [InteractionContextType.Guild],
+      integration_types: [ApplicationIntegrationType.UserInstall],
+    }]);
+
+    const result = await syncApplicationCommands({
+      rest,
+      clientId: "client-id",
+      loadResult,
+    });
+
+    assertEquals(result.status, "updated");
+    assertEquals(result.diff.updated, ["health"]);
+    assertEquals(rest.putCalls.length, 1);
+    const published = rest.putCalls[0].body as Array<Record<string, unknown>>;
+    assertEquals(published[0].contexts, [
+      InteractionContextType.Guild,
+      InteractionContextType.BotDM,
+    ]);
+    assertEquals(published[0].integration_types, [
+      ApplicationIntegrationType.GuildInstall,
+    ]);
   });
 
   test("既存commandがDiscord既定値から外れるとき、期待する既定値へ戻す", async () => {

@@ -3,6 +3,7 @@ import type { Command } from "../types.ts";
 import {
   type CommandRegistration,
   commandRegistry,
+  type EnabledCommandRegistration,
   enabledCommandRegistrations,
 } from "./command_registry.ts";
 
@@ -112,7 +113,7 @@ function registryErrors(
 
 function commandFromModule(
   module: unknown,
-  registration: CommandRegistration,
+  registration: EnabledCommandRegistration,
 ): { command?: Command; errors: CommandLoadError[] } {
   if (typeof module !== "object" || module === null) {
     return {
@@ -148,6 +149,8 @@ function commandFromModule(
 
   let payload: ReturnType<Command["data"]["toJSON"]>;
   try {
+    data.setContexts(...registration.contexts);
+    data.setIntegrationTypes(...registration.integrationTypes);
     payload = data.toJSON();
   } catch {
     return {
