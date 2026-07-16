@@ -176,7 +176,32 @@ describe("logger", () => {
     );
   });
 
-  test("route templateと実識別子を記録するとき、placeholderを維持して実値だけをredactする", () => {
+  test("自由形式文字列で機密keyにURLを代入したとき、URL全体をredactして安全なURLは維持する", () => {
+    // Arrange
+    using consoleLogStub = stub(console, "log");
+    initLogger({ component: "url-assignment-redaction-test", level: "ERROR" });
+    const logger = createLogger("url-assignment-redaction-test");
+    const error = new Error(
+      "token=https://provider.example/callback?sig=token-signature " +
+        'client_secret="https://provider.example/callback?sig=client-signature" ' +
+        "callback=https://provider.example/callback?sig=public-signature&locale=ja_JP",
+    );
+
+    // Act
+    logger.error("provider.failed", undefined, error);
+
+    // Assert
+    const parsed = loggedPayload(consoleLogStub.calls[0]);
+    const loggedError = parsed.error as Record<string, unknown>;
+    assertEquals(
+      loggedError.message,
+      "token=[REDACTED] " +
+        'client_secret="[REDACTED]" ' +
+        "callback=https://provider.example/callback?sig=public-signature&locale=ja_JP",
+    );
+  });
+
+  test("route template・静的route・実識別子を記録するとき、診断用pathを維持して実値だけをredactする", () => {
     // Arrange
     using consoleLogStub = stub(console, "log");
     initLogger({ component: "route-redaction-test", level: "INFO" });
@@ -185,6 +210,7 @@ describe("logger", () => {
     // Act
     logger.info("request.completed", {
       routePaths: [
+        "/users/link-by-riot-id",
         "/users/:userId/riot-account",
         "/riot/account/by-puuid/:puuid",
         "/riot/account/by-riot-id/:gameName/:tagLine",
@@ -199,6 +225,7 @@ describe("logger", () => {
     // Assert
     const parsed = loggedPayload(consoleLogStub.calls[0]);
     assertEquals(parsed.routePaths, [
+      "/users/link-by-riot-id",
       "/users/:userId/riot-account",
       "/riot/account/by-puuid/:puuid",
       "/riot/account/by-riot-id/:gameName/:tagLine",

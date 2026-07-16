@@ -55,7 +55,10 @@ const QUOTED_TEXT_ASSIGNMENT =
   /(["']?\b([A-Za-z][A-Za-z0-9_-]*)\b["']?\s*[:=]\s*)(["'])(.*?)\3/gu;
 const UNQUOTED_TEXT_ASSIGNMENT =
   /(["']?\b([A-Za-z][A-Za-z0-9_-]*)\b["']?\s*[:=]\s*)([^\s,;&)\]}]+)/gu;
+const TRAILING_URL_ASSIGNMENT =
+  /(["']?\b([A-Za-z][A-Za-z0-9_-]*)\b["']?\s*[:=]\s*)(["']?)$/u;
 const URL_TEXT = /\bhttps?:\/\/[^\s"'<>),;\]}]+/giu;
+const STATIC_USERS_ROUTE_SEGMENTS = new Set(["link-by-riot-id"]);
 
 function environmentValue(name: string): string | undefined {
   try {
@@ -132,8 +135,13 @@ function sanitizeKnownPathSegments(value: string): string {
     )
     .replace(
       /(\/(?:by-puuid|by-summoner|users)\/)([^/\s?#]+)/giu,
-      (_match, prefix: string, identifier: string) =>
-        `${prefix}${identifier.startsWith(":") ? identifier : REDACTED}`,
+      (_match, prefix: string, identifier: string) => {
+        const normalizedPrefix = prefix.toLowerCase();
+        const preserve = identifier.startsWith(":") ||
+          (normalizedPrefix.endsWith("/users/") &&
+            STATIC_USERS_ROUTE_SEGMENTS.has(identifier.toLowerCase()));
+        return `${prefix}${preserve ? identifier : REDACTED}`;
+      },
     );
 }
 
@@ -220,8 +228,16 @@ function sanitizeText(value: unknown): string {
   let lastIndex = 0;
   for (const match of value.matchAll(URL_TEXT)) {
     const index = match.index ?? 0;
-    sanitized += sanitizePlainText(value.slice(lastIndex, index));
-    sanitized += sanitizeUrlString(match[0]);
+    const prefix = value.slice(lastIndex, index);
+    const assignment = prefix.match(TRAILING_URL_ASSIGNMENT);
+    if (assignment && isSensitiveKey(assignment[2])) {
+      const assignmentIndex = assignment.index ?? prefix.length;
+      sanitized += sanitizePlainText(prefix.slice(0, assignmentIndex));
+      sanitized += `${assignment[1]}${assignment[3]}${REDACTED}`;
+    } else {
+      sanitized += sanitizePlainText(prefix);
+      sanitized += sanitizeUrlString(match[0]);
+    }
     lastIndex = index + match[0].length;
   }
   sanitized += sanitizePlainText(value.slice(lastIndex));
