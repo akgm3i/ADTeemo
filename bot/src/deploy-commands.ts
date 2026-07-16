@@ -8,6 +8,11 @@ import { botLogger } from "./logger.ts";
 
 type JsonObject = Record<string, unknown>;
 const NO_SEMANTIC_DEFAULT = Symbol("no-semantic-default");
+const GUILD_UNSUPPORTED_FIELDS = new Set([
+  "contexts",
+  "integration_types",
+  "dm_permission",
+]);
 
 export interface CommandRestClient {
   get(route: string): Promise<unknown>;
@@ -180,18 +185,43 @@ function commandDiff(
   return { added, removed, updated };
 }
 
-function validatePublishedCommands(response: unknown, desired: JsonObject[]) {
+function commandPayload(
+  value: JsonObject,
+  guildScoped: boolean,
+): JsonObject {
+  if (!guildScoped) return value;
+  return Object.fromEntries(
+    Object.entries(value).filter(([key]) => !GUILD_UNSUPPORTED_FIELDS.has(key)),
+  );
+}
+
+function hasDiff(diff: CommandDiff): boolean {
+  return diff.added.length > 0 || diff.removed.length > 0 ||
+    diff.updated.length > 0;
+}
+
+function validatePublishedCommands(
+  response: unknown,
+  desired: JsonObject[],
+  guildScoped: boolean,
+) {
   if (!Array.isArray(response)) {
     throw new Error("Discord returned an invalid published command list");
   }
-  const published = [...commandIndex(response, "Published Discord").keys()]
+  const publishedNames = [
+    ...commandIndex(response, "Published Discord").keys(),
+  ]
     .sort();
-  const expected = [...commandIndex(desired, "Desired").keys()].sort();
-  if (JSON.stringify(published) !== JSON.stringify(expected)) {
+  const expectedNames = [...commandIndex(desired, "Desired").keys()].sort();
+  const diff = commandDiff(response, desired, guildScoped);
+  if (hasDiff(diff)) {
     throw new Error(
-      "Discord published unexpected command count or names. " +
-        `Expected: [${expected.join(", ")}], ` +
-        `Published: [${published.join(", ")}]`,
+      "Discord published unexpected command payload. " +
+        `Expected: [${expectedNames.join(", ")}], ` +
+        `Published: [${publishedNames.join(", ")}], ` +
+        `Added: [${diff.added.join(", ")}], ` +
+        `Removed: [${diff.removed.join(", ")}], ` +
+        `Updated: [${diff.updated.join(", ")}]`,
     );
   }
 }
@@ -212,8 +242,14 @@ export async function syncApplicationCommands(
     );
   }
 
+  const guildScoped = options.guildId !== undefined;
   const desired = options.loadResult.commands
-    .map((command) => command.data.toJSON() as unknown as JsonObject)
+    .map((command) =>
+      commandPayload(
+        command.data.toJSON() as unknown as JsonObject,
+        guildScoped,
+      )
+    )
     .sort((left, right) => String(left.name).localeCompare(String(right.name)));
   const expectedNames = desired.map((payload) => String(payload.name));
   const route = options.guildId
@@ -224,16 +260,13 @@ export async function syncApplicationCommands(
   if (!Array.isArray(response)) {
     throw new Error("Discord returned an invalid command list");
   }
-  const diff = commandDiff(response, desired, options.guildId !== undefined);
-  if (
-    diff.added.length === 0 && diff.removed.length === 0 &&
-    diff.updated.length === 0
-  ) {
+  const diff = commandDiff(response, desired, guildScoped);
+  if (!hasDiff(diff)) {
     return { status: "unchanged", expectedNames, diff };
   }
 
   const published = await options.rest.put(route, { body: desired });
-  validatePublishedCommands(published, desired);
+  validatePublishedCommands(published, desired, guildScoped);
   return { status: "updated", expectedNames, diff };
 }
 

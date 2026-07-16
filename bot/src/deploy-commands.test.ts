@@ -268,6 +268,46 @@ describe("slash command deployment", () => {
     );
   });
 
+  test("registryで公開範囲を指定したcommandをguildへ配備するとき、global専用fieldをPUTしない", async () => {
+    const registration = {
+      fileName: "health.ts",
+      expectedName: "health",
+      status: "enabled",
+      contexts: [
+        InteractionContextType.Guild,
+        InteractionContextType.BotDM,
+      ],
+      integrationTypes: [ApplicationIntegrationType.GuildInstall],
+    } satisfies CommandRegistration;
+    const loadResult = await loadCommands({
+      registry: [registration],
+      listCommandFiles: () => Promise.resolve(["health.ts"]),
+      importCommand: () =>
+        Promise.resolve({
+          data: new SlashCommandBuilder()
+            .setName("health")
+            .setDescription("health command")
+            .setDMPermission(false),
+          execute: () => Promise.resolve(),
+        }),
+    });
+    const rest = new FakeRest([]);
+
+    const result = await syncApplicationCommands({
+      rest,
+      clientId: "client-id",
+      guildId: "guild-id",
+      loadResult,
+    });
+
+    assertEquals(result.status, "updated");
+    assertEquals(rest.putCalls.length, 1);
+    const published = rest.putCalls[0].body as Array<Record<string, unknown>>;
+    assertFalse("contexts" in published[0]);
+    assertFalse("integration_types" in published[0]);
+    assertFalse("dm_permission" in published[0]);
+  });
+
   test("別typeの同名commandが存在するとき、余分なcommandとして同期する", async () => {
     const expected = command("health");
     const rest = new FakeRest([
@@ -302,7 +342,29 @@ describe("slash command deployment", () => {
           loadResult: loaded(expected),
         }),
       Error,
-      "Expected: [1:health], Published: [1:unexpected]",
+      "Expected: [1:health], Published: [1:unexpected], " +
+        "Added: [health], Removed: [unexpected], Updated: []",
+    );
+
+    assertEquals(rest.putCalls.length, 1);
+  });
+
+  test("DiscordのPUT応答が同名でも期待payloadと異なるとき、配備成功にしない", async () => {
+    const expected = command("health");
+    const rest = new FakeRest(
+      [],
+      [command("health", "stale description").data.toJSON()],
+    );
+
+    await assertRejects(
+      () =>
+        syncApplicationCommands({
+          rest,
+          clientId: "client-id",
+          loadResult: loaded(expected),
+        }),
+      Error,
+      "Added: [], Removed: [], Updated: [health]",
     );
 
     assertEquals(rest.putCalls.length, 1);
