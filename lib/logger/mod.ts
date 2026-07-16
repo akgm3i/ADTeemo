@@ -167,7 +167,7 @@ function sanitizeText(value: unknown): string {
 
 function sanitizeUrl(value: URL): string {
   try {
-    return sanitizeText(`${value.protocol}//${value.host}${value.pathname}`);
+    return sanitizeText(value.toString());
   } catch {
     return "[Unserializable]";
   }
