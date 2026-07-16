@@ -1,38 +1,87 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
+import { parse } from "@std/yaml";
 
 const root = new URL("../", import.meta.url);
+
+interface QualityWorkflow {
+  on: {
+    pull_request: null;
+    push: {
+      branches: string[];
+    };
+  };
+  permissions: {
+    contents: string;
+  };
+  concurrency: {
+    group: string;
+    "cancel-in-progress": boolean;
+  };
+  jobs: {
+    quality: {
+      name: string;
+      "runs-on": string;
+      "timeout-minutes": number;
+      steps: Array<{
+        name: string;
+        uses?: string;
+        run?: string;
+        with?: Record<string, unknown>;
+      }>;
+    };
+  };
+}
 
 describe("quality workflow", () => {
   test("Pull Requestとmain pushのとき、固定job qualityがfrozen lockfileで品質確認を実行する", async () => {
     // Arrange
-    const workflow = await Deno.readTextFile(
-      new URL(".github/workflows/quality.yml", root),
-    );
+    const workflow = parse(
+      await Deno.readTextFile(
+        new URL(".github/workflows/quality.yml", root),
+      ),
+    ) as unknown as QualityWorkflow;
 
     // Act
-    const usesSecret = workflow.includes("secrets.");
+    const quality = workflow.jobs.quality;
+    const usesSecret = JSON.stringify(workflow).includes("secrets.");
 
     // Assert
-    assertStringIncludes(
-      workflow,
-      "on:\n  pull_request:\n  push:\n    branches:\n      - main",
-    );
-    assertStringIncludes(workflow, "permissions:\n  contents: read");
-    assertStringIncludes(
-      workflow,
-      "group: ${{ github.workflow }}-${{ github.ref }}",
-    );
-    assertStringIncludes(workflow, "cancel-in-progress: true");
-    assertStringIncludes(workflow, "  quality:\n    name: quality");
-    assertStringIncludes(workflow, "timeout-minutes: 15");
-    assertStringIncludes(workflow, "uses: actions/checkout@v7");
-    assertStringIncludes(workflow, "persist-credentials: false");
-    assertStringIncludes(workflow, "uses: denoland/setup-deno@v2");
-    assertStringIncludes(workflow, "deno-version-file: .dvmrc");
-    assertStringIncludes(workflow, "cache: true");
-    assertStringIncludes(workflow, "run: deno install --frozen=true");
-    assertStringIncludes(workflow, "run: deno task quality");
+    assertEquals(workflow.on, {
+      pull_request: null,
+      push: { branches: ["main"] },
+    });
+    assertEquals(workflow.permissions, { contents: "read" });
+    assertEquals(workflow.concurrency, {
+      group: "${{ github.workflow }}-${{ github.ref }}",
+      "cancel-in-progress": true,
+    });
+    assertEquals(quality.name, "quality");
+    assertEquals(quality["runs-on"], "ubuntu-latest");
+    assertEquals(quality["timeout-minutes"], 15);
+    assertEquals(quality.steps, [
+      {
+        name: "Checkout repository",
+        uses: "actions/checkout@v7",
+        with: { "persist-credentials": false },
+      },
+      {
+        name: "Set up Deno",
+        uses: "denoland/setup-deno@v2",
+        with: {
+          "deno-version-file": ".dvmrc",
+          cache: true,
+        },
+      },
+      {
+        name: "Install locked dependencies",
+        run: "deno install --frozen=true",
+      },
+      {
+        name: "Run quality checks",
+        run: "deno task quality",
+      },
+    ]);
     assertEquals(usesSecret, false);
   });
 });
