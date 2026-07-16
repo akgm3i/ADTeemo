@@ -1,5 +1,6 @@
 import type { MatchWatcher, RiotAccount } from "@adteemo/api/contract";
 import type { ApiClient } from "../api_client.ts";
+import { wasFailureLogged } from "../api_clients/transport.ts";
 import {
   type ActiveNotificationGroup,
   activeNotificationGroupKey,
@@ -525,7 +526,7 @@ async function setWatcherState(
     watcher.targetDiscordId,
     state,
   );
-  if (!result.success) {
+  if (!result.success && !wasFailureLogged(result)) {
     dependencies.logger.error("match_tracking.state_update_failed", {
       guildId: watcher.guildId,
       targetDiscordId: watcher.targetDiscordId,
@@ -565,11 +566,13 @@ async function tryFetchAndNotifyResult(
     pending,
   );
   if (!result.success) {
-    dependencies.logger.warn("match_tracking.riot_account_not_found", {
-      guildId: watcher.guildId,
-      targetDiscordId: watcher.targetDiscordId,
-      error: result.error,
-    });
+    if (!wasFailureLogged(result)) {
+      dependencies.logger.warn("match_tracking.riot_account_not_found", {
+        guildId: watcher.guildId,
+        targetDiscordId: watcher.targetDiscordId,
+        error: result.error,
+      });
+    }
     return { status: "pending" as const, messageId: pending.messageId };
   }
   const {
@@ -684,11 +687,13 @@ async function processWatcher(
     watcher,
   );
   if (!activeGameResult.success) {
-    dependencies.logger.warn("match_tracking.riot_account_not_found", {
-      guildId: watcher.guildId,
-      targetDiscordId: watcher.targetDiscordId,
-      error: activeGameResult.error,
-    });
+    if (!wasFailureLogged(activeGameResult)) {
+      dependencies.logger.warn("match_tracking.riot_account_not_found", {
+        guildId: watcher.guildId,
+        targetDiscordId: watcher.targetDiscordId,
+        error: activeGameResult.error,
+      });
+    }
     return;
   }
   const account = activeGameResult.account;
@@ -955,12 +960,12 @@ export function createMatchTrackingService(
 
   async function processMatchWatchers() {
     const result = await dependencies.apiClient.getEnabledMatchWatchers();
-    if (!result.success) {
+    if (!result.success && !wasFailureLogged(result)) {
       dependencies.logger.error("match_tracking.watchers_fetch_failed", {
         error: result.error,
       });
-      return;
     }
+    if (!result.success) return;
 
     budgetMonitor.warnIfRiotRequestBudgetRisk(result.watchers.length);
 

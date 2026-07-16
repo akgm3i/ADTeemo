@@ -1,5 +1,5 @@
 import { describe, test } from "@std/testing/bdd";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertStrictEquals } from "@std/assert";
 import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
 import { testClient } from "@hono/hono/testing";
 import { createApp } from "../app.ts";
@@ -367,6 +367,7 @@ describe("routes/matches.ts", () => {
           method: "POST",
           headers: {
             ...TEST_BOT_SERVICE_AUTH_HEADERS,
+            "X-Correlation-ID": "request-123",
             "Content-Type": "application/json",
           },
           body: JSON.stringify(payload),
@@ -378,12 +379,15 @@ describe("routes/matches.ts", () => {
       assertEquals(await res.json(), {
         error: "Failed to resolve OP.GG match detail",
       });
-      assertSpyCall(errorStub, 0, {
-        args: ["opgg_match_detail.request_failed", {
-          matchId: "JP1_12345",
-          targetDiscordId: "target-1",
-        }, error],
+      assertSpyCalls(errorStub, 1);
+      assertEquals(errorStub.calls[0].args[0], "request.failed");
+      assertEquals(errorStub.calls[0].args[1]?.correlationId, "request-123");
+      assertEquals(errorStub.calls[0].args[1]?.http, {
+        method: "POST",
+        path: "/matches/:matchId/external-details/opgg/resolve",
+        status: 500,
       });
+      assertStrictEquals(errorStub.calls[0].args[2], error);
     });
   });
 
