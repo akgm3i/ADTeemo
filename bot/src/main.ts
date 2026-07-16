@@ -19,7 +19,7 @@ import {
 } from "./api_client.ts";
 import { matchTracker } from "./features/match_tracking.ts";
 import { messageHandler, messageKeys } from "./messages.ts";
-import { botLogger } from "./logger.ts";
+import { botLogger, correlationIdForInteraction } from "./logger.ts";
 import type { Command } from "./types.ts";
 
 // Create a new client instance
@@ -39,6 +39,7 @@ client.commands = new Collection();
 // When the client is ready, run this code (only once)
 client.once(Events.ClientReady, (c) => {
   botLogger.info("bot.ready", {
+    correlationId: crypto.randomUUID(),
     userTag: c.user.tag,
     userId: c.user.id,
   });
@@ -46,6 +47,7 @@ client.once(Events.ClientReady, (c) => {
 });
 
 export async function handleInteractionCreate(interaction: Interaction) {
+  const correlationId = correlationIdForInteraction(interaction);
   if (interaction.isChatInputCommand()) {
     const command = interaction.client.commands.get(
       interaction.commandName,
@@ -53,6 +55,7 @@ export async function handleInteractionCreate(interaction: Interaction) {
 
     if (!command) {
       botLogger.warn("command.not_found", {
+        correlationId,
         commandName: interaction.commandName,
         guildId: interaction.guild?.id ?? null,
       });
@@ -65,6 +68,8 @@ export async function handleInteractionCreate(interaction: Interaction) {
       botLogger.error(
         "command.execution_failed",
         {
+          correlationId,
+          errorCategory: "unexpected",
           commandName: interaction.commandName,
           guildId: interaction.guild?.id ?? null,
           userId: interaction.user.id,
@@ -103,14 +108,6 @@ export async function handleInteractionCreate(interaction: Interaction) {
         );
 
         if (!deleteResult.success) {
-          botLogger.error(
-            "custom_game.cancel.delete_failed",
-            {
-              discordEventId,
-              guildId: interaction.guild?.id ?? null,
-              error: deleteResult.error,
-            },
-          );
           await interaction.editReply({
             content: messageHandler.formatMessage(
               messageKeys.customGame.cancel.error.interaction,
@@ -126,6 +123,8 @@ export async function handleInteractionCreate(interaction: Interaction) {
           botLogger.error(
             "custom_game.cancel.discord_event_delete_failed",
             {
+              correlationId,
+              errorCategory: "remote_api",
               discordEventId,
               guildId: interaction.guild?.id ?? null,
             },
@@ -141,6 +140,8 @@ export async function handleInteractionCreate(interaction: Interaction) {
           botLogger.error(
             "custom_game.cancel.recruitment_delete_failed",
             {
+              correlationId,
+              errorCategory: "remote_api",
               recruitmentMessageId,
               channelId: interaction.channel?.id ?? null,
               guildId: interaction.guild?.id ?? null,
@@ -159,6 +160,8 @@ export async function handleInteractionCreate(interaction: Interaction) {
         botLogger.error(
           "custom_game.cancel.unhandled_error",
           {
+            correlationId,
+            errorCategory: "unexpected",
             guildId: interaction.guild?.id ?? null,
           },
           e,
@@ -179,7 +182,9 @@ client.on(Events.InteractionCreate, handleInteractionCreate);
 
 // When the bot joins a new guild, run this code
 client.on(Events.GuildCreate, async (guild) => {
+  const correlationId = crypto.randomUUID();
   botLogger.info("guild.joined", {
+    correlationId,
     guildId: guild.id,
     guildName: guild.name,
   });
@@ -229,6 +234,8 @@ client.on(Events.GuildCreate, async (guild) => {
         botLogger.error(
           "guild.roles.setup_failed",
           {
+            correlationId,
+            errorCategory: "unexpected",
             guildId: guild.id,
             guildName: guild.name,
           },
@@ -242,6 +249,8 @@ client.on(Events.GuildCreate, async (guild) => {
     botLogger.error(
       "guild.owner_notification_failed",
       {
+        correlationId,
+        errorCategory: "remote_api",
         guildId: guild.id,
         guildName: guild.name,
       },

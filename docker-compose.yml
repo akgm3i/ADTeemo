@@ -19,6 +19,11 @@ services:
       - .env
     environment:
       DATABASE_URL: file:/app/data/sqlite.db
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
     healthcheck:
       test:
         - CMD
@@ -46,6 +51,11 @@ services:
       - .env
     environment:
       API_URL: http://api:8000
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   # Explicit one-shot operation. Normal Bot startup never changes commands.
   command-deployer:
@@ -63,7 +73,6 @@ services:
       - run
       - --allow-net
       - --allow-read
-      - --allow-write
       - --allow-env
       - --allow-sys
       - --allow-ffi

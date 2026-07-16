@@ -16,6 +16,7 @@ import {
   runBotEntrypoint,
   startBot,
 } from "./main.ts";
+import { correlationIdForInteraction } from "./logger.ts";
 
 describe("Main Bot Logic", () => {
   describe("startBot", () => {
@@ -220,6 +221,7 @@ describe("Main Bot Logic", () => {
       const interaction = new MockInteractionBuilder("unregistered")
         .withClient({ commands })
         .build();
+      const correlationId = correlationIdForInteraction(interaction);
 
       // Act
       await handleInteractionCreate(interaction);
@@ -231,7 +233,8 @@ describe("Main Bot Logic", () => {
       const parsed = JSON.parse(payload);
       assertEquals(parsed.component, "bot");
       assertEquals(parsed.level, "WARN");
-      assertEquals(parsed.message, "command.not_found");
+      assertEquals(parsed.event, "command.not_found");
+      assertEquals(parsed.correlationId, correlationId);
       assertEquals(parsed.commandName, "unregistered");
       assertEquals(parsed.guildId, "mock-guild-id");
     });

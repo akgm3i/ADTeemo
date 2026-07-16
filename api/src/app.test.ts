@@ -10,15 +10,18 @@ import {
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCalls, spy, stub } from "@std/testing/mock";
 import {
+  CORRELATION_ID_HEADER,
   createApp,
   createClassifiedRoutes,
   createRequestLoggingMiddleware,
+  handleUnhandledRequestError,
 } from "./app.ts";
 import {
   createTestDependencies,
   TEST_BOT_SERVICE_AUTH_HEADERS,
   TEST_BOT_SERVICE_TOKEN,
 } from "./test_utils.ts";
+import { recordRequestFailure } from "./request_failure.ts";
 
 type RoutableApp = {
   routes: ReadonlyArray<{ method: string; path: string }>;
@@ -85,18 +88,80 @@ describe("app.ts", () => {
           path: "/health",
           status: 200,
         });
+        assertEquals(typeof context?.correlationId, "string");
         assertEquals(typeof context?.durationMs, "number");
+      });
+
+      test("検証済みX-Correlation-IDを受け取ったとき、同じ値をログとresponse headerへ返す", async () => {
+        // Arrange
+        const correlationId = "request-123";
+        using infoStub = stub(deps.logger, "info", () => {});
+
+        // Act
+        const res = await app.request("/health", {
+          headers: { [CORRELATION_ID_HEADER]: correlationId },
+        });
+
+        // Assert
+        assertEquals(res.headers.get(CORRELATION_ID_HEADER), correlationId);
+        assertEquals(infoStub.calls[0].args[1]?.correlationId, correlationId);
+      });
+
+      test("X-Correlation-IDが不正なとき、UUIDを生成してログとresponse headerへ返す", async () => {
+        // Arrange
+        const generated: `${string}-${string}-${string}-${string}-${string}` =
+          "123e4567-e89b-42d3-a456-426614174000";
+        using _uuidStub = stub(
+          crypto,
+          "randomUUID",
+          () => generated,
+        );
+        using infoStub = stub(deps.logger, "info", () => {});
+
+        // Act
+        const res = await app.request("/health", {
+          headers: { [CORRELATION_ID_HEADER]: "invalid correlation id" },
+        });
+
+        // Assert
+        assertEquals(res.headers.get(CORRELATION_ID_HEADER), generated);
+        assertEquals(infoStub.calls[0].args[1]?.correlationId, generated);
+      });
+
+      test("識別子を含むURLへリクエストしたとき、実パスではなくroute templateを記録する", async () => {
+        // Arrange
+        const routeDeps = createTestDependencies({
+          dbActions: {
+            getRiotAccountByDiscordId: () => Promise.resolve(undefined),
+          },
+        });
+        const routeApp = createApp(routeDeps);
+        using infoStub = stub(routeDeps.logger, "info", () => {});
+
+        // Act
+        await routeApp.request("/users/private-discord-user/riot-account", {
+          headers: TEST_BOT_SERVICE_AUTH_HEADERS,
+        });
+
+        // Assert
+        assertEquals(infoStub.calls[0].args[1]?.http, {
+          method: "GET",
+          path: "/users/:userId/riot-account",
+          status: 404,
+        });
       });
 
       test("ハンドラ例外で500が返るとき、失敗リクエストとして注入loggerへERRORログを出力する", async () => {
         // Arrange
         const logger = createTestDependencies().logger;
         using errorStub = stub(logger, "error", () => {});
+        const rootCause = new Error("Unexpected failure");
         const failingApp = new Hono()
           .use("*", createRequestLoggingMiddleware(logger))
           .get("/error", () => {
-            throw new Error("Unexpected failure");
-          });
+            throw rootCause;
+          })
+          .onError(handleUnhandledRequestError);
 
         // Act
         const res = await failingApp.request("/error");
@@ -104,14 +169,45 @@ describe("app.ts", () => {
         // Assert
         assertEquals(res.status, 500);
         assertSpyCalls(errorStub, 1);
-        const [message, context] = errorStub.calls[0].args;
+        const [message, context, loggedError] = errorStub.calls[0].args;
         assertEquals(message, "request.failed");
         assertEquals(context?.http, {
           method: "GET",
           path: "/error",
           status: 500,
         });
+        assertEquals(context?.errorCategory, "unexpected");
+        assertEquals(typeof context?.correlationId, "string");
+        assertEquals(
+          res.headers.get(CORRELATION_ID_HEADER),
+          context?.correlationId,
+        );
         assertEquals(typeof context?.durationMs, "number");
+        assertStrictEquals(loggedError, rootCause);
+      });
+
+      test("500を互換responseへ変換するとき、受理した相関IDでroot causeを1回だけ記録する", async () => {
+        const logger = createTestDependencies().logger;
+        using errorStub = stub(logger, "error", () => {});
+        const failure = new Error("Provider failed");
+        const failingApp = new Hono()
+          .use("*", createRequestLoggingMiddleware(logger))
+          .get("/handled-error", (c) => {
+            recordRequestFailure(c.req.raw, failure, "remote_api");
+            return c.json({ error: "Provider failed" }, 500);
+          });
+
+        const res = await failingApp.request("/handled-error", {
+          headers: { [CORRELATION_ID_HEADER]: "request-123" },
+        });
+
+        assertEquals(res.status, 500);
+        assertSpyCalls(errorStub, 1);
+        const [event, context, loggedError] = errorStub.calls[0].args;
+        assertEquals(event, "request.failed");
+        assertEquals(context?.correlationId, "request-123");
+        assertEquals(context?.errorCategory, "remote_api");
+        assertStrictEquals(loggedError, failure);
       });
 
       test("下流middlewareが例外を再throwしたとき、失敗リクエストと例外を注入loggerへERRORログ出力する", async () => {
@@ -124,7 +220,11 @@ describe("app.ts", () => {
           req: {
             method: "POST",
             path: "/error",
+            routePath: "/error",
+            header: () => undefined,
+            raw: new Request("http://localhost/error", { method: "POST" }),
           },
+          header: () => {},
           res: new Response(null, { status: 200 }),
         } as unknown as Parameters<typeof middleware>[0];
 
@@ -261,6 +361,7 @@ describe("app.ts", () => {
       // Arrange
       const invalidCredential =
         "invalid-bot-service-token-0000000000000000000000000000";
+      const privateDiscordId = "private-discord-user";
       using repositoryStub = stub(
         deps.dbActions,
         "getRiotAccountByDiscordId",
@@ -270,7 +371,7 @@ describe("app.ts", () => {
       using warnStub = stub(deps.logger, "warn", () => {});
 
       // Act
-      const res = await app.request("/users/user-1/riot-account", {
+      const res = await app.request(`/users/${privateDiscordId}/riot-account`, {
         headers: { Authorization: `Bearer ${invalidCredential}` },
       });
       const responseBody = await res.text();
@@ -286,6 +387,11 @@ describe("app.ts", () => {
       assertFalse(
         JSON.stringify([...infoStub.calls, ...warnStub.calls]).includes(
           invalidCredential,
+        ),
+      );
+      assertFalse(
+        JSON.stringify([...infoStub.calls, ...warnStub.calls]).includes(
+          privateDiscordId,
         ),
       );
     });

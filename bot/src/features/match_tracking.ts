@@ -1,7 +1,7 @@
 import type { Client } from "discord.js";
 import type { MatchWatcher } from "@adteemo/api/contract";
 import { apiClient } from "../api_client.ts";
-import { botLogger } from "../logger.ts";
+import { botLogger, createBotLogger } from "../logger.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import {
   hasResultFetchTimedOut as hasResultFetchTimedOutWithConfig,
@@ -85,8 +85,13 @@ function createDefaultMatchTrackingRenderer() {
   });
 }
 
-function createDefaultMatchTrackingService(client: Client) {
-  return createMatchTrackingService({
+function createDefaultMatchTrackingService(
+  client: Client,
+  correlationId: string = crypto.randomUUID(),
+) {
+  const logContext = { correlationId };
+  const logger = createBotLogger(logContext);
+  const service = createMatchTrackingService({
     apiClient,
     notifier: createMatchTrackingNotifier({
       client: {
@@ -95,15 +100,21 @@ function createDefaultMatchTrackingService(client: Client) {
             await client.channels.fetch(channelId) as WatcherChannel | null,
         },
       },
-      logger: botLogger,
+      logger,
     }),
     renderer: createDefaultMatchTrackingRenderer(),
     clock: {
       now: () => new Date(),
     },
-    logger: botLogger,
+    logger,
     config: matchTrackingServiceConfig(),
   });
+  return {
+    ...service,
+    setCorrelationId(value: string) {
+      logContext.correlationId = value;
+    },
+  };
 }
 
 async function processMatchWatchers(client: Client) {
@@ -112,6 +123,7 @@ async function processMatchWatchers(client: Client) {
 
 export type MatchTrackingWorkerService = {
   processMatchWatchers: () => Promise<void>;
+  setCorrelationId?: (correlationId: string) => void;
 };
 
 export type MatchTrackingWorkerScheduler = {
@@ -144,17 +156,23 @@ export function createMatchTrackingWorker(
   async function guardedProcessMatchWatchers(
     service: MatchTrackingWorkerService,
   ) {
+    const correlationId = crypto.randomUUID();
     if (processingMatchWatchers) {
       dependencies.logger.warn("match_tracking.worker_tick_skipped", {
+        correlationId,
         reason: "previous_tick_still_running",
       });
       return;
     }
     processingMatchWatchers = true;
+    service.setCorrelationId?.(correlationId);
     try {
       await service.processMatchWatchers();
     } catch (error) {
-      dependencies.logger.error("match_tracking.worker_tick_failed", {}, error);
+      dependencies.logger.error("match_tracking.worker_tick_failed", {
+        correlationId,
+        errorCategory: "unexpected",
+      }, error);
     } finally {
       processingMatchWatchers = false;
     }
