@@ -6,7 +6,7 @@
 
 | Area        | Stack                                          |
 | ----------- | ---------------------------------------------- |
-| Runtime     | Deno 2.5+, TypeScript                          |
+| Runtime     | Deno 2.5.7, TypeScript                         |
 | Backend API | Hono RPC                                       |
 | Database    | SQLite, Drizzle ORM                            |
 | Discord Bot | discord.js                                     |
@@ -28,7 +28,7 @@
 
 ## Requirements
 
-- Deno 2.5以上
+- Deno 2.5.7（root `.dvmrc` を正本とする）
 - Docker / Docker Compose
 - Discord Bot tokenとapplication client ID
 - Riot API key
@@ -36,6 +36,8 @@
 ## 依存関係の管理
 
 依存元はrootまたは対象workspaceの `deno.json` の `imports` に登録します。共有依存はroot、workspace固有の依存は対象workspaceへ追加してください。
+
+依存を事前取得する場合は `deno install --frozen=true` を使い、`deno.lock` と解決結果が一致しない状態をエラーにします。CIとDockerも同じ固定runtimeとfrozen lockfileを使用します。
 
 - JSRで提供される依存は `jsr:` を優先します。JSRに適切なpackageがない場合だけ `npm:` を使います。
 - ソースコードでは `@std/assert` や `@std/testing/bdd` のようなimport map上のbare specifierを使い、version付き `jsr:` / `npm:` を直書きしません。
@@ -106,30 +108,32 @@ Backend APIは既定で `http://localhost:8000` に公開されます。
 
 ## Deno Tasks
 
-| Task                  | Description                                                                   |
-| --------------------- | ----------------------------------------------------------------------------- |
-| `dev:all`             | APIとBotを開発モードで起動します。                                            |
-| `dev:api`             | APIのみ開発モードで起動します。                                               |
-| `dev:bot`             | Botのみ開発モードで起動します。                                               |
-| `dev:deploy-commands` | `.env.dev` を使ってslash commandを登録します。                                |
-| `deploy-commands`     | `.env` を使ってslash commandを登録します。                                    |
-| `fmt:check`           | フォーマット差分を確認します。                                                |
-| `lint`                | Deno lintを実行します。                                                       |
-| `check`               | 主要entrypointの型チェックを実行します。                                      |
-| `test:all`            | `.env.example` を読み込み、coverage付きで全テストを実行します。               |
-| `test:riot-live`      | 実Riot APIで疎通確認を行います。通常はopt-inで使用します。                    |
-| `quality`             | root `deno.json` のdependenciesに定義された品質確認をまとめて実行します。     |
-| `check:bot-boundary`  | Bot runtimeからBackend実装・DB・外部I/Oへ直接依存していないことを確認します。 |
-| `check:messages`      | メッセージ定義の整合性を確認します。                                          |
-| `db:push`             | Drizzle schemaをDBに反映します。                                              |
-| `db:generate`         | Drizzle migrationを生成します。                                               |
-| `db:migrate`          | Drizzle migrationを適用します。                                               |
+| Task                    | Description                                                                   |
+| ----------------------- | ----------------------------------------------------------------------------- |
+| `dev:all`               | APIとBotを開発モードで起動します。                                            |
+| `dev:api`               | APIのみ開発モードで起動します。                                               |
+| `dev:bot`               | Botのみ開発モードで起動します。                                               |
+| `dev:deploy-commands`   | `.env.dev` を使ってslash commandを登録します。                                |
+| `deploy-commands`       | `.env` を使ってslash commandを登録します。                                    |
+| `fmt:check`             | フォーマット差分を確認します。                                                |
+| `lint`                  | Deno lintを実行します。                                                       |
+| `check`                 | 主要entrypointの型チェックを実行します。                                      |
+| `test:all`              | `.env.example` を読み込み、coverage付きで全テストを実行します。               |
+| `test:target`           | `.env.example` を読み込み、引数で指定したテストだけを実行します。             |
+| `test:riot-live`        | 実Riot APIで疎通確認を行います。通常はopt-inで使用します。                    |
+| `quality`               | root `deno.json` のdependenciesに定義された品質確認をまとめて実行します。     |
+| `check:bot-boundary`    | Bot runtimeからBackend実装・DB・外部I/Oへ直接依存していないことを確認します。 |
+| `check:messages`        | メッセージ定義の整合性を確認します。                                          |
+| `check:runtime-version` | workflowとDockerのDeno versionが`.dvmrc`と一致するか確認します。              |
+| `db:push`               | Drizzle schemaをDBに反映します。                                              |
+| `db:generate`           | Drizzle migrationを生成します。                                               |
+| `db:migrate`            | Drizzle migrationを適用します。                                               |
 
 ## Docker
 
 ### Development
 
-開発用コンテナはソースを `/app` にマウントし、Deno cacheをDocker volumeに保持します。コンテナ起動時にアプリケーションは自動開始しないため、必要なtaskを `docker compose exec` で実行します。
+開発用コンテナはソースを `/app` にマウントし、Deno cacheをDocker volumeに保持します。コンテナ起動時にアプリケーションは自動開始しないため、必要なtaskを `docker compose exec` で実行します。root `.dockerignore` は `.env*`、`.git`、coverage、`node_modules`、runtime dataをbuild contextから除外します。
 
 ```bash
 docker compose --profile dev up -d --build
@@ -201,6 +205,8 @@ APIより先にBotを切り替えると新credentialが拒否されるため、A
 ```bash
 deno task quality
 ```
+
+Pull Requestと`main`へのpushでは、GitHub Actionsの固定job名`quality`が同じtaskをDeno 2.5.7で実行します。workflowは`.env.example`だけを使う通常テストを実行し、repository secretやlive external testは使用しません。
 
 フォーマット差分がある場合は内容を確認してから `deno fmt` を実行し、その後に再度 `deno task fmt:check` を確認します。
 
