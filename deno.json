@@ -9,20 +9,23 @@
     "lint": "deno lint",
     "check": "deno check api/src/app.ts bot/src/main.ts messages/src/main.ts lib/logger/mod.ts",
     "test:all": "deno test --allow-env --allow-read --allow-sys --allow-ffi --env-file=.env.example --coverage -q",
+    "test:target": "deno test --allow-env --allow-read --allow-sys --allow-ffi --env-file=.env.example -q",
     "test:riot-live": "RIOT_LIVE_TEST=1 deno test --allow-env --allow-net --env-file=.env api/src/riot_api.live.test.ts",
     "test:allcov": "deno task test:all",
     "quality": {
+      "command": "deno task test:all",
       "dependencies": [
         "fmt:check",
         "lint",
         "check",
         "check:bot-boundary",
         "check:messages",
-        "test:all"
+        "check:runtime-version"
       ]
     },
     "check:bot-boundary": "deno run --allow-run=deno --allow-read=bot/src/commands bot/check-runtime-boundary.ts",
     "check:messages": "deno run --allow-read messages/src/check-messages.ts",
+    "check:runtime-version": "deno run --allow-read=.dvmrc,.github/workflows/quality.yml,docker/Dockerfile.dev,docker/Dockerfile.prod scripts/check-runtime-version.ts",
     "deploy-commands": "deno run --allow-net --allow-read --allow-env --allow-sys --allow-ffi --env=.env bot/src/deploy-commands.ts",
     "db:push": "deno run --allow-env --allow-read --allow-sys --allow-run --allow-ffi --node-modules-dir npm:drizzle-kit push",
     "db:generate": "deno run --allow-env --allow-read --allow-sys --allow-run --allow-ffi --allow-write --node-modules-dir npm:drizzle-kit generate",
@@ -32,7 +35,7 @@
     "strict": true
   },
   "fmt": {
-    "include": ["api/", "bot/", "messages/", "lib/"],
+    "include": ["api/", "bot/", "messages/", "lib/", "scripts/"],
     "exclude": ["node_modules/", "coverage/"],
     "useTabs": false,
     "indentWidth": 2,
@@ -40,7 +43,7 @@
     "proseWrap": "preserve"
   },
   "lint": {
-    "include": ["api/", "bot/", "messages/", "lib/"],
+    "include": ["api/", "bot/", "messages/", "lib/", "scripts/"],
     "exclude": ["node_modules/", "coverage/"],
     "rules": {
       "tags": ["recommended"]

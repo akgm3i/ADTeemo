@@ -1,5 +1,5 @@
 # Build stage
-FROM denoland/deno:latest AS builder
+FROM denoland/deno:2.5.7 AS builder
 
 WORKDIR /app
 
@@ -18,7 +18,7 @@ COPY --chown=deno:deno lib/ ./lib/
 RUN deno install --frozen=true
 
 # Production stage api
-FROM denoland/deno:latest AS api
+FROM denoland/deno:2.5.7 AS api
 
 WORKDIR /app/api
 
@@ -31,7 +31,7 @@ RUN mkdir -p /app/data /app/node_modules
 CMD ["sh", "-c", "cd /app && deno task db:migrate && exec deno serve -A api/src/app.ts"]
 
 # Production stage bot
-FROM denoland/deno:latest AS bot
+FROM denoland/deno:2.5.7 AS bot
 
 WORKDIR /app/bot
 
