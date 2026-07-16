@@ -201,6 +201,33 @@ describe("logger", () => {
     );
   });
 
+  test("引用符付きの機密URL値にURL抽出の区切り文字があるとき、引用符内の値全体をredactする", () => {
+    // Arrange
+    using consoleLogStub = stub(console, "log");
+    initLogger({
+      component: "quoted-url-assignment-redaction-test",
+      level: "ERROR",
+    });
+    const logger = createLogger("quoted-url-assignment-redaction-test");
+    const error = new Error(
+      'token="https://provider.example/cb?sig=abc;tail=semicolon-secret" ' +
+        "client_secret='https://provider.example/cb,comma-secret' " +
+        'credential="https://provider.example/cb(parenthesis-secret)"',
+    );
+
+    // Act
+    logger.error("provider.failed", undefined, error);
+
+    // Assert
+    const parsed = loggedPayload(consoleLogStub.calls[0]);
+    const loggedError = parsed.error as Record<string, unknown>;
+    assertEquals(
+      loggedError.message,
+      "token=\"[REDACTED]\" client_secret='[REDACTED]' " +
+        'credential="[REDACTED]"',
+    );
+  });
+
   test("route template・静的route・実識別子を記録するとき、診断用pathを維持して実値だけをredactする", () => {
     // Arrange
     using consoleLogStub = stub(console, "log");

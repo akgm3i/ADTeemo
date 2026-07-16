@@ -145,6 +145,14 @@ function sanitizeKnownPathSegments(value: string): string {
     );
 }
 
+function sanitizeQuotedAssignments(value: string): string {
+  return value.replace(
+    QUOTED_TEXT_ASSIGNMENT,
+    (match, prefix: string, key: string, quote: string) =>
+      isSensitiveKey(key) ? `${prefix}${quote}${REDACTED}${quote}` : match,
+  );
+}
+
 function sanitizePlainText(value: string): string {
   let sanitized = value
     .replace(
@@ -164,12 +172,7 @@ function sanitizePlainText(value: string): string {
       `$1${REDACTED}@`,
     );
 
-  sanitized = sanitized
-    .replace(
-      QUOTED_TEXT_ASSIGNMENT,
-      (match, prefix: string, key: string, quote: string) =>
-        isSensitiveKey(key) ? `${prefix}${quote}${REDACTED}${quote}` : match,
-    )
+  sanitized = sanitizeQuotedAssignments(sanitized)
     .replace(
       UNQUOTED_TEXT_ASSIGNMENT,
       (match, prefix: string, key: string, text: string) =>
@@ -224,11 +227,12 @@ function sanitizeUrlString(value: string): string {
 
 function sanitizeText(value: unknown): string {
   if (typeof value !== "string") return "[Unserializable]";
+  const quotedAssignmentsSanitized = sanitizeQuotedAssignments(value);
   let sanitized = "";
   let lastIndex = 0;
-  for (const match of value.matchAll(URL_TEXT)) {
+  for (const match of quotedAssignmentsSanitized.matchAll(URL_TEXT)) {
     const index = match.index ?? 0;
-    const prefix = value.slice(lastIndex, index);
+    const prefix = quotedAssignmentsSanitized.slice(lastIndex, index);
     const assignment = prefix.match(TRAILING_URL_ASSIGNMENT);
     if (assignment && isSensitiveKey(assignment[2])) {
       const assignmentIndex = assignment.index ?? prefix.length;
@@ -240,7 +244,7 @@ function sanitizeText(value: unknown): string {
     }
     lastIndex = index + match[0].length;
   }
-  sanitized += sanitizePlainText(value.slice(lastIndex));
+  sanitized += sanitizePlainText(quotedAssignmentsSanitized.slice(lastIndex));
   return sanitized;
 }
 
