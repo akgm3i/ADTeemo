@@ -1,0 +1,21 @@
+# Credentials and local environment
+.env*
+
+# Version control and editor metadata
+.git
+.gitignore
+.github
+.vscode
+
+# Generated dependencies, coverage, and runtime data
+node_modules
+**/node_modules
+coverage
+**/coverage
+data
+**/*.db
+**/*.db-*
+
+# Local logs and operating-system metadata
+*.log
+.DS_Store
