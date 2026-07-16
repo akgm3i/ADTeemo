@@ -1,4 +1,7 @@
-import { ApplicationIntegrationType, InteractionContextType } from "discord.js";
+import type {
+  ApplicationIntegrationType,
+  InteractionContextType,
+} from "discord.js";
 
 export type CommandStatus = "enabled" | "disabled";
 
@@ -21,11 +24,17 @@ export type CommandRegistration =
   | EnabledCommandRegistration
   | DisabledCommandRegistration;
 
-const guildInstall = [ApplicationIntegrationType.GuildInstall] as const;
-const guildOnly = [InteractionContextType.Guild] as const;
+// Discord API enum values. Keep this registry data-only so boundary checks do
+// not load discord.js and its HTTP stack just to enumerate command files.
+const guildContext = 0 as InteractionContextType;
+const botDmContext = 1 as InteractionContextType;
+const guildInstallType = 0 as ApplicationIntegrationType;
+
+const guildInstall = [guildInstallType] as const;
+const guildOnly = [guildContext] as const;
 const guildAndBotDm = [
-  InteractionContextType.Guild,
-  InteractionContextType.BotDM,
+  guildContext,
+  botDmContext,
 ] as const;
 
 export const commandRegistry = [
