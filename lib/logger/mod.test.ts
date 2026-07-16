@@ -170,6 +170,50 @@ describe("logger", () => {
     );
   });
 
+  test("自由形式文字列にJSON形式の秘密値と既redact値があるとき、秘密値だけを一度redactする", () => {
+    // Arrange
+    using consoleLogStub = stub(console, "log");
+    initLogger({ component: "json-redaction-test", level: "ERROR" });
+    const logger = createLogger("json-redaction-test");
+    const error = new Error(
+      'provider body={"access_token":"access-secret",' +
+        '"client_secret":"client-secret","code":"short-code",' +
+        '"state":"short-state","safe":"visible"} ' +
+        "token=[REDACTED]",
+    );
+
+    // Act
+    logger.error("provider.failed", undefined, error);
+
+    // Assert
+    const parsed = loggedPayload(consoleLogStub.calls[0]);
+    const loggedError = parsed.error as Record<string, unknown>;
+    assertEquals(
+      loggedError.message,
+      'provider body={"access_token":"[REDACTED]",' +
+        '"client_secret":"[REDACTED]","code":"[REDACTED]",' +
+        '"state":"[REDACTED]","safe":"visible"} ' +
+        "token=[REDACTED]",
+    );
+  });
+
+  test("Error.messageが実行時に文字列でないとき、loggerを失敗させず安全な値へ変換する", () => {
+    // Arrange
+    using consoleLogStub = stub(console, "log");
+    initLogger({ component: "invalid-error-test", level: "ERROR" });
+    const logger = createLogger("invalid-error-test");
+    const error = new Error("placeholder");
+    Object.defineProperty(error, "message", { value: null });
+
+    // Act
+    logger.error("provider.failed", undefined, error);
+
+    // Assert
+    const parsed = loggedPayload(consoleLogStub.calls[0]);
+    const loggedError = parsed.error as Record<string, unknown>;
+    assertEquals(loggedError.message, "[Unserializable]");
+  });
+
   test("guild、channel、messageのsnowflakeを記録するとき、非user識別子は診断用に維持する", () => {
     // Arrange
     using consoleLogStub = stub(console, "log");

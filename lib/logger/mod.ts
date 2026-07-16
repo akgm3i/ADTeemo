@@ -52,9 +52,9 @@ const CIRCULAR = "[Circular]";
 const MAX_DEPTH = 20;
 const loggerLevels = new Map<string, LogLevel>();
 const QUOTED_TEXT_ASSIGNMENT =
-  /(\b([A-Za-z][A-Za-z0-9_-]*)\b\s*[:=]\s*)(["'])(.*?)\3/gu;
+  /(["']?\b([A-Za-z][A-Za-z0-9_-]*)\b["']?\s*[:=]\s*)(["'])(.*?)\3/gu;
 const UNQUOTED_TEXT_ASSIGNMENT =
-  /(\b([A-Za-z][A-Za-z0-9_-]*)\b\s*[:=]\s*)([^\s,;&)\]}]+)/gu;
+  /(["']?\b([A-Za-z][A-Za-z0-9_-]*)\b["']?\s*[:=]\s*)([^\s,;&)\]}]+)/gu;
 
 function environmentValue(name: string): string | undefined {
   try {
@@ -115,7 +115,8 @@ function isSensitiveKey(key: string): boolean {
   ].includes(normalized);
 }
 
-function sanitizeText(value: string): string {
+function sanitizeText(value: unknown): string {
+  if (typeof value !== "string") return "[Unserializable]";
   let sanitized = value
     .replace(
       /(\bauthorization\b\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|(?:Bearer|Basic)\s+\S+|\S+)/giu,
@@ -142,8 +143,10 @@ function sanitizeText(value: string): string {
     )
     .replace(
       UNQUOTED_TEXT_ASSIGNMENT,
-      (match, prefix: string, key: string) =>
-        isSensitiveKey(key) ? `${prefix}${REDACTED}` : match,
+      (match, prefix: string, key: string, text: string) =>
+        isSensitiveKey(key) && !text.includes("[REDACTED")
+          ? `${prefix}${REDACTED}`
+          : match,
     );
 
   return sanitized
