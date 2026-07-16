@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { afterEach, beforeEach, describe, test } from "@std/testing/bdd";
-import { assertSpyCalls, stub } from "@std/testing/mock";
+import { assertSpyCalls, spy, stub } from "@std/testing/mock";
 import type { Stub } from "@std/testing/mock";
 import { initializeMessages } from "./main.ts";
 import type { MessageKey } from "./main.ts";
@@ -77,18 +77,14 @@ describe("formatMessage (Message Translation)", () => {
     test("見つからないキーについては、警告を表示しキー自体を文字列として返す", () => {
       // Arrange
       const missingKey = "a.b.c" as MessageKey;
-      using consoleLogStub = stub(console, "log", () => {});
+      using consoleWarnSpy = spy(console, "warn");
 
       // Act
       const result = formatMessage(missingKey);
 
       // Assert
       assertEquals(result, missingKey);
-      assertSpyCalls(consoleLogStub, 1);
-      const payload = JSON.parse(consoleLogStub.calls[0].args[0] as string);
-      assertEquals(payload.event, "messages.key_not_found");
-      assertEquals(payload.component, "messages");
-      assertEquals(payload.level, "WARN");
+      assertSpyCalls(consoleWarnSpy, 1);
     });
   });
 

@@ -10,13 +10,11 @@ import {
   type ApiRpcClient,
   COMMUNICATION_ERROR,
   logCommunicationError,
-  markFailureLogged,
   readErrorMessage,
   resultFromRequest,
   successOnly,
   unexpectedResponseError,
 } from "./transport.ts";
-import { botLogger } from "../logger.ts";
 
 export type MatchParticipant = z.infer<typeof createParticipantSchema>;
 export type RankSnapshotPayload = z.infer<
@@ -89,21 +87,17 @@ export function createMatchesApiClient(
 
       const data = await res.json() as { id?: unknown } | null;
       if (typeof data?.id !== "number") {
-        botLogger.error("api_client.invalid_response", {
-          correlationId: crypto.randomUUID(),
-          errorCategory: "remote_api",
-          operation: "create_match_participant",
-        });
-        return markFailureLogged({
+        console.error("API response missing participant id", data);
+        return {
           success: false,
           error: "API response missing participant id",
-        });
+        };
       }
 
       return { success: true, id: data.id };
     } catch (error) {
       logCommunicationError(error);
-      return markFailureLogged({ success: false, error: COMMUNICATION_ERROR });
+      return { success: false, error: COMMUNICATION_ERROR };
     }
   }
 

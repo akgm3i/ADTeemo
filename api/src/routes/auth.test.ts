@@ -1,12 +1,7 @@
 import { testClient } from "@hono/hono/testing";
 import { describe, test } from "@std/testing/bdd";
-import {
-  assert,
-  assertEquals,
-  assertFalse,
-  assertStrictEquals,
-} from "@std/assert";
-import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
+import { assert, assertEquals, assertFalse } from "@std/assert";
+import { assertSpyCall, stub } from "@std/testing/mock";
 import { createApp } from "../app.ts";
 import {
   createTestDependencies,
@@ -200,14 +195,9 @@ describe("routes/auth.ts", () => {
         assertSpyCall(formatMessageStub, 0, {
           args: [messageKeys.common.error.internalServerError],
         });
-        assertSpyCalls(errorStub, 1);
-        assertEquals(errorStub.calls[0].args[0], "request.failed");
-        assertEquals(errorStub.calls[0].args[1]?.http, {
-          method: "GET",
-          path: "/auth/rso/callback",
-          status: 500,
+        assertSpyCall(errorStub, 0, {
+          args: ["auth.rso_callback.failed", {}, error],
         });
-        assertStrictEquals(errorStub.calls[0].args[2], error);
       });
     });
   });

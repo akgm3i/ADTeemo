@@ -1,10 +1,8 @@
 import * as path from "@std/path";
 import { Command } from "../types.ts";
-import { botLogger } from "../logger.ts";
 import { isRuntimeCommandFile } from "./runtime_command_files.ts";
 
 export async function loadCommands(): Promise<Command[]> {
-  const correlationId = crypto.randomUUID();
   const commands: Command[] = [];
   const dirname = path.dirname(path.fromFileUrl(import.meta.url));
   const commandsPath = path.join(dirname, "..", "commands");
@@ -19,17 +17,12 @@ export async function loadCommands(): Promise<Command[]> {
         if ("data" in command && "execute" in command) {
           commands.push(command as Command);
         } else {
-          botLogger.warn("command.load.invalid_export", {
-            correlationId,
-            commandFile: dirEntry.name,
-          });
+          console.log(
+            `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`,
+          );
         }
       } catch (error) {
-        botLogger.error("command.load.failed", {
-          correlationId,
-          errorCategory: "unexpected",
-          commandFile: dirEntry.name,
-        }, error);
+        console.error(`Error loading command at ${filePath}:`, error);
       }
     }
   }

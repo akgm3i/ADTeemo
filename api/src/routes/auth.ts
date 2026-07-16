@@ -6,7 +6,6 @@ import {
 } from "../contract/schemas.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import type { AppDependencies } from "../dependencies.ts";
-import { recordRequestFailure } from "../request_failure.ts";
 
 type AuthDbActions = Pick<
   AppDependencies["dbActions"],
@@ -16,6 +15,7 @@ type AuthDbActions = Pick<
 type AuthRouteDependencies = {
   dbActions: AuthDbActions;
   rso: AppDependencies["rso"];
+  logger: AppDependencies["logger"];
 };
 
 export function authBotServiceRoutes(deps: AuthRouteDependencies) {
@@ -108,7 +108,7 @@ export function authCallbackRoutes(deps: AuthRouteDependencies) {
           </html>
         `);
       } catch (error) {
-        recordRequestFailure(c.req.raw, error);
+        deps.logger.error("auth.rso_callback.failed", {}, error);
         return c.json(
           {
             error: messageHandler.formatMessage(

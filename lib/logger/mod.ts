@@ -1,28 +1,23 @@
-export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
+import { getLogger, setup } from "@std/log";
+import { ConsoleHandler } from "@std/log/console-handler";
+import { FileHandler } from "@std/log/file-handler";
 
-export type ErrorCategory =
-  | "domain"
-  | "validation"
-  | "remote_api"
-  | "repository"
-  | "unexpected";
-
-export interface LogContext extends Record<string, unknown> {
-  correlationId?: string;
-  errorCategory?: ErrorCategory;
-  error?: unknown;
-}
-
-export interface StructuredLogger {
-  debug(event: string, context?: LogContext): void;
-  info(event: string, context?: LogContext): void;
-  warn(event: string, context?: LogContext): void;
-  error(event: string, context?: LogContext, error?: unknown): void;
-}
+export type LogLevel =
+  | "DEBUG"
+  | "INFO"
+  | "WARN"
+  | "ERROR"
+  | "CRITICAL";
 
 interface InitLoggerOptions {
   component?: string;
   level?: LogLevel | string;
+  console?: boolean;
+  filePath?: string;
+}
+
+interface LogContext extends Record<string, unknown> {
+  error?: unknown;
 }
 
 const VALID_LEVELS: readonly LogLevel[] = [
@@ -30,230 +25,120 @@ const VALID_LEVELS: readonly LogLevel[] = [
   "INFO",
   "WARN",
   "ERROR",
+  "CRITICAL",
 ];
 
-const ERROR_CATEGORIES: readonly ErrorCategory[] = [
-  "domain",
-  "validation",
-  "remote_api",
-  "repository",
-  "unexpected",
-];
+type LogHandler = ConsoleHandler | FileHandler;
 
-const LEVEL_PRIORITY: Readonly<Record<LogLevel, number>> = {
-  DEBUG: 10,
-  INFO: 20,
-  WARN: 30,
-  ERROR: 40,
-};
+interface LoggerConfig {
+  level: LogLevel;
+  handlers: string[];
+}
 
-const REDACTED = "[REDACTED]";
-const CIRCULAR = "[Circular]";
-const MAX_DEPTH = 20;
-const loggerLevels = new Map<string, LogLevel>();
-
-function environmentValue(name: string): string | undefined {
-  try {
-    return Deno.env.get(name);
-  } catch {
-    return undefined;
-  }
+export interface StructuredLogger {
+  info(message: string, context?: LogContext): void;
+  warn(message: string, context?: LogContext): void;
+  error(message: string, context?: LogContext, error?: unknown): void;
 }
 
 function normalizeLevel(
   level: string | LogLevel | undefined,
   fallback: LogLevel,
 ): LogLevel {
-  if (!level) return fallback;
-  const upper = String(level).toUpperCase();
-  return VALID_LEVELS.includes(upper as LogLevel)
-    ? upper as LogLevel
-    : fallback;
-}
-
-function normalizeKey(key: string): string {
-  return key.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
-}
-
-function isSensitiveKey(key: string): boolean {
-  const normalized = normalizeKey(key);
-  if (
-    normalized.includes("token") ||
-    normalized.includes("credential") ||
-    normalized.includes("secret") ||
-    normalized.includes("password") ||
-    normalized.includes("apikey") ||
-    normalized.includes("authorization") ||
-    normalized.includes("cookie") ||
-    normalized.includes("puuid") ||
-    normalized.includes("riotid") ||
-    normalized.includes("oauthcode") ||
-    normalized.includes("oauthstate") ||
-    normalized.includes("discordid") ||
-    normalized.endsWith("params") ||
-    normalized.endsWith("parameters")
-  ) {
-    return true;
+  if (!level) {
+    return fallback;
   }
-
-  return [
-    "code",
-    "state",
-    "params",
-    "parameters",
-    "sqlparams",
-    "sqlparameters",
-    "userid",
-    "usertag",
-    "gamename",
-    "tagline",
-  ].includes(normalized);
-}
-
-function serializeError(
-  error: Error,
-  seen: WeakSet<object>,
-  depth: number,
-): Record<string, unknown> {
-  const serialized: Record<string, unknown> = Object.create(null);
-  serialized.name = error.name;
-  serialized.message = error.message;
-  if (error.stack) serialized.stack = error.stack;
-  if (error.cause !== undefined) {
-    serialized.cause = sanitizeValue(error.cause, seen, depth + 1);
+  const upper = (typeof level === "string" ? level : String(level))
+    .toUpperCase();
+  if (VALID_LEVELS.includes(upper as LogLevel)) {
+    return upper as LogLevel;
   }
-
-  try {
-    for (const [key, value] of Object.entries(error)) {
-      if (key === "cause") continue;
-      serialized[key] = isSensitiveKey(key)
-        ? REDACTED
-        : sanitizeValue(value, seen, depth + 1);
-    }
-  } catch {
-    serialized.properties = "[Unserializable]";
-  }
-
-  return serialized;
+  return fallback;
 }
 
-function sanitizeValue(
-  value: unknown,
-  seen: WeakSet<object>,
-  depth: number,
-): unknown {
-  if (depth > MAX_DEPTH) return "[MaxDepth]";
-  if (
-    value === null || typeof value === "string" ||
-    typeof value === "boolean"
-  ) {
-    return value;
-  }
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (typeof value === "bigint") return value.toString();
-  if (typeof value === "undefined") return "[undefined]";
-  if (typeof value === "symbol") return String(value);
-  if (typeof value === "function") return "[Function]";
+let initialized = false;
+const handlers = new Map<string, LogHandler>();
+const loggers = new Map<string, LoggerConfig>();
 
-  const object = value as object;
-  if (seen.has(object)) return CIRCULAR;
-  seen.add(object);
-
-  try {
-    if (value instanceof Date) {
-      try {
-        return value.toISOString();
-      } catch {
-        return "Invalid Date";
-      }
-    }
-    if (value instanceof URL) return value.toString();
-    if (value instanceof Error) return serializeError(value, seen, depth);
-    if (Array.isArray(value)) {
-      return value.map((item) => sanitizeValue(item, seen, depth + 1));
-    }
-
-    const sanitized: Record<string, unknown> = Object.create(null);
-    try {
-      for (const [key, item] of Object.entries(value)) {
-        sanitized[key] = isSensitiveKey(key)
-          ? REDACTED
-          : sanitizeValue(item, seen, depth + 1);
-      }
-    } catch {
-      return "[Unserializable]";
-    }
-    return sanitized;
-  } catch {
-    return "[Unserializable]";
-  } finally {
-    seen.delete(object);
-  }
-}
-
-function sanitizeRecord(value: Record<string, unknown>): LogContext {
-  const sanitized = sanitizeValue(value, new WeakSet(), 0);
-  return typeof sanitized === "object" && sanitized !== null
-    ? sanitized as LogContext
-    : {};
-}
-
-export function isValidCorrelationId(value: string | undefined): boolean {
-  return value !== undefined &&
-    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
-}
-
-function correlationIdFrom(context: LogContext): string {
-  return typeof context.correlationId === "string" &&
-      isValidCorrelationId(context.correlationId)
-    ? context.correlationId
-    : crypto.randomUUID();
-}
-
-function errorCategoryFrom(context: LogContext): ErrorCategory {
-  return typeof context.errorCategory === "string" &&
-      ERROR_CATEGORIES.includes(context.errorCategory as ErrorCategory)
-    ? context.errorCategory as ErrorCategory
-    : "unexpected";
-}
+const formatter = (record: { msg: string }) => record.msg;
 
 export function initLogger(options: InitLoggerOptions = {}): void {
-  const component = options.component ?? "default";
-  const fallback = normalizeLevel(
-    environmentValue("ADTEEMO_LOG_LEVEL"),
-    "INFO",
+  const loggerName = options.component ?? "default";
+  const loggerHandlers: string[] = [];
+
+  if (options.console ?? true) {
+    const handlerName = `${loggerName}:console`;
+    handlers.set(
+      handlerName,
+      new ConsoleHandler("DEBUG", { formatter, useColors: false }),
+    );
+    loggerHandlers.push(handlerName);
+  }
+
+  const filePath = options.filePath ?? Deno.env.get("ADTEEMO_LOG_FILE");
+  if (filePath) {
+    const handlerName = `${loggerName}:file`;
+    handlers.set(
+      handlerName,
+      new FileHandler("DEBUG", {
+        filename: filePath,
+        formatter,
+      }),
+    );
+    loggerHandlers.push(handlerName);
+  }
+
+  if (loggerHandlers.length === 0) {
+    const handlerName = `${loggerName}:console`;
+    handlers.set(
+      handlerName,
+      new ConsoleHandler("DEBUG", { formatter, useColors: false }),
+    );
+    loggerHandlers.push(handlerName);
+  }
+
+  const handlerRecord = Object.fromEntries(handlers.entries());
+  const level = normalizeLevel(
+    options.level,
+    normalizeLevel(Deno.env.get("ADTEEMO_LOG_LEVEL"), "INFO"),
   );
-  loggerLevels.set(component, normalizeLevel(options.level, fallback));
+  loggers.set(loggerName, { level, handlers: loggerHandlers });
+
+  setup({
+    handlers: handlerRecord as Record<string, LogHandler>,
+    loggers: Object.fromEntries(loggers.entries()),
+  });
+
+  initialized = true;
 }
 
 function formatPayload(
   component: string,
   level: LogLevel,
-  event: string,
+  message: string,
   baseContext: Record<string, unknown>,
-  context: LogContext,
+  context: LogContext = {},
   error?: unknown,
 ): string {
-  const safeBaseContext = sanitizeRecord(baseContext);
-  const safeContext = sanitizeRecord(context);
-  const mergedContext: LogContext = {
-    ...safeBaseContext,
-    ...safeContext,
-  };
   const payload: Record<string, unknown> = {
-    ...mergedContext,
     timestamp: new Date().toISOString(),
-    level,
-    event,
     component,
+    level,
+    message,
+    ...baseContext,
+    ...context,
   };
 
-  if (error !== undefined) {
-    payload.error = sanitizeValue(error, new WeakSet(), 0);
-  }
-  if (level === "ERROR") {
-    payload.correlationId = correlationIdFrom(mergedContext);
-    payload.errorCategory = errorCategoryFrom(mergedContext);
+  if (error instanceof Error) {
+    payload.error = {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  } else if (context.error && !(context.error instanceof Error)) {
+    payload.error = context.error;
+  } else if (error !== undefined) {
+    payload.error = error;
   }
 
   return JSON.stringify(payload);
@@ -263,30 +148,53 @@ export function createLogger(
   component: string,
   baseContext: Record<string, unknown> = {},
 ): StructuredLogger {
-  if (!loggerLevels.has(component)) initLogger({ component });
+  if (!initialized || !loggers.has(component)) {
+    initLogger({ component });
+  }
+  const logger = getLogger(component);
 
   function log(
     level: LogLevel,
-    event: string,
-    context: LogContext = {},
+    message: string,
+    context?: LogContext,
     error?: unknown,
-  ): void {
-    try {
-      const configuredLevel = loggerLevels.get(component) ?? "INFO";
-      if (LEVEL_PRIORITY[level] < LEVEL_PRIORITY[configuredLevel]) return;
-      console.log(
-        formatPayload(component, level, event, baseContext, context, error),
-      );
-    } catch {
-      // Logging must never interrupt the business operation, including when the
-      // stdout sink or an exotic context object fails during serialization.
+  ) {
+    const payload = formatPayload(
+      component,
+      level,
+      message,
+      baseContext,
+      context,
+      error,
+    );
+    switch (level) {
+      case "DEBUG":
+        logger.debug(payload);
+        break;
+      case "INFO":
+        logger.info(payload);
+        break;
+      case "WARN":
+        logger.warn(payload);
+        break;
+      case "ERROR":
+        logger.error(payload);
+        break;
+      case "CRITICAL":
+        logger.critical(payload);
+        break;
     }
   }
 
   return {
-    debug: (event, context) => log("DEBUG", event, context),
-    info: (event, context) => log("INFO", event, context),
-    warn: (event, context) => log("WARN", event, context),
-    error: (event, context, error) => log("ERROR", event, context, error),
+    info(message, context) {
+      log("INFO", message, context);
+    },
+    warn(message, context) {
+      log("WARN", message, context);
+    },
+    error(message, context, error) {
+      log("ERROR", message, context, error);
+    },
   };
 }

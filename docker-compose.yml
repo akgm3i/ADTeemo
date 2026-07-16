@@ -19,11 +19,6 @@ services:
       - .env
     environment:
       DATABASE_URL: file:/app/data/sqlite.db
-    logging:
-      driver: local
-      options:
-        max-size: "10m"
-        max-file: "5"
     healthcheck:
       test:
         - CMD
@@ -50,11 +45,6 @@ services:
       - .env
     environment:
       API_URL: http://api:8000
-    logging:
-      driver: local
-      options:
-        max-size: "10m"
-        max-file: "5"
 
   # --- Development service (activate with --profile dev) ---
   dev:

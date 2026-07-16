@@ -8,7 +8,6 @@ import {
   SlashCommandBuilder,
 } from "discord.js";
 import { messageHandler, messageKeys } from "../messages.ts";
-import { botLogger, correlationIdForInteraction } from "../logger.ts";
 import { apiClient, type MatchParticipant } from "../api_client.ts";
 import { recordMatchParticipantProvider } from "../features/record_match_participants.ts";
 import { statCollector } from "../features/stat_collector.ts";
@@ -199,12 +198,7 @@ export async function execute(interaction: CommandInteraction) {
       });
     }
   } catch (e) {
-    botLogger.error("command.record_match.failed", {
-      correlationId: correlationIdForInteraction(interaction),
-      errorCategory: "unexpected",
-      guildId: interaction.guild?.id ?? null,
-      userId: interaction.user.id,
-    }, e);
+    console.error("Error in record-match command:", e);
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply({
         content: messageHandler.formatMessage(messageKeys.common.error.command),

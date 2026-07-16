@@ -122,7 +122,7 @@ export function createBotServiceAuthMiddleware(
       deps.logger.warn("service_auth.rejected", {
         http: {
           method: c.req.method,
-          path: c.req.routePath || "<protected>",
+          path: c.req.path,
         },
         reason: authorization
           ? (candidate ? "invalid" : "malformed")

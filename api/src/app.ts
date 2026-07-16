@@ -1,4 +1,4 @@
-import { type Context, Hono } from "@hono/hono";
+import { Hono } from "@hono/hono";
 import { createMiddleware } from "@hono/hono/factory";
 import { usersRoutes } from "./routes/users.ts";
 import { eventsRoutes } from "./routes/events.ts";
@@ -9,69 +9,43 @@ import { riotRoutes } from "./routes/riot.ts";
 import { riotStaticDataRoutes } from "./routes/riot_static_data.ts";
 import type { AppDependencies } from "./dependencies.ts";
 import { createBotServiceAuthMiddleware } from "./service_auth.ts";
-import { isValidCorrelationId } from "../../lib/logger/mod.ts";
-import { recordRequestFailure, takeRequestFailure } from "./request_failure.ts";
-
-export const CORRELATION_ID_HEADER = "X-Correlation-ID";
-
-function requestCorrelationId(headerValue: string | undefined): string {
-  return isValidCorrelationId(headerValue)
-    ? headerValue as string
-    : crypto.randomUUID();
-}
 
 export function createRequestLoggingMiddleware(
   logger: AppDependencies["logger"],
 ) {
   return createMiddleware(async (c, next) => {
-    const correlationId = requestCorrelationId(
-      c.req.header(CORRELATION_ID_HEADER),
-    );
-    c.header(CORRELATION_ID_HEADER, correlationId);
     const start = performance.now();
     try {
       await next();
       const durationMs = Math.round(performance.now() - start);
       const context = {
-        correlationId,
         http: {
           method: c.req.method,
-          path: c.req.routePath || "<unmatched>",
+          path: c.req.path,
           status: c.res.status,
         },
         durationMs,
       };
 
       if (c.res.status >= 500) {
-        const failure = takeRequestFailure(c.req.raw);
-        logger.error(
-          "request.failed",
-          {
-            ...context,
-            errorCategory: failure?.errorCategory ?? "unexpected",
-          },
-          failure?.error,
-        );
+        logger.error("request.failed", context);
         return;
       }
 
       logger.info("request.completed", context);
     } catch (error) {
       const durationMs = Math.round(performance.now() - start);
-      const recordedFailure = takeRequestFailure(c.req.raw);
       logger.error(
         "request.failed",
         {
-          correlationId,
-          errorCategory: recordedFailure?.errorCategory ?? "unexpected",
           http: {
             method: c.req.method,
-            path: c.req.routePath || "<unmatched>",
+            path: c.req.path,
             status: c.res.status >= 500 ? c.res.status : 500,
           },
           durationMs,
         },
-        recordedFailure?.error ?? error,
+        error,
       );
       throw error;
     }
@@ -101,11 +75,6 @@ export function createClassifiedRoutes(deps: AppDependencies) {
   return { publicRoutes, callbackRoutes, botServiceRoutes };
 }
 
-export function handleUnhandledRequestError(error: Error, c: Context) {
-  recordRequestFailure(c.req.raw, error);
-  return c.text("Internal Server Error", 500);
-}
-
 export function createApp(deps: AppDependencies) {
   const { publicRoutes, callbackRoutes, botServiceRoutes } =
     createClassifiedRoutes(deps);
@@ -114,8 +83,7 @@ export function createApp(deps: AppDependencies) {
     .use("*", createRequestLoggingMiddleware(deps.logger))
     .route("/", publicRoutes)
     .route("/", callbackRoutes)
-    .route("/", botServiceRoutes)
-    .onError(handleUnhandledRequestError);
+    .route("/", botServiceRoutes);
 }
 
 type CreatedApp = ReturnType<typeof createApp>;

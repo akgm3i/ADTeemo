@@ -6,7 +6,6 @@ import {
 } from "discord.js";
 import { roleManager } from "../features/role-management.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
-import { botLogger, correlationIdForInteraction } from "../logger.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("setup-roles")
@@ -70,12 +69,10 @@ export async function execute(interaction: CommandInteraction) {
       message = messageHandler.formatMessage(
         messageKeys.guild.setup.error.unknown,
       );
-      botLogger.error("command.setup_roles.failed", {
-        correlationId: correlationIdForInteraction(interaction),
-        errorCategory: "unexpected",
-        guildId: interaction.guild.id,
-        userId: interaction.user.id,
-      }, result.error);
+      console.error(
+        `Error setting up roles via command in guild ${interaction.guild.id}:`,
+        result.error,
+      );
       break;
   }
 

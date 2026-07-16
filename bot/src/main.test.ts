@@ -11,7 +11,7 @@ import { MockInteractionBuilder } from "./test_utils.ts";
 import type { Command } from "./types.ts";
 import { messageHandler, messageKeys } from "./messages.ts";
 import { handleInteractionCreate, startBot } from "./main.ts";
-import { botLogger, correlationIdForInteraction } from "./logger.ts";
+import { botLogger } from "./logger.ts";
 
 describe("Main Bot Logic", () => {
   describe("startBot", () => {
@@ -41,8 +41,7 @@ describe("Main Bot Logic", () => {
       assertSpyCalls(errorStub, 1);
       const [message, context, error] = errorStub.calls[0].args;
       assertEquals(message, "bot.start.invalid_service_credential");
-      assertEquals(typeof context?.correlationId, "string");
-      assertEquals(context?.errorCategory, "validation");
+      assertEquals(context, {});
       assertInstanceOf(error, Error);
       assertFalse(error.message.includes(credential));
       assertSpyCall(exitStub, 0, { args: [1] });
@@ -77,7 +76,6 @@ describe("Main Bot Logic", () => {
       const interaction = new MockInteractionBuilder("unregistered")
         .withClient({ commands })
         .build();
-      const correlationId = correlationIdForInteraction(interaction);
 
       // Act
       await handleInteractionCreate(interaction);
@@ -89,8 +87,7 @@ describe("Main Bot Logic", () => {
       const parsed = JSON.parse(payload);
       assertEquals(parsed.component, "bot");
       assertEquals(parsed.level, "WARN");
-      assertEquals(parsed.event, "command.not_found");
-      assertEquals(parsed.correlationId, correlationId);
+      assertEquals(parsed.message, "command.not_found");
       assertEquals(parsed.commandName, "unregistered");
       assertEquals(parsed.guildId, "mock-guild-id");
     });

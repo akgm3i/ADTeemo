@@ -146,12 +146,8 @@ describe("match_tracking worker", () => {
       error: unknown;
     }[] = [];
     const failure = new Error("temporary failure");
-    const serviceCorrelationIds: string[] = [];
     const worker = createMatchTrackingWorker({
       createService: () => ({
-        setCorrelationId: (correlationId) => {
-          serviceCorrelationIds.push(correlationId);
-        },
         processMatchWatchers: () => {
           calls.push("process");
           if (calls.length === 1) {
@@ -178,10 +174,11 @@ describe("match_tracking worker", () => {
     await flushMicrotasks();
 
     assertEquals(calls, ["process", "process"]);
-    assertEquals(errors[0].message, "match_tracking.worker_tick_failed");
-    assertEquals(errors[0].metadata.correlationId, serviceCorrelationIds[0]);
-    assertEquals(errors[0].metadata.errorCategory, "unexpected");
-    assertEquals(errors[0].error, failure);
+    assertEquals(errors, [{
+      message: "match_tracking.worker_tick_failed",
+      metadata: {},
+      error: failure,
+    }]);
   });
 
   test("stopしたとき、登録済みintervalを解除する", () => {

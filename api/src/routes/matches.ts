@@ -11,7 +11,6 @@ import {
   RecordNotFoundError,
 } from "../errors.ts";
 import type { AppDependencies } from "../dependencies.ts";
-import { recordRequestFailure } from "../request_failure.ts";
 
 type MatchesDbActions = Pick<
   AppDependencies["dbActions"],
@@ -81,7 +80,14 @@ export function matchesRoutes(
           if (error instanceof OpggMatchParticipantMismatchError) {
             return c.json({ error: error.message }, 400);
           }
-          recordRequestFailure(c.req.raw, error);
+          logger.error(
+            "opgg_match_detail.request_failed",
+            {
+              matchId,
+              targetDiscordId: payload.targetDiscordId,
+            },
+            error,
+          );
           return c.json({ error: "Failed to resolve OP.GG match detail" }, 500);
         }
       },
