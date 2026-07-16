@@ -45,9 +45,9 @@ export async function exchangeCodeForTokens(code: string) {
   });
 
   if (!response.ok) {
-    const errorBody = await response.text();
-    console.error("Failed to exchange code for tokens:", errorBody);
-    throw new Error("Failed to get tokens from Riot Sign On.");
+    throw new Error(
+      `Failed to get tokens from Riot Sign On (Status: ${response.status}).`,
+    );
   }
 
   const data = await response.json();
@@ -74,9 +74,9 @@ export async function getUserInfo(accessToken: string) {
   });
 
   if (!response.ok) {
-    const errorBody = await response.text();
-    console.error("Failed to fetch user info:", errorBody);
-    throw new Error("Failed to get user info from Riot Sign On.");
+    throw new Error(
+      `Failed to get user info from Riot Sign On (Status: ${response.status}).`,
+    );
   }
 
   const data = await response.json();
