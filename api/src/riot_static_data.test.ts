@@ -1,7 +1,10 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
-import { createRiotStaticData } from "./riot_static_data.ts";
+import {
+  createRiotStaticData,
+  fetchRiotStaticDataJson,
+} from "./riot_static_data.ts";
 
 type StaticDataCache = {
   key: string;
@@ -34,6 +37,25 @@ function dependencies() {
 }
 
 describe("riot_static_data.ts", () => {
+  test("static data HTTP取得が失敗したとき、公開messageとの互換性を保ち安全なstatus propertyを持つErrorを返す", async () => {
+    // Arrange
+    using _fetchStub = stub(
+      globalThis,
+      "fetch",
+      () => Promise.resolve(new Response(null, { status: 503 })),
+    );
+
+    // Act
+    const error = await assertRejects(
+      () => fetchRiotStaticDataJson("https://provider.example/static.json"),
+      Error,
+      "Failed to fetch Riot static data: 503",
+    );
+
+    // Assert
+    assertEquals((error as Error & { status?: unknown }).status, 503);
+  });
+
   test("チャンピオン名がキャッシュ済みかつTTL内の場合、外部取得せずDBの値を返す", async () => {
     const deps = dependencies();
     const riotStaticData = createRiotStaticData(deps);
@@ -135,10 +157,11 @@ describe("riot_static_data.ts", () => {
       "upsertRiotStaticDataCache",
       () => Promise.resolve(),
     );
+    const fetchError = new Error("Failed to fetch Riot static data: 503");
     using _fetchStub = stub(
       deps,
       "fetchJson",
-      () => Promise.reject(new Error("Failed to fetch Riot static data: 503")),
+      () => Promise.reject(fetchError),
     );
 
     let error: unknown;
@@ -340,10 +363,11 @@ describe("riot_static_data.ts", () => {
             : undefined,
         ),
     );
+    const fetchError = new Error("Failed to fetch Riot static data: 503");
     using _fetchStub = stub(
       deps,
       "fetchJson",
-      () => Promise.reject(new Error("Failed to fetch Riot static data: 503")),
+      () => Promise.reject(fetchError),
     );
     using warnStub = stub(deps.logger, "warn", () => {});
 
@@ -368,9 +392,7 @@ describe("riot_static_data.ts", () => {
       gameModes: {},
     });
     assertSpyCall(warnStub, 0, {
-      args: ["riot_static_data.resolve_queues_failed", {
-        error: "Failed to fetch Riot static data: 503",
-      }],
+      args: ["riot_static_data.resolve_queues_failed", undefined, fetchError],
     });
   });
 

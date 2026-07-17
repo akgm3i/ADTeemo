@@ -16,7 +16,7 @@ export interface LogContext extends Record<string, unknown> {
 export interface StructuredLogger {
   debug(event: string, context?: LogContext): void;
   info(event: string, context?: LogContext): void;
-  warn(event: string, context?: LogContext): void;
+  warn(event: string, context?: LogContext, error?: unknown): void;
   error(event: string, context?: LogContext, error?: unknown): void;
 }
 
@@ -51,14 +51,6 @@ const REDACTED = "[REDACTED]";
 const CIRCULAR = "[Circular]";
 const MAX_DEPTH = 20;
 const loggerLevels = new Map<string, LogLevel>();
-const QUOTED_TEXT_ASSIGNMENT =
-  /(["']?\b([A-Za-z][A-Za-z0-9_-]*)\b["']?\s*[:=]\s*)(["'])(.*?)\3/gu;
-const UNQUOTED_TEXT_ASSIGNMENT =
-  /(["']?\b([A-Za-z][A-Za-z0-9_-]*)\b["']?\s*[:=]\s*)([^\s,;&)\]}]+)/gu;
-const TRAILING_URL_ASSIGNMENT =
-  /(["']?\b([A-Za-z][A-Za-z0-9_-]*)\b["']?\s*[:=]\s*)(["']?)$/u;
-const URL_TEXT = /\bhttps?:\/\/[^\s"'<>),;\]}]+/giu;
-const STATIC_USERS_ROUTE_SEGMENTS = new Set(["link-by-riot-id"]);
 
 function environmentValue(name: string): string | undefined {
   try {
@@ -81,6 +73,14 @@ function normalizeLevel(
 
 function normalizeKey(key: string): string {
   return key.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
+}
+
+function keyWords(key: string): string[] {
+  return key
+    .replaceAll(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
 }
 
 function isSensitiveKey(key: string): boolean {
@@ -119,137 +119,98 @@ function isSensitiveKey(key: string): boolean {
   ].includes(normalized);
 }
 
-function sanitizeKnownPathSegments(value: string): string {
-  return value
-    .replace(
-      /(\/by-riot-id\/)([^/\s?#]+)\/([^/\s?#]+)/giu,
-      (
-        _match,
-        prefix: string,
-        gameName: string,
-        tagLine: string,
-      ) =>
-        `${prefix}${gameName.startsWith(":") ? gameName : REDACTED}/${
-          tagLine.startsWith(":") ? tagLine : REDACTED
-        }`,
-    )
-    .replace(
-      /(\/(?:by-puuid|by-summoner|users)\/)([^/\s?#]+)/giu,
-      (_match, prefix: string, identifier: string) => {
-        const normalizedPrefix = prefix.toLowerCase();
-        const preserve = identifier.startsWith(":") ||
-          (normalizedPrefix.endsWith("/users/") &&
-            STATIC_USERS_ROUTE_SEGMENTS.has(identifier.toLowerCase()));
-        return `${prefix}${preserve ? identifier : REDACTED}`;
-      },
-    );
+function isErrorKey(key: string): boolean {
+  const lastWord = keyWords(key).at(-1);
+  return lastWord === "error" || lastWord === "exception";
 }
 
-function sanitizeQuotedAssignments(value: string): string {
-  return value.replace(
-    QUOTED_TEXT_ASSIGNMENT,
-    (match, prefix: string, key: string, quote: string) =>
-      isSensitiveKey(key) ? `${prefix}${quote}${REDACTED}${quote}` : match,
+function isOpaqueKey(key: string): boolean {
+  const words = keyWords(key);
+  const lastWord = words.at(-1);
+  return words.includes("stack") || [
+    "errors",
+    "exceptions",
+    "message",
+    "messages",
+    "cause",
+    "causes",
+    "body",
+    "bodies",
+    "header",
+    "headers",
+  ].includes(lastWord ?? "");
+}
+
+function isUrlKey(key: string): boolean {
+  return ["url", "urls", "uri", "uris"].includes(
+    keyWords(key).at(-1) ?? "",
   );
 }
 
-function sanitizePlainText(value: string): string {
-  let sanitized = value
-    .replace(
-      /(\bauthorization\b\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|(?:Bearer|Basic)\s+\S+|\S+)/giu,
-      `$1${REDACTED}`,
-    )
-    .replace(
-      /(\bcookie\b\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\r\n,]+)/giu,
-      `$1${REDACTED}`,
-    )
-    .replace(
-      /\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/giu,
-      REDACTED,
-    )
-    .replace(
-      /(\bhttps?:\/\/)[^/\s@]+@/giu,
-      `$1${REDACTED}@`,
-    );
-
-  sanitized = sanitizeQuotedAssignments(sanitized)
-    .replace(
-      UNQUOTED_TEXT_ASSIGNMENT,
-      (match, prefix: string, key: string, text: string) =>
-        isSensitiveKey(key) && !text.includes("[REDACTED")
-          ? `${prefix}${REDACTED}`
-          : match,
-    );
-
-  return sanitizeKnownPathSegments(sanitized)
-    .replace(
-      /\b[\p{L}\p{N}_.-]{2,16}#[A-Za-z0-9]{3,5}\b/gu,
-      REDACTED,
-    )
-    .replace(/\b[A-Za-z0-9_-]{40,}\b/gu, REDACTED);
-}
-
-function encodeUrlPart(value: string): string {
-  return encodeURIComponent(value).replaceAll(
-    encodeURIComponent(REDACTED),
-    REDACTED,
-  );
-}
-
-function sanitizeUrlParameters(parameters: URLSearchParams): string {
-  return [...parameters.entries()]
-    .map(([key, value]) => {
-      const sanitized = isSensitiveKey(key) ? REDACTED : sanitizeText(value);
-      return `${encodeURIComponent(key)}=${encodeUrlPart(sanitized)}`;
-    })
-    .join("&");
-}
-
-function sanitizeUrlString(value: string): string {
+function sanitizeUrl(value: unknown): string {
   try {
-    const url = new URL(value);
-    const userInfo = url.username || url.password ? `${REDACTED}@` : "";
-    const pathname = sanitizeKnownPathSegments(url.pathname);
-    const query = url.searchParams.size > 0
-      ? `?${sanitizeUrlParameters(url.searchParams)}`
-      : "";
-    const rawFragment = url.hash.slice(1);
-    const fragment = rawFragment.length === 0
-      ? ""
-      : rawFragment.includes("=")
-      ? `#${sanitizeUrlParameters(new URLSearchParams(rawFragment))}`
-      : `#${encodeUrlPart(sanitizeText(rawFragment))}`;
-    return `${url.protocol}//${userInfo}${url.host}${pathname}${query}${fragment}`;
-  } catch {
-    return sanitizePlainText(value);
-  }
-}
-
-function sanitizeText(value: unknown): string {
-  if (typeof value !== "string") return "[Unserializable]";
-  const quotedAssignmentsSanitized = sanitizeQuotedAssignments(value);
-  let sanitized = "";
-  let lastIndex = 0;
-  for (const match of quotedAssignmentsSanitized.matchAll(URL_TEXT)) {
-    const index = match.index ?? 0;
-    const prefix = quotedAssignmentsSanitized.slice(lastIndex, index);
-    const assignment = prefix.match(TRAILING_URL_ASSIGNMENT);
-    if (assignment && isSensitiveKey(assignment[2])) {
-      const assignmentIndex = assignment.index ?? prefix.length;
-      sanitized += sanitizePlainText(prefix.slice(0, assignmentIndex));
-      sanitized += `${assignment[1]}${assignment[3]}${REDACTED}`;
-    } else {
-      sanitized += sanitizePlainText(prefix);
-      sanitized += sanitizeUrlString(match[0]);
+    const raw = value instanceof URL
+      ? URL.prototype.toString.call(value)
+      : typeof value === "string"
+      ? value
+      : undefined;
+    const url = raw === undefined ? undefined : new URL(raw);
+    if (!url || (url.protocol !== "http:" && url.protocol !== "https:")) {
+      return REDACTED;
     }
-    lastIndex = index + match[0].length;
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return REDACTED;
   }
-  sanitized += sanitizePlainText(quotedAssignmentsSanitized.slice(lastIndex));
-  return sanitized;
 }
 
-function sanitizeUrl(value: URL): string {
-  return sanitizeUrlString(value.toString());
+function sanitizeUrlValue(
+  value: unknown,
+  seen: WeakSet<object>,
+  depth: number,
+): unknown {
+  if (!Array.isArray(value)) return sanitizeUrl(value);
+  if (depth > MAX_DEPTH) return "[MaxDepth]";
+  if (seen.has(value)) return CIRCULAR;
+  seen.add(value);
+  try {
+    return value.map((item) => sanitizeUrlValue(item, seen, depth + 1));
+  } finally {
+    seen.delete(value);
+  }
+}
+
+function errorName(error: Error): string {
+  try {
+    const prototype = Object.getPrototypeOf(error);
+    const constructor = prototype &&
+      Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
+    const name = typeof constructor === "function" ? constructor.name : "";
+    return /^[A-Za-z][A-Za-z0-9_$.-]{0,63}$/.test(name) ? name : "Error";
+  } catch {
+    return "Error";
+  }
+}
+
+function ownDataProperty(
+  value: object,
+  key: string,
+): { found: boolean; value?: unknown } {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    return descriptor && "value" in descriptor
+      ? { found: true, value: descriptor.value }
+      : { found: false };
+  } catch {
+    return { found: false };
+  }
+}
+
+function safeHttpStatus(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) &&
+      value >= 100 && value <= 599
+    ? value
+    : undefined;
 }
 
 function serializeError(
@@ -258,25 +219,39 @@ function serializeError(
   depth: number,
 ): Record<string, unknown> {
   const serialized: Record<string, unknown> = Object.create(null);
-  serialized.name = error.name;
-  serialized.message = sanitizeText(error.message);
-  if (error.stack) serialized.stack = sanitizeText(error.stack);
-  if (error.cause !== undefined) {
-    serialized.cause = sanitizeValue(error.cause, seen, depth + 1);
+  serialized.name = errorName(error);
+
+  for (const key of ["status", "statusCode"]) {
+    const property = ownDataProperty(error, key);
+    const status = property.found ? safeHttpStatus(property.value) : undefined;
+    if (status !== undefined) serialized[key] = status;
   }
 
-  try {
-    for (const [key, value] of Object.entries(error)) {
-      if (key === "cause") continue;
-      serialized[key] = isSensitiveKey(key)
-        ? REDACTED
-        : sanitizeValue(value, seen, depth + 1);
-    }
-  } catch {
-    serialized.properties = "[Unserializable]";
+  const cause = ownDataProperty(error, "cause");
+  if (cause.found && cause.value !== undefined) {
+    serialized.cause = cause.value instanceof Error
+      ? sanitizeValue(cause.value, seen, depth + 1)
+      : REDACTED;
   }
 
   return serialized;
+}
+
+function sanitizeProperty(
+  key: string,
+  value: unknown,
+  seen: WeakSet<object>,
+  depth: number,
+): unknown {
+  if (isSensitiveKey(key)) return REDACTED;
+  if (isErrorKey(key)) {
+    return value instanceof Error
+      ? sanitizeValue(value, seen, depth + 1)
+      : REDACTED;
+  }
+  if (isOpaqueKey(key)) return REDACTED;
+  if (isUrlKey(key)) return sanitizeUrlValue(value, seen, depth + 1);
+  return sanitizeValue(value, seen, depth + 1);
 }
 
 function sanitizeValue(
@@ -289,7 +264,7 @@ function sanitizeValue(
     value === null || typeof value === "string" ||
     typeof value === "boolean"
   ) {
-    return typeof value === "string" ? sanitizeText(value) : value;
+    return value;
   }
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value === "bigint") return value.toString();
@@ -318,9 +293,7 @@ function sanitizeValue(
     const sanitized: Record<string, unknown> = Object.create(null);
     try {
       for (const [key, item] of Object.entries(value)) {
-        sanitized[key] = isSensitiveKey(key)
-          ? REDACTED
-          : sanitizeValue(item, seen, depth + 1);
+        sanitized[key] = sanitizeProperty(key, item, seen, depth);
       }
     } catch {
       return "[Unserializable]";
@@ -391,9 +364,11 @@ function formatPayload(
   };
 
   if (error !== undefined) {
-    payload.error = sanitizeValue(error, new WeakSet(), 0);
+    payload.error = error instanceof Error
+      ? sanitizeValue(error, new WeakSet(), 0)
+      : REDACTED;
   }
-  if (level === "ERROR") {
+  if (level === "ERROR" || error !== undefined) {
     payload.correlationId = correlationIdFrom(mergedContext);
     payload.errorCategory = errorCategoryFrom(mergedContext);
   }
@@ -428,7 +403,7 @@ export function createLogger(
   return {
     debug: (event, context) => log("DEBUG", event, context),
     info: (event, context) => log("INFO", event, context),
-    warn: (event, context) => log("WARN", event, context),
+    warn: (event, context, error) => log("WARN", event, context, error),
     error: (event, context, error) => log("ERROR", event, context, error),
   };
 }

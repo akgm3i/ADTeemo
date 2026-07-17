@@ -530,7 +530,6 @@ async function setWatcherState(
     dependencies.logger.error("match_tracking.state_update_failed", {
       guildId: watcher.guildId,
       targetDiscordId: watcher.targetDiscordId,
-      error: result.error,
     });
   }
 }
@@ -570,7 +569,6 @@ async function tryFetchAndNotifyResult(
       dependencies.logger.warn("match_tracking.riot_account_not_found", {
         guildId: watcher.guildId,
         targetDiscordId: watcher.targetDiscordId,
-        error: result.error,
       });
     }
     return { status: "pending" as const, messageId: pending.messageId };
@@ -691,7 +689,6 @@ async function processWatcher(
       dependencies.logger.warn("match_tracking.riot_account_not_found", {
         guildId: watcher.guildId,
         targetDiscordId: watcher.targetDiscordId,
-        error: activeGameResult.error,
       });
     }
     return;
@@ -961,9 +958,7 @@ export function createMatchTrackingService(
   async function processMatchWatchers() {
     const result = await dependencies.apiClient.getEnabledMatchWatchers();
     if (!result.success && !wasFailureLogged(result)) {
-      dependencies.logger.error("match_tracking.watchers_fetch_failed", {
-        error: result.error,
-      });
+      dependencies.logger.error("match_tracking.watchers_fetch_failed");
     }
     if (!result.success) return;
 

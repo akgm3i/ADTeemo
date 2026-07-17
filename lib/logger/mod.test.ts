@@ -105,36 +105,35 @@ describe("logger", () => {
     );
   });
 
-  test("Error、文字列cause、URLに秘密値と識別子が含まれるとき、自由形式の値からもredactする", () => {
+  test("Error本文に任意形式の機密値があるとき、本文を解析せず安全なerror envelopeだけを記録する", () => {
     // Arrange
     using consoleLogStub = stub(console, "log");
-    initLogger({ component: "free-text-redaction-test", level: "ERROR" });
-    const logger = createLogger("free-text-redaction-test");
-    const puuid = "a".repeat(78);
-    const error = new Error(
-      "Authorization: Bearer authorization-secret, " +
-        "Cookie: session=cookie-secret; second=hidden, " +
-        'token=token-secret credential="credential secret" ' +
-        "apiKey=api-secret sqlParams=[sql-secret] " +
-        "client_secret=client-secret clientSecret=camel-secret " +
-        "botServiceCredential=service-secret " +
-        `riotId=Teemo#JP1 puuid=${puuid} ` +
-        "discordUserId=123456789012345678 " +
-        "callback=https://api-token@provider.example/path",
-      {
-        cause: "oauthCode=cause-code oauthState=cause-state",
-      },
+    initLogger({ component: "opaque-error-test", level: "ERROR" });
+    const logger = createLogger("opaque-error-test");
+    class ProviderHttpError extends Error {
+      constructor(
+        public readonly status: number,
+        public readonly responseBody: string,
+        cause: unknown,
+      ) {
+        super(responseBody, { cause });
+        this.name = responseBody;
+      }
+    }
+    const cause = new Error("Cookie: session=cause-cookie-secret");
+    const error = new ProviderHttpError(
+      503,
+      'Authorization: Digest username="u", response="digest-secret" ' +
+        'payload={"password":"abc\\"escaped-secret"} ' +
+        "https://api-token@provider.example/private-path?code=oauth-code",
+      cause,
     );
 
     // Act
     logger.error(
       "provider.failed",
       {
-        callbackUrl: new URL(
-          "https://provider.example/by-riot-id/GameName/TAG" +
-            "?code=url-code&state=url-state&locale=ja_JP" +
-            "#token=fragment-token",
-        ),
+        errorMessage: "Authorization: Basic structured-secret",
       },
       error,
     );
@@ -143,169 +142,110 @@ describe("logger", () => {
     const raw = consoleLogStub.calls[0].args[0] as string;
     for (
       const secret of [
-        "authorization-secret",
-        "cookie-secret",
-        "hidden",
-        "token-secret",
-        "credential secret",
-        "api-secret",
-        "sql-secret",
-        "client-secret",
-        "camel-secret",
-        "service-secret",
-        "Teemo#JP1",
-        puuid,
-        "123456789012345678",
-        "cause-code",
-        "cause-state",
-        "GameName",
-        "url-code",
-        "url-state",
-        "fragment-token",
+        "digest-secret",
+        "escaped-secret",
+        "cause-cookie-secret",
         "api-token",
+        "private-path",
+        "oauth-code",
+        "structured-secret",
       ]
     ) {
       assertFalse(raw.includes(secret), `${secret} must be redacted: ${raw}`);
     }
     const parsed = loggedPayload(consoleLogStub.calls[0]);
-    assertEquals(
-      parsed.callbackUrl,
-      "https://provider.example/by-riot-id/[REDACTED]/[REDACTED]" +
-        "?code=[REDACTED]&state=[REDACTED]&locale=ja_JP" +
-        "#token=[REDACTED]",
-    );
-  });
-
-  test("自由形式文字列で機密keyにURLを代入したとき、URL全体をredactして安全なURLは維持する", () => {
-    // Arrange
-    using consoleLogStub = stub(console, "log");
-    initLogger({ component: "url-assignment-redaction-test", level: "ERROR" });
-    const logger = createLogger("url-assignment-redaction-test");
-    const error = new Error(
-      "token=https://provider.example/callback?sig=token-signature " +
-        'client_secret="https://provider.example/callback?sig=client-signature" ' +
-        "callback=https://provider.example/callback?sig=public-signature&locale=ja_JP",
-    );
-
-    // Act
-    logger.error("provider.failed", undefined, error);
-
-    // Assert
-    const parsed = loggedPayload(consoleLogStub.calls[0]);
     const loggedError = parsed.error as Record<string, unknown>;
-    assertEquals(
-      loggedError.message,
-      "token=[REDACTED] " +
-        'client_secret="[REDACTED]" ' +
-        "callback=https://provider.example/callback?sig=public-signature&locale=ja_JP",
-    );
-  });
-
-  test("引用符付きの機密URL値にURL抽出の区切り文字があるとき、引用符内の値全体をredactする", () => {
-    // Arrange
-    using consoleLogStub = stub(console, "log");
-    initLogger({
-      component: "quoted-url-assignment-redaction-test",
-      level: "ERROR",
+    assertEquals(loggedError, {
+      name: "ProviderHttpError",
+      status: 503,
+      cause: { name: "Error" },
     });
-    const logger = createLogger("quoted-url-assignment-redaction-test");
-    const error = new Error(
-      'token="https://provider.example/cb?sig=abc;tail=semicolon-secret" ' +
-        "client_secret='https://provider.example/cb,comma-secret' " +
-        'credential="https://provider.example/cb(parenthesis-secret)"',
-    );
+    assertEquals(parsed.errorMessage, "[REDACTED]");
+  });
+
+  test("WARN境界へErrorを渡したとき、本文ではなく安全なerror envelopeを記録する", () => {
+    // Arrange
+    using consoleLogStub = stub(console, "log");
+    initLogger({ component: "warn-error-test", level: "WARN" });
+    const logger = createLogger("warn-error-test");
+    const error = new TypeError("provider-body-secret");
 
     // Act
-    logger.error("provider.failed", undefined, error);
+    logger.warn("provider.failed", { provider: "riot" }, error);
 
     // Assert
     const parsed = loggedPayload(consoleLogStub.calls[0]);
-    const loggedError = parsed.error as Record<string, unknown>;
-    assertEquals(
-      loggedError.message,
-      "token=\"[REDACTED]\" client_secret='[REDACTED]' " +
-        'credential="[REDACTED]"',
+    assertEquals(parsed.provider, "riot");
+    assertEquals(parsed.error, { name: "TypeError" });
+    assertEquals(parsed.errorCategory, "unexpected");
+    assertMatch(
+      parsed.correlationId as string,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
+    assertFalse((consoleLogStub.calls[0].args[0] as string).includes(
+      "provider-body-secret",
+    ));
   });
 
-  test("route template・静的route・実識別子を記録するとき、診断用pathを維持して実値だけをredactする", () => {
+  test("URLとroute templateを構造化して記録するとき、URLはoriginだけを残しroute templateは維持する", () => {
     // Arrange
     using consoleLogStub = stub(console, "log");
-    initLogger({ component: "route-redaction-test", level: "INFO" });
-    const logger = createLogger("route-redaction-test");
+    initLogger({ component: "location-boundary-test", level: "INFO" });
+    const logger = createLogger("location-boundary-test");
 
     // Act
     logger.info("request.completed", {
-      routePaths: [
-        "/users/link-by-riot-id",
-        "/users/:userId/riot-account",
-        "/riot/account/by-puuid/:puuid",
-        "/riot/account/by-riot-id/:gameName/:tagLine",
-      ],
-      rawPaths: [
-        "/users/private-discord-user/riot-account",
-        "/riot/account/by-puuid/private-puuid",
-        "/riot/account/by-riot-id/GameName/TAG",
-      ],
+      callbackUrl: new URL(
+        "https://api-token@provider.example/private/GameName" +
+          "?code=oauth-code#state=oauth-state",
+      ),
+      documentationUrl: "https://docs.example/private?token=string-url-secret",
+      http: { path: "/users/:userId/riot-account" },
     });
 
     // Assert
     const parsed = loggedPayload(consoleLogStub.calls[0]);
-    assertEquals(parsed.routePaths, [
-      "/users/link-by-riot-id",
-      "/users/:userId/riot-account",
-      "/riot/account/by-puuid/:puuid",
-      "/riot/account/by-riot-id/:gameName/:tagLine",
-    ]);
-    assertEquals(parsed.rawPaths, [
-      "/users/[REDACTED]/riot-account",
-      "/riot/account/by-puuid/[REDACTED]",
-      "/riot/account/by-riot-id/[REDACTED]/[REDACTED]",
-    ]);
-  });
-
-  test("自由形式文字列にJSON形式の秘密値と既redact値があるとき、秘密値だけを一度redactする", () => {
-    // Arrange
-    using consoleLogStub = stub(console, "log");
-    initLogger({ component: "json-redaction-test", level: "ERROR" });
-    const logger = createLogger("json-redaction-test");
-    const error = new Error(
-      'provider body={"access_token":"access-secret",' +
-        '"client_secret":"client-secret","code":"short-code",' +
-        '"state":"short-state","safe":"visible"} ' +
-        "token=[REDACTED]",
-    );
-
-    // Act
-    logger.error("provider.failed", undefined, error);
-
-    // Assert
-    const parsed = loggedPayload(consoleLogStub.calls[0]);
-    const loggedError = parsed.error as Record<string, unknown>;
+    assertEquals(parsed.callbackUrl, "https://provider.example");
+    assertEquals(parsed.documentationUrl, "https://docs.example");
     assertEquals(
-      loggedError.message,
-      'provider body={"access_token":"[REDACTED]",' +
-        '"client_secret":"[REDACTED]","code":"[REDACTED]",' +
-        '"state":"[REDACTED]","safe":"visible"} ' +
-        "token=[REDACTED]",
+      (parsed.http as Record<string, unknown>).path,
+      "/users/:userId/riot-account",
     );
   });
 
-  test("Error.messageが実行時に文字列でないとき、loggerを失敗させず安全な値へ変換する", () => {
+  test("opaqueなbody・header・文字列errorをstructured contextへ渡したとき、内容全体をredactする", () => {
     // Arrange
     using consoleLogStub = stub(console, "log");
-    initLogger({ component: "invalid-error-test", level: "ERROR" });
-    const logger = createLogger("invalid-error-test");
-    const error = new Error("placeholder");
-    Object.defineProperty(error, "message", { value: null });
+    initLogger({ component: "opaque-context-test", level: "ERROR" });
+    const logger = createLogger("opaque-context-test");
 
     // Act
-    logger.error("provider.failed", undefined, error);
+    logger.error("provider.failed", {
+      requestHeaders: { Authorization: "Digest header-secret" },
+      responseHeader: "Set-Cookie: session=single-header-secret",
+      providerResponseBody: '{"password":"body-secret"}',
+      responseBodies: ['{"password":"plural-body-secret"}'],
+      errorMessages: ["plural-error-secret"],
+      stackTrace: "stack-trace-secret",
+      callbackUrls: [
+        "https://url-user:url-password@provider.example/private" +
+        "?token=url-query-secret",
+      ],
+      error: "string-error-secret",
+      safeReason: "provider_unavailable",
+    });
 
     // Assert
     const parsed = loggedPayload(consoleLogStub.calls[0]);
-    const loggedError = parsed.error as Record<string, unknown>;
-    assertEquals(loggedError.message, "[Unserializable]");
+    assertEquals(parsed.requestHeaders, "[REDACTED]");
+    assertEquals(parsed.responseHeader, "[REDACTED]");
+    assertEquals(parsed.providerResponseBody, "[REDACTED]");
+    assertEquals(parsed.responseBodies, "[REDACTED]");
+    assertEquals(parsed.errorMessages, "[REDACTED]");
+    assertEquals(parsed.stackTrace, "[REDACTED]");
+    assertEquals(parsed.callbackUrls, ["https://provider.example"]);
+    assertEquals(parsed.error, "[REDACTED]");
+    assertEquals(parsed.safeReason, "provider_unavailable");
   });
 
   test("guild、channel、messageのsnowflakeを記録するとき、非user識別子は診断用に維持する", () => {
@@ -355,12 +295,10 @@ describe("logger", () => {
       parsed.circular,
       { value: "42", self: "[Circular]" },
     );
-    const loggedError = parsed.error as Record<string, unknown>;
-    assertEquals(loggedError.message, "operation failed");
-    assertEquals(
-      (loggedError.cause as Record<string, unknown>).message,
-      "repository unavailable",
-    );
+    assertEquals(parsed.error, {
+      name: "Error",
+      cause: { name: "Error" },
+    });
   });
 
   test("同じobjectを複数箇所から参照するとき、循環参照ではなく各箇所を完全に記録する", () => {

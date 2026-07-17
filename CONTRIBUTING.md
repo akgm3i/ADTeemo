@@ -57,8 +57,8 @@ cp .env.example .env
 | Variable                                                   | Description                                                                                      |
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `TZ`                                                       | アプリケーションのタイムゾーン。例: `Asia/Tokyo`                                                 |
-| `API_LOG_LEVEL` / `BOT_LOG_LEVEL`                          | API / Botのstdout log level。`DEBUG`, `INFO`, `WARN`, `ERROR`。既定は`INFO`                       |
-| `DB_QUERY_LOG`                                             | `1`かつ`API_LOG_LEVEL=DEBUG`のときだけSQL templateを記録する。parameterは常に記録しない。         |
+| `API_LOG_LEVEL` / `BOT_LOG_LEVEL`                          | API / Botのstdout log level。`DEBUG`, `INFO`, `WARN`, `ERROR`。既定は`INFO`                      |
+| `DB_QUERY_LOG`                                             | `1`かつ`API_LOG_LEVEL=DEBUG`のときだけSQL templateを記録する。parameterは常に記録しない。        |
 | `DISCORD_TOKEN`                                            | Discord Bot token                                                                                |
 | `DISCORD_CLIENT_ID`                                        | Discord application client ID                                                                    |
 | `DISCORD_GUILD_ID`                                         | 指定時はguild commandとしてslash commandを登録します。未指定時はglobal commandとして登録します。 |
@@ -169,7 +169,9 @@ docker compose --profile prod down
 
 #### ログ、保持、閲覧権限
 
-APIとBotのアプリケーションログはstdoutへ出力する1行JSONだけを正本とし、コンテナ内のlog fileへは書き込みません。すべてのrecordは`timestamp`, `level`, `event`, `component`を持ち、ERRORは`correlationId`と`errorCategory`も持ちます。既知のcredential、token、cookie、OAuth code/state、SQL parameter、Riot ID / PUUID、Discord user IDはnested contextでもredactされます。自由記述のmessageへ秘密値を埋め込まず、provider response bodyをそのまま記録しないでください。
+APIとBotのアプリケーションログはstdoutへ出力する1行JSONだけを正本とし、コンテナ内のlog fileへは書き込みません。すべてのrecordは`timestamp`, `level`, `event`, `component`を持ち、ERRORと第3引数にErrorを持つWARNは`correlationId`と`errorCategory`も持ちます。既知のcredential、token、cookie、OAuth code/state、SQL parameter、Riot ID / PUUID、Discord user IDはnested contextでもredactされます。
+
+自由記述のmessage、stack、header、request/response body、provider response bodyをcontextへ渡さないでください。catchした`Error`はmessageへ変換せず、`logger.warn(event, context, error)`または`logger.error(event, context, error)`の第3引数へ渡します。loggerはerror class、妥当なHTTP status、Error causeのclassだけを記録し、raw message/stackや任意propertyは記録しません。追加の診断情報が必要な場合は、安定したreason codeやprovider名を構造化fieldとして定義します。URLはoriginだけを記録し、request pathはroute templateを別fieldで渡します。詳細な責務境界は [ADR 0002](./docs/adr/0002-structured-logging-trust-boundary.md) を参照してください。
 
 APIは安全な形式の`X-Correlation-ID`を受理して同じresponse headerへ返します。headerが欠落または不正な場合はUUIDへ置き換えます。request logのpathは識別子を含む実URLではなくroute templateです。問い合わせ時はresponse headerの相関IDを共有し、tokenやrequest bodyは共有しないでください。
 

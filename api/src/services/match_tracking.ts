@@ -257,8 +257,8 @@ export function createMatchTrackingInspectionService(
         {
           guildId: input.guildId,
           targetDiscordId: input.targetDiscordId,
-          error: error instanceof Error ? error.message : String(error),
         },
+        error,
       );
     }
   }
@@ -362,8 +362,8 @@ export function createMatchTrackingInspectionService(
           guildId: input.guildId,
           targetDiscordId: input.targetDiscordId,
           matchId: match.metadata.matchId,
-          error: error instanceof Error ? error.message : String(error),
         },
+        error,
       );
       return null;
     }
@@ -399,8 +399,7 @@ export function createMatchTrackingInspectionService(
         guildId: input.guildId,
         targetDiscordId: input.targetDiscordId,
         matchId: match.metadata.matchId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      }, error);
       return null;
     }
   }
