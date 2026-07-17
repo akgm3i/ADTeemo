@@ -80,6 +80,18 @@ function registryErrors(
   const errors: CommandLoadError[] = [];
   const fileSet = new Set(files);
   const registryFiles = new Set(registry.map((entry) => entry.fileName));
+  const registrationsByFile = new Map<string, CommandRegistration[]>();
+  const registrationsByName = new Map<string, CommandRegistration[]>();
+
+  for (const entry of registry) {
+    const fileRegistrations = registrationsByFile.get(entry.fileName) ?? [];
+    fileRegistrations.push(entry);
+    registrationsByFile.set(entry.fileName, fileRegistrations);
+
+    const nameRegistrations = registrationsByName.get(entry.expectedName) ?? [];
+    nameRegistrations.push(entry);
+    registrationsByName.set(entry.expectedName, nameRegistrations);
+  }
 
   for (const fileName of files) {
     if (!registryFiles.has(fileName)) {
@@ -106,8 +118,29 @@ function registryErrors(
       ));
     }
   }
+  for (const [fileName, registrations] of registrationsByFile) {
+    if (registrations.length > 1) {
+      errors.push(error(
+        "REGISTRY_MISMATCH",
+        fileName,
+        `Command file is registered more than once: ${fileName}`,
+      ));
+    }
+  }
+  for (const [name, registrations] of registrationsByName) {
+    if (registrations.length > 1) {
+      for (const registration of registrations) {
+        errors.push(error(
+          "DUPLICATE_NAME",
+          registration.fileName,
+          `Command name is registered more than once: ${name}`,
+        ));
+      }
+    }
+  }
   return errors.sort((left, right) =>
-    left.fileName.localeCompare(right.fileName)
+    left.fileName.localeCompare(right.fileName) ||
+    left.code.localeCompare(right.code)
   );
 }
 
@@ -224,26 +257,6 @@ export async function loadCommands(
     const loaded = commandFromModule(module, registration);
     errors.push(...loaded.errors);
     if (loaded.command) commands.push(loaded.command);
-  }
-
-  const filesByName = new Map<string, string[]>();
-  for (
-    const registration of enabledCommandRegistrations(dependencies.registry)
-  ) {
-    const files = filesByName.get(registration.expectedName) ?? [];
-    files.push(registration.fileName);
-    filesByName.set(registration.expectedName, files);
-  }
-  for (const [name, registeredFiles] of filesByName) {
-    if (registeredFiles.length > 1) {
-      for (const fileName of registeredFiles) {
-        errors.push(error(
-          "DUPLICATE_NAME",
-          fileName,
-          `Command name is registered more than once: ${name}`,
-        ));
-      }
-    }
   }
 
   if (errors.length > 0) {

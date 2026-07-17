@@ -252,6 +252,59 @@ describe("command loader", () => {
     }
   });
 
+  test("同じcommand fileをenabledとdisabledで重複登録したとき、registry不一致として公開しない", async () => {
+    const registry = [
+      enabledRegistration("shared.ts", "enabled-name"),
+      {
+        fileName: "shared.ts",
+        expectedName: "disabled-name",
+        status: "disabled",
+        disabledReason: "not released",
+      },
+    ] satisfies readonly CommandRegistration[];
+
+    const result = await loadCommands(dependencies(registry, {
+      "shared.ts": commandModule("enabled-name"),
+    }));
+
+    assertFalse(result.ok);
+    if (!result.ok) {
+      assertEquals(
+        result.errors.some((error) =>
+          error.code === "REGISTRY_MISMATCH" &&
+          error.fileName === "shared.ts"
+        ),
+        true,
+      );
+      assertFalse("commands" in result);
+    }
+  });
+
+  test("enabledとdisabledで期待command nameが重複したとき、commandを公開しない", async () => {
+    const registry = [
+      enabledRegistration("enabled.ts", "same"),
+      {
+        fileName: "disabled.ts",
+        expectedName: "same",
+        status: "disabled",
+        disabledReason: "not released",
+      },
+    ] satisfies readonly CommandRegistration[];
+
+    const result = await loadCommands(dependencies(registry, {
+      "enabled.ts": commandModule("same"),
+    }));
+
+    assertFalse(result.ok);
+    if (!result.ok) {
+      assertEquals(
+        result.errors.some((error) => error.code === "DUPLICATE_NAME"),
+        true,
+      );
+      assertFalse("commands" in result);
+    }
+  });
+
   test("registry外のcommand fileがあるとき、暗黙にloadせず失敗する", async () => {
     const registry = [
       enabledRegistration("known.ts", "known"),
