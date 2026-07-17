@@ -446,6 +446,59 @@ describe("apiClient", () => {
       assertEquals(rpc.calls[0].path, "/match-watchers");
     });
 
+    test("watcher検査APIが404または502を返すとき、失敗結果へ安全なHTTP statusを保持する", async () => {
+      const rpc = createRpcClientStub([
+        response({ error: "Riot account not found" }, 404),
+        response({ error: "Riot API request failed" }, 502),
+        response({ error: "Riot account not found" }, 404),
+        response({ error: "Riot API request failed" }, 502),
+      ]);
+      const client = createApiClient({ rpcClient: rpc.rpcClient });
+
+      const activeGameNotFound = await client.inspectMatchWatcherActiveGame(
+        "guild-1",
+        "target-1",
+        { lastState: "IDLE", currentGameId: null },
+      );
+      const activeGameUpstreamFailure = await client
+        .inspectMatchWatcherActiveGame(
+          "guild-1",
+          "target-1",
+          { lastState: "IDLE", currentGameId: null },
+        );
+      const resultNotFound = await client.inspectMatchWatcherResult(
+        "guild-1",
+        "target-1",
+        { matchId: "JP1_12345" },
+      );
+      const resultUpstreamFailure = await client.inspectMatchWatcherResult(
+        "guild-1",
+        "target-1",
+        { matchId: "JP1_12345" },
+      );
+
+      assertEquals(activeGameNotFound, {
+        success: false,
+        error: "Riot account not found",
+        status: 404,
+      });
+      assertEquals(activeGameUpstreamFailure, {
+        success: false,
+        error: "Riot API request failed",
+        status: 502,
+      });
+      assertEquals(resultNotFound, {
+        success: false,
+        error: "Riot account not found",
+        status: 404,
+      });
+      assertEquals(resultUpstreamFailure, {
+        success: false,
+        error: "Riot API request failed",
+        status: 502,
+      });
+    });
+
     test("監視処理用Result検査を行うと、rank snapshotとOP.GG詳細の日付をDateへ変換する", async () => {
       const account = {
         discordId: "target-1",

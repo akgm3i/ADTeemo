@@ -693,6 +693,117 @@ describe("match_tracking_service.ts", () => {
     ]]);
   });
 
+  test("watcher検査が404または502で失敗したとき、未連携と上流障害を安全なstatusとreasonで区別する", async () => {
+    const warnings: Array<[string, Record<string, unknown> | undefined]> = [];
+    const service = createMatchTrackingService({
+      apiClient: {
+        getEnabledMatchWatchers: () =>
+          Promise.resolve({
+            success: true as const,
+            watchers: [
+              watcher({
+                targetDiscordId: "result-target",
+                lastState: "FETCHING_RESULT",
+                currentMatchId: "JP1_12345",
+                currentNotificationMessageId: "message-result",
+                gameStartedAt: new Date("2026-01-01T00:00:00Z"),
+              }),
+              watcher({ targetDiscordId: "active-game-target" }),
+              watcher({ targetDiscordId: "missing-target" }),
+            ],
+          }),
+        getRiotAccount: () => {
+          throw new Error("getRiotAccount should not be called");
+        },
+        inspectMatchWatcherActiveGame: (_guildId, targetDiscordId) =>
+          targetDiscordId === "missing-target"
+            ? Promise.resolve({
+              success: false as const,
+              error: "Riot account not found",
+              status: 404 as const,
+            })
+            : Promise.resolve({
+              success: false as const,
+              error: "provider body must not be logged",
+              status: 502 as const,
+            }),
+        inspectMatchWatcherResult: () =>
+          Promise.resolve({
+            success: false as const,
+            error: "provider body must not be logged",
+            status: 502 as const,
+          }),
+        updateMatchWatcherState: () => {
+          throw new Error("updateMatchWatcherState should not be called");
+        },
+      },
+      notifier: {
+        sendOrEditWatcherMessage: () => {
+          throw new Error("notifier should not be called");
+        },
+      },
+      renderer: {
+        activeGame: () => {
+          throw new Error("renderer.activeGame should not be called");
+        },
+        resultPending: () => {
+          throw new Error("renderer.resultPending should not be called");
+        },
+        resultFetchTimeout: () => {
+          throw new Error("renderer.resultFetchTimeout should not be called");
+        },
+        matchResult: () => {
+          throw new Error("renderer.matchResult should not be called");
+        },
+      },
+      clock: {
+        now: () => new Date("2026-01-01T00:05:00Z"),
+      },
+      logger: {
+        warn: (event, metadata) => warnings.push([event, metadata]),
+        error: () => {},
+      },
+      config: {
+        pollIntervalMs: 60_000,
+        inGameNotifyIntervalMs: 300_000,
+        resultFetchTimeoutMs: 10 * 60_000,
+        riotLongWindowLimit: 100,
+        riotLongWindowMs: 120_000,
+      },
+    });
+
+    await service.processMatchWatchers();
+
+    assertEquals(warnings, [[
+      "match_tracking.watcher_inspection_failed",
+      {
+        guildId: "guild-1",
+        targetDiscordId: "result-target",
+        operation: "result",
+        status: 502,
+        reason: "upstream_failure",
+      },
+    ], [
+      "match_tracking.watcher_inspection_failed",
+      {
+        guildId: "guild-1",
+        targetDiscordId: "active-game-target",
+        operation: "active_game",
+        status: 502,
+        reason: "upstream_failure",
+      },
+    ], [
+      "match_tracking.riot_account_not_found",
+      {
+        guildId: "guild-1",
+        targetDiscordId: "missing-target",
+        operation: "active_game",
+        status: 404,
+        reason: "riot_account_not_found",
+      },
+    ]]);
+  });
+
   test("watcher単位処理で例外が発生したとき、後続のwatcher処理を継続する", async () => {
     const inspectionCalls: string[] = [];
     const errors: unknown[] = [];

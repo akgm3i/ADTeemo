@@ -74,7 +74,7 @@ export type InspectMatchWatcherActiveGameResult =
     notificationIntent: MatchTrackingNotificationIntent | null;
     stateTransition: MatchTrackingStateTransition | null;
   }
-  | { success: false; error: string };
+  | { success: false; error: string; status?: 404 | 502 };
 export type InspectMatchWatcherResultResult =
   | {
     success: true;
@@ -85,7 +85,7 @@ export type InspectMatchWatcherResultResult =
     notificationIntent: MatchTrackingNotificationIntent | null;
     stateTransition: MatchTrackingStateTransition | null;
   }
-  | { success: false; error: string };
+  | { success: false; error: string; status?: 404 | 502 };
 
 function parseMatchRankSnapshot(
   snapshot: Omit<MatchRankSnapshot, "fetchedAt"> & {
@@ -319,7 +319,12 @@ export function createMatchWatchersApiClient(
       },
       async (res) => {
         if (res.status === 404 || res.status === 502) {
-          return { success: false, error: await readErrorMessage(res) };
+          const status: 404 | 502 = res.status === 404 ? 404 : 502;
+          return {
+            success: false,
+            error: await readErrorMessage(res),
+            status,
+          };
         }
 
         throw unexpectedResponseError(res);
@@ -373,7 +378,12 @@ export function createMatchWatchersApiClient(
       },
       async (res) => {
         if (res.status === 404 || res.status === 502) {
-          return { success: false, error: await readErrorMessage(res) };
+          const status: 404 | 502 = res.status === 404 ? 404 : 502;
+          return {
+            success: false,
+            error: await readErrorMessage(res),
+            status,
+          };
         }
 
         throw unexpectedResponseError(res);

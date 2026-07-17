@@ -18,7 +18,11 @@ export type MatchTrackingNotifierDependencies = {
     };
   };
   logger: {
-    warn: (message: string, metadata?: Record<string, unknown>) => void;
+    warn: (
+      message: string,
+      metadata?: Record<string, unknown>,
+      error?: unknown,
+    ) => void;
     error: (
       message: string,
       metadata?: Record<string, unknown>,
@@ -60,8 +64,7 @@ export function createMatchTrackingNotifier(
             guildId: watcher.guildId,
             channelId: watcher.channelId,
             messageId,
-            error: error instanceof Error ? error.message : String(error),
-          });
+          }, error);
         }
       }
 

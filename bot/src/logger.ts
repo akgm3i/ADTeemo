@@ -24,7 +24,8 @@ export function createBotLogger(
     debug: (event, eventContext) =>
       botLogger.debug(event, context(eventContext)),
     info: (event, eventContext) => botLogger.info(event, context(eventContext)),
-    warn: (event, eventContext) => botLogger.warn(event, context(eventContext)),
+    warn: (event, eventContext, error) =>
+      botLogger.warn(event, context(eventContext), error),
     error: (event, eventContext, error) =>
       botLogger.error(event, context(eventContext), error),
   };
