@@ -64,11 +64,11 @@ Issueの詳細と状態はGitHub Issuesを正とする。issue化されていな
   - [x] [#82 MatchTrackingServiceへ監視オーケストレーションを集約する](https://github.com/akgm3i/ADTeemo/issues/82)
   - [x] [#83 match tracking workerとrate-budget監視をinstance化する](https://github.com/akgm3i/ADTeemo/issues/83)
   - [x] [#106 match trackingの監視オーケストレーションをBackend use caseへ寄せる](https://github.com/akgm3i/ADTeemo/issues/106)
-- [ ] [#122 Deno runtimeとGitHub Actionsを固定して再現可能なCIを構築する](https://github.com/akgm3i/ADTeemo/issues/122)
-  - [ ] `.dvmrc`、GitHub Actions、DockerのDeno versionを同期する。
-  - [ ] Pull Requestと`main`へのpushで固定job名`quality`を実行する。
-  - [ ] `.env.example`を使うtargeted/full testとfrozen lockfileをCIの標準にする。
-  - [ ] root `.dockerignore`で秘密情報と生成物をbuild contextから除外する。
+- [x] [#122 Deno runtimeとGitHub Actionsを固定して再現可能なCIを構築する](https://github.com/akgm3i/ADTeemo/issues/122)
+  - [x] `.dvmrc`、GitHub Actions、DockerのDeno versionを同期する。
+  - [x] Pull Requestと`main`へのpushで固定job名`quality`を実行する。
+  - [x] `.env.example`を使うtargeted/full testとfrozen lockfileをCIの標準にする。
+  - [x] root `.dockerignore`で秘密情報と生成物をbuild contextから除外する。
 
 ## Issue化前の技術課題
 

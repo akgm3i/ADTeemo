@@ -30,7 +30,11 @@ type OpggMatchDetailDbActions = Pick<
 >;
 
 type Logger = {
-  warn(message: string, metadata?: Record<string, unknown>): void;
+  warn(
+    message: string,
+    metadata?: Record<string, unknown>,
+    error?: unknown,
+  ): void;
 };
 
 export type OpggMatchDetailServiceDependencies = {
@@ -87,8 +91,7 @@ async function resolveAndSave(
     deps.logger.warn("opgg_match_detail.resolve_failed", {
       targetDiscordId: input.targetDiscordId,
       matchId: input.matchId,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    }, error);
     return null;
   }
 
