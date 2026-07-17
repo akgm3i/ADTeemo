@@ -213,8 +213,7 @@ describe("OP.GG試合詳細service", () => {
       args: ["opgg_match_detail.resolve_failed", {
         targetDiscordId: "target-1",
         matchId: "JP1_12345",
-        error: "OP.GG unavailable",
-      }],
+      }, error],
     });
   });
 

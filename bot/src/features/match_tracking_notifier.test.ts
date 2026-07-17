@@ -31,7 +31,11 @@ function watcher(overrides: Partial<MatchWatcher> = {}): MatchWatcher {
 
 function logger() {
   return {
-    warn: (_message: string, _metadata?: Record<string, unknown>) => {},
+    warn: (
+      _message: string,
+      _metadata?: Record<string, unknown>,
+      _error?: unknown,
+    ) => {},
     error: (
       _message: string,
       _metadata?: Record<string, unknown>,
@@ -42,9 +46,10 @@ function logger() {
 
 describe("match_tracking_notifier.ts", () => {
   test("既存Discord投稿のeditに失敗するとき、新規sendへfallbackして送信後IDを返す", async () => {
+    const editError = new Error("missing access");
     const message = {
       id: "message-old",
-      edit: () => Promise.reject(new Error("missing access")),
+      edit: () => Promise.reject(editError),
     };
     const channel = {
       send: (_options: { embeds: EmbedBuilder[] }) =>
@@ -83,8 +88,8 @@ describe("match_tracking_notifier.ts", () => {
           guildId: "guild-1",
           channelId: "channel-1",
           messageId: "message-old",
-          error: "missing access",
         },
+        editError,
       ],
     });
   });
@@ -121,17 +126,17 @@ describe("match_tracking_notifier.ts", () => {
 
     assertEquals(result, "message-new");
     assertSpyCalls(sendSpy, 1);
-    assertSpyCall(warnSpy, 0, {
-      args: [
-        "match_tracking.edit_message_failed",
-        {
-          guildId: "guild-1",
-          channelId: "channel-1",
-          messageId: "message-old",
-          error: "message.edit is not available",
-        },
-      ],
-    });
+    assertEquals(warnSpy.calls[0].args.slice(0, 2), [
+      "match_tracking.edit_message_failed",
+      {
+        guildId: "guild-1",
+        channelId: "channel-1",
+        messageId: "message-old",
+      },
+    ]);
+    const editError = warnSpy.calls[0].args[2];
+    assertEquals(editError instanceof Error, true);
+    assertEquals((editError as Error).message, "message.edit is not available");
   });
 
   test("Discordチャンネルが見つからないとき、状態更新をせず既存messageIdを返す", async () => {

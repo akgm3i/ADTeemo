@@ -16,7 +16,7 @@ export interface LogContext extends Record<string, unknown> {
 export interface StructuredLogger {
   debug(event: string, context?: LogContext): void;
   info(event: string, context?: LogContext): void;
-  warn(event: string, context?: LogContext): void;
+  warn(event: string, context?: LogContext, error?: unknown): void;
   error(event: string, context?: LogContext, error?: unknown): void;
 }
 
@@ -75,6 +75,14 @@ function normalizeKey(key: string): string {
   return key.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
 }
 
+function keyWords(key: string): string[] {
+  return key
+    .replaceAll(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
 function isSensitiveKey(key: string): boolean {
   const normalized = normalizeKey(key);
   if (
@@ -90,6 +98,8 @@ function isSensitiveKey(key: string): boolean {
     normalized.includes("oauthcode") ||
     normalized.includes("oauthstate") ||
     normalized.includes("discordid") ||
+    normalized.includes("discorduserid") ||
+    normalized.endsWith("userid") ||
     normalized.endsWith("params") ||
     normalized.endsWith("parameters")
   ) {
@@ -103,11 +113,104 @@ function isSensitiveKey(key: string): boolean {
     "parameters",
     "sqlparams",
     "sqlparameters",
-    "userid",
     "usertag",
     "gamename",
     "tagline",
   ].includes(normalized);
+}
+
+function isErrorKey(key: string): boolean {
+  const lastWord = keyWords(key).at(-1);
+  return lastWord === "error" || lastWord === "exception";
+}
+
+function isOpaqueKey(key: string): boolean {
+  const words = keyWords(key);
+  const lastWord = words.at(-1);
+  return words.includes("stack") || [
+    "errors",
+    "exceptions",
+    "message",
+    "messages",
+    "cause",
+    "causes",
+    "body",
+    "bodies",
+    "header",
+    "headers",
+  ].includes(lastWord ?? "");
+}
+
+function isUrlKey(key: string): boolean {
+  return ["url", "urls", "uri", "uris"].includes(
+    keyWords(key).at(-1) ?? "",
+  );
+}
+
+function sanitizeUrl(value: unknown): string {
+  try {
+    const raw = value instanceof URL
+      ? URL.prototype.toString.call(value)
+      : typeof value === "string"
+      ? value
+      : undefined;
+    const url = raw === undefined ? undefined : new URL(raw);
+    if (!url || (url.protocol !== "http:" && url.protocol !== "https:")) {
+      return REDACTED;
+    }
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return REDACTED;
+  }
+}
+
+function sanitizeUrlValue(
+  value: unknown,
+  seen: WeakSet<object>,
+  depth: number,
+): unknown {
+  if (!Array.isArray(value)) return sanitizeUrl(value);
+  if (depth > MAX_DEPTH) return "[MaxDepth]";
+  if (seen.has(value)) return CIRCULAR;
+  seen.add(value);
+  try {
+    return value.map((item) => sanitizeUrlValue(item, seen, depth + 1));
+  } finally {
+    seen.delete(value);
+  }
+}
+
+function errorName(error: Error): string {
+  try {
+    const prototype = Object.getPrototypeOf(error);
+    const constructor = prototype &&
+      Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
+    const name = typeof constructor === "function" ? constructor.name : "";
+    return /^[A-Za-z][A-Za-z0-9_$.-]{0,63}$/.test(name) ? name : "Error";
+  } catch {
+    return "Error";
+  }
+}
+
+function ownDataProperty(
+  value: object,
+  key: string,
+): { found: boolean; value?: unknown } {
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    return descriptor && "value" in descriptor
+      ? { found: true, value: descriptor.value }
+      : { found: false };
+  } catch {
+    return { found: false };
+  }
+}
+
+function safeHttpStatus(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) &&
+      value >= 100 && value <= 599
+    ? value
+    : undefined;
 }
 
 function serializeError(
@@ -116,25 +219,39 @@ function serializeError(
   depth: number,
 ): Record<string, unknown> {
   const serialized: Record<string, unknown> = Object.create(null);
-  serialized.name = error.name;
-  serialized.message = error.message;
-  if (error.stack) serialized.stack = error.stack;
-  if (error.cause !== undefined) {
-    serialized.cause = sanitizeValue(error.cause, seen, depth + 1);
+  serialized.name = errorName(error);
+
+  for (const key of ["status", "statusCode"]) {
+    const property = ownDataProperty(error, key);
+    const status = property.found ? safeHttpStatus(property.value) : undefined;
+    if (status !== undefined) serialized[key] = status;
   }
 
-  try {
-    for (const [key, value] of Object.entries(error)) {
-      if (key === "cause") continue;
-      serialized[key] = isSensitiveKey(key)
-        ? REDACTED
-        : sanitizeValue(value, seen, depth + 1);
-    }
-  } catch {
-    serialized.properties = "[Unserializable]";
+  const cause = ownDataProperty(error, "cause");
+  if (cause.found && cause.value !== undefined) {
+    serialized.cause = cause.value instanceof Error
+      ? sanitizeValue(cause.value, seen, depth + 1)
+      : REDACTED;
   }
 
   return serialized;
+}
+
+function sanitizeProperty(
+  key: string,
+  value: unknown,
+  seen: WeakSet<object>,
+  depth: number,
+): unknown {
+  if (isSensitiveKey(key)) return REDACTED;
+  if (isErrorKey(key)) {
+    return value instanceof Error
+      ? sanitizeValue(value, seen, depth + 1)
+      : REDACTED;
+  }
+  if (isOpaqueKey(key)) return REDACTED;
+  if (isUrlKey(key)) return sanitizeUrlValue(value, seen, depth + 1);
+  return sanitizeValue(value, seen, depth + 1);
 }
 
 function sanitizeValue(
@@ -167,7 +284,7 @@ function sanitizeValue(
         return "Invalid Date";
       }
     }
-    if (value instanceof URL) return value.toString();
+    if (value instanceof URL) return sanitizeUrl(value);
     if (value instanceof Error) return serializeError(value, seen, depth);
     if (Array.isArray(value)) {
       return value.map((item) => sanitizeValue(item, seen, depth + 1));
@@ -176,9 +293,7 @@ function sanitizeValue(
     const sanitized: Record<string, unknown> = Object.create(null);
     try {
       for (const [key, item] of Object.entries(value)) {
-        sanitized[key] = isSensitiveKey(key)
-          ? REDACTED
-          : sanitizeValue(item, seen, depth + 1);
+        sanitized[key] = sanitizeProperty(key, item, seen, depth);
       }
     } catch {
       return "[Unserializable]";
@@ -249,9 +364,11 @@ function formatPayload(
   };
 
   if (error !== undefined) {
-    payload.error = sanitizeValue(error, new WeakSet(), 0);
+    payload.error = error instanceof Error
+      ? sanitizeValue(error, new WeakSet(), 0)
+      : REDACTED;
   }
-  if (level === "ERROR") {
+  if (level === "ERROR" || error !== undefined) {
     payload.correlationId = correlationIdFrom(mergedContext);
     payload.errorCategory = errorCategoryFrom(mergedContext);
   }
@@ -286,7 +403,7 @@ export function createLogger(
   return {
     debug: (event, context) => log("DEBUG", event, context),
     info: (event, context) => log("INFO", event, context),
-    warn: (event, context) => log("WARN", event, context),
+    warn: (event, context, error) => log("WARN", event, context, error),
     error: (event, context, error) => log("ERROR", event, context, error),
   };
 }

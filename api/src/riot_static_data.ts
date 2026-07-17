@@ -57,6 +57,12 @@ const jaGameModeNames: Record<string, string> = {
   CLASSIC: "クラシック",
 };
 
+class RiotStaticDataHttpError extends Error {
+  constructor(public readonly status: number) {
+    super(`Failed to fetch Riot static data: ${status}`);
+  }
+}
+
 export type RiotStaticDataResolveInput = {
   locale?: string;
   championIds?: number[];
@@ -80,7 +86,11 @@ type EnvReader = {
 };
 
 type Logger = {
-  warn(message: string, metadata?: Record<string, unknown>): void;
+  warn(
+    message: string,
+    metadata?: Record<string, unknown>,
+    error?: unknown,
+  ): void;
 };
 
 type RiotStaticDataDbActions = Pick<
@@ -164,7 +174,7 @@ export async function fetchRiotStaticDataJson(url: string) {
   const res = await fetch(url);
   if (!res.ok) {
     await res.body?.cancel();
-    throw new Error(`Failed to fetch Riot static data: ${res.status}`);
+    throw new RiotStaticDataHttpError(res.status);
   }
   return await res.json();
 }
@@ -212,8 +222,7 @@ async function cachedVersionedJson<T>(
       deps.logger.warn("riot_static_data.cache_refresh_failed", {
         key,
         version: cached.version,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      }, error);
       return {
         version: cached.version,
         value: parseCachedValue(cached.value, schema),
@@ -386,9 +395,11 @@ async function resolveResource<T>(
   try {
     return await load();
   } catch (error) {
-    deps.logger.warn(`riot_static_data.resolve_${resource}_failed`, {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    deps.logger.warn(
+      `riot_static_data.resolve_${resource}_failed`,
+      undefined,
+      error,
+    );
     return null;
   }
 }
