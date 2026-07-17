@@ -273,6 +273,10 @@ type AttemptResult<T> =
   | { kind: "success"; data: T }
   | { kind: "timeout" };
 
+type ScheduledAttemptResult<T> =
+  | { kind: "rate_limited"; waitMs: number }
+  | { kind: "attempt"; result: AttemptResult<T> };
+
 export function createRiotApi(dependencies: CreateRiotApiDependencies) {
   const appBuckets = new Map<string, RateBucket>();
   const methodBuckets = new Map<string, RateBucket>();
@@ -396,24 +400,17 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
     }
   }
 
-  async function waitForRiotRateLimit(
+  function riotRateLimitWaitMs(
     hostname: string,
     method: string,
-    deadline: number,
-    methodKey: string,
   ) {
-    while (true) {
-      assertBeforeDeadline(deadline, methodKey);
-      const now = dependencies.clock.now();
-      const waitMs = Math.max(
-        ...endpointBuckets(hostname, method, now).map((bucket) =>
-          waitMsForBucket(bucket, now)
-        ),
-        0,
-      );
-      if (waitMs <= 0) return;
-      await sleepWithinDeadline(waitMs, deadline, methodKey);
-    }
+    const now = dependencies.clock.now();
+    return Math.max(
+      ...endpointBuckets(hostname, method, now).map((bucket) =>
+        waitMsForBucket(bucket, now)
+      ),
+      0,
+    );
   }
 
   function incrementBuckets(hostname: string, method: string) {
@@ -670,11 +667,11 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
     }
   }
 
-  async function scheduleRiotRequest<T>(
+  async function scheduleRiotAttempt<T>(
     methodKey: string,
-    task: (deadline: number) => Promise<T>,
+    deadline: number,
+    task: () => Promise<T>,
   ) {
-    const deadline = dependencies.clock.now() + OVERALL_DEADLINE_MS;
     const previous = riotQueue;
     let releaseQueue!: () => void;
     const queueSlot = new Promise<void>((resolve) => {
@@ -709,7 +706,7 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
         }
       }
       assertBeforeDeadline(deadline, methodKey);
-      return await task(deadline);
+      return await task();
     } finally {
       releaseQueue();
     }
@@ -725,65 +722,80 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
     },
   ): Promise<T | null> {
     const requestMethodKey = methodKey(url.hostname, options.method);
-    return await scheduleRiotRequest(requestMethodKey, async (deadline) => {
-      const apiKey = riotApiKey();
-      const maxAttempts = options.maxAttempts ?? NORMAL_MAX_ATTEMPTS;
-      const method = options.method;
-      let attemptNumber = 1;
-      while (true) {
-        assertBeforeDeadline(deadline, requestMethodKey);
-        await waitForRiotRateLimit(
-          url.hostname,
-          method,
-          deadline,
-          requestMethodKey,
-        );
-        incrementBuckets(url.hostname, method);
-        const fallbackMs = RETRY_BACKOFF_STEP_MS * attemptNumber;
-        const result = await attempt(
-          url,
-          schema,
-          apiKey,
-          deadline,
-          fallbackMs,
-          method,
-          requestMethodKey,
-        );
-        assertBeforeDeadline(deadline, requestMethodKey);
+    const deadline = dependencies.clock.now() + OVERALL_DEADLINE_MS;
+    const apiKey = riotApiKey();
+    const maxAttempts = options.maxAttempts ?? NORMAL_MAX_ATTEMPTS;
+    const method = options.method;
+    let attemptNumber = 1;
+    while (true) {
+      assertBeforeDeadline(deadline, requestMethodKey);
+      const fallbackMs = RETRY_BACKOFF_STEP_MS * attemptNumber;
+      const scheduled = await scheduleRiotAttempt<ScheduledAttemptResult<T>>(
+        requestMethodKey,
+        deadline,
+        async () => {
+          const waitMs = riotRateLimitWaitMs(url.hostname, method);
+          if (waitMs > 0) return { kind: "rate_limited", waitMs };
 
-        if (result.kind === "success") {
-          return result.data;
-        }
-        if (result.kind === "not_found" && options.notFoundAsNull) return null;
-        if (result.kind === "parse" || result.kind === "schema") {
-          throw new RiotApiRequestError(result.kind, requestMethodKey);
-        }
-        if (result.kind === "not_found") {
-          throw new RiotApiRequestError("http", requestMethodKey, 404);
-        }
-        const retryable = result.kind === "network" ||
-          result.kind === "timeout" ||
-          (result.kind === "http" &&
-            (result.status === 429 || result.status >= 500));
-        if (!retryable || attemptNumber >= maxAttempts) {
-          throw new RiotApiRequestError(
-            result.kind,
-            requestMethodKey,
-            result.kind === "http" ? result.status : undefined,
-          );
-        }
-        const linearBackoffMs = RETRY_BACKOFF_STEP_MS * attemptNumber;
-        const retryDelayMs = result.kind === "http"
-          ? Math.max(linearBackoffMs, result.retryAfterMs)
-          : linearBackoffMs;
+          incrementBuckets(url.hostname, method);
+          return {
+            kind: "attempt",
+            result: await attempt(
+              url,
+              schema,
+              apiKey,
+              deadline,
+              fallbackMs,
+              method,
+              requestMethodKey,
+            ),
+          };
+        },
+      );
+      if (scheduled.kind === "rate_limited") {
         await sleepWithinDeadline(
-          retryDelayMs,
+          scheduled.waitMs,
           deadline,
           requestMethodKey,
         );
-        attemptNumber += 1;
+        continue;
       }
-    });
+
+      const result = scheduled.result;
+      assertBeforeDeadline(deadline, requestMethodKey);
+
+      if (result.kind === "success") {
+        return result.data;
+      }
+      if (result.kind === "not_found" && options.notFoundAsNull) return null;
+      if (result.kind === "parse" || result.kind === "schema") {
+        throw new RiotApiRequestError(result.kind, requestMethodKey);
+      }
+      if (result.kind === "not_found") {
+        throw new RiotApiRequestError("http", requestMethodKey, 404);
+      }
+      const retryable = result.kind === "network" ||
+        result.kind === "timeout" ||
+        (result.kind === "http" &&
+          (result.status === 429 || result.status >= 500));
+      if (!retryable || attemptNumber >= maxAttempts) {
+        throw new RiotApiRequestError(
+          result.kind,
+          requestMethodKey,
+          result.kind === "http" ? result.status : undefined,
+        );
+      }
+      const linearBackoffMs = RETRY_BACKOFF_STEP_MS * attemptNumber;
+      const retryDelayMs = result.kind === "http"
+        ? Math.max(linearBackoffMs, result.retryAfterMs)
+        : linearBackoffMs;
+      await sleepWithinDeadline(
+        retryDelayMs,
+        deadline,
+        requestMethodKey,
+      );
+      attemptNumber += 1;
+    }
   }
 
   async function getAccountByRiotId(

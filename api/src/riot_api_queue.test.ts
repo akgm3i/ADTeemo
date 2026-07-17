@@ -459,6 +459,132 @@ describe("createRiotApi", () => {
     assertEquals(fake.now() - beforeAsia, 10_000);
   });
 
+  test("先頭requestがscope固有cooldownを待つとき、別hostnameのrequestをqueueで遮断しない", async () => {
+    const pendingSleeps: Array<{ ms: number; resolve(): void }> = [];
+    const fetchedHostnames: string[] = [];
+    let asiaCalls = 0;
+    const fake = createFakeRiotApi(
+      ((input: RequestInfo | URL) => {
+        const hostname = new URL(String(input)).hostname;
+        fetchedHostnames.push(hostname);
+        if (hostname.startsWith("europe.")) {
+          return Promise.resolve(accountResponse("Europe"));
+        }
+        if (new URL(String(input)).pathname.includes("/lol/match/")) {
+          return Promise.resolve(matchResponse());
+        }
+        asiaCalls += 1;
+        return Promise.resolve(
+          new Response(null, {
+            status: 429,
+            headers: {
+              "Retry-After": asiaCalls === 3 ? "60" : "0",
+              "X-Rate-Limit-Type": "method",
+            },
+          }),
+        );
+      }) as typeof fetch,
+      {
+        sleeper: (ms) => {
+          if (ms < 30_000) return Promise.resolve();
+          return new Promise<void>((resolve) => {
+            pendingSleeps.push({ ms, resolve });
+          });
+        },
+      },
+    );
+
+    await assertRejects(
+      () => fake.api.getAccountByRiotId("asia", "Limited", "JP1"),
+      RiotApiRequestError,
+      "Riot API request failed: 429",
+    );
+
+    const blockedAsia = fake.api.getAccountByRiotId(
+      "asia",
+      "Blocked",
+      "JP1",
+    );
+    for (let index = 0; index < 20 && pendingSleeps.length === 0; index++) {
+      await Promise.resolve();
+    }
+    const europe = fake.api.getAccountByRiotId(
+      "europe",
+      "Europe",
+      "EUW",
+    );
+    const match = fake.api.getMatchById("asia", "JP1_12345");
+    for (let index = 0; index < 20; index++) await Promise.resolve();
+
+    const europeFetchedBeforeDeadline = fetchedHostnames.includes(
+      "europe.api.riotgames.com",
+    );
+    fake.advance(30_000);
+    for (const sleep of pendingSleeps) sleep.resolve();
+    const [asiaResult, europeResult, matchResult] = await Promise.allSettled([
+      blockedAsia,
+      europe,
+      match,
+    ]);
+
+    assertEquals(europeFetchedBeforeDeadline, true);
+    assertEquals(asiaResult.status, "rejected");
+    assertEquals(europeResult.status, "fulfilled");
+    assertEquals(matchResult.status, "fulfilled");
+    if (europeResult.status === "fulfilled") {
+      assertEquals(europeResult.value?.gameName, "Europe");
+    }
+  });
+
+  test("retry backoffを待つとき、後続のready requestをqueueで遮断しない", async () => {
+    const pendingSleeps: Array<{ ms: number; resolve(): void }> = [];
+    const fetchedNames: string[] = [];
+    let retryingCalls = 0;
+    const fake = createFakeRiotApi(
+      ((input: RequestInfo | URL) => {
+        const url = new URL(String(input));
+        const name = decodeURIComponent(url.pathname.split("/").at(-2) ?? "");
+        fetchedNames.push(name);
+        if (name === "Retrying") {
+          retryingCalls += 1;
+          if (retryingCalls === 1) {
+            return Promise.resolve(new Response(null, { status: 500 }));
+          }
+        }
+        return Promise.resolve(accountResponse(name));
+      }) as typeof fetch,
+      {
+        sleeper: (ms) =>
+          new Promise<void>((resolve) => {
+            pendingSleeps.push({ ms, resolve });
+          }),
+      },
+    );
+
+    const retrying = fake.api.getAccountByRiotId(
+      "asia",
+      "Retrying",
+      "JP1",
+    );
+    for (
+      let index = 0;
+      index < 20 && !pendingSleeps.some(({ ms }) => ms === 500);
+      index++
+    ) {
+      await Promise.resolve();
+    }
+    const ready = fake.api.getAccountByRiotId("europe", "Ready", "EUW");
+    for (let index = 0; index < 20; index++) await Promise.resolve();
+
+    const readyFetchedBeforeBackoff = fetchedNames.includes("Ready");
+    fake.advance(500);
+    pendingSleeps.find(({ ms }) => ms === 500)?.resolve();
+
+    assertEquals(readyFetchedBeforeBackoff, true);
+    assertEquals((await ready)?.gameName, "Ready");
+    assertEquals((await retrying)?.gameName, "Retrying");
+  });
+
   test("method headerなしの429 cooldownが終わると、後続の成功要求を恒久的に1件制限しない", async () => {
     let calls = 0;
     const fake = createFakeRiotApi(
