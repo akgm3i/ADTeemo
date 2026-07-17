@@ -30,6 +30,10 @@ type ActiveGameInspectionResult = Awaited<
 type ResultInspectionResult = Awaited<
   ReturnType<ApiClient["inspectMatchWatcherResult"]>
 >;
+type WatcherInspectionFailure =
+  | Extract<ActiveGameInspectionResult, { success: false }>
+  | Extract<ResultInspectionResult, { success: false }>;
+type WatcherInspectionOperation = "active_game" | "result";
 type WatcherState = Parameters<ApiClient["updateMatchWatcherState"]>[2];
 type MatchTrackingRenderer = ReturnType<typeof createMatchTrackingRenderer>;
 type MatchTrackingEmbed = ReturnType<MatchTrackingRenderer["resultPending"]>;
@@ -551,6 +555,34 @@ function resultTransitionStateForCurrentState(
   return resultState;
 }
 
+function logWatcherInspectionFailure(
+  dependencies: MatchTrackingServiceDependencies,
+  watcher: MatchWatcher,
+  operation: WatcherInspectionOperation,
+  result: WatcherInspectionFailure,
+) {
+  if (wasFailureLogged(result)) return;
+
+  if (result.status === 404) {
+    dependencies.logger.warn("match_tracking.riot_account_not_found", {
+      guildId: watcher.guildId,
+      targetDiscordId: watcher.targetDiscordId,
+      operation,
+      status: result.status,
+      reason: "riot_account_not_found",
+    });
+    return;
+  }
+
+  dependencies.logger.warn("match_tracking.watcher_inspection_failed", {
+    guildId: watcher.guildId,
+    targetDiscordId: watcher.targetDiscordId,
+    operation,
+    ...(result.status === undefined ? {} : { status: result.status }),
+    reason: result.status === 502 ? "upstream_failure" : "unclassified_failure",
+  });
+}
+
 async function tryFetchAndNotifyResult(
   dependencies: MatchTrackingServiceDependencies,
   watcher: MatchWatcher,
@@ -565,12 +597,7 @@ async function tryFetchAndNotifyResult(
     pending,
   );
   if (!result.success) {
-    if (!wasFailureLogged(result)) {
-      dependencies.logger.warn("match_tracking.riot_account_not_found", {
-        guildId: watcher.guildId,
-        targetDiscordId: watcher.targetDiscordId,
-      });
-    }
+    logWatcherInspectionFailure(dependencies, watcher, "result", result);
     return { status: "pending" as const, messageId: pending.messageId };
   }
   const {
@@ -685,12 +712,12 @@ async function processWatcher(
     watcher,
   );
   if (!activeGameResult.success) {
-    if (!wasFailureLogged(activeGameResult)) {
-      dependencies.logger.warn("match_tracking.riot_account_not_found", {
-        guildId: watcher.guildId,
-        targetDiscordId: watcher.targetDiscordId,
-      });
-    }
+    logWatcherInspectionFailure(
+      dependencies,
+      watcher,
+      "active_game",
+      activeGameResult,
+    );
     return;
   }
   const account = activeGameResult.account;
