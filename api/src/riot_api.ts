@@ -293,15 +293,15 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
     return apiKey;
   }
 
-  function retryAfterMs(response: Response, fallbackMs: number) {
+  function parseRetryAfterMs(response: Response) {
     const retryAfter = response.headers.get("Retry-After");
-    if (!retryAfter) return fallbackMs;
+    if (!retryAfter) return undefined;
     const seconds = Number(retryAfter);
     if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1_000;
     const date = Date.parse(retryAfter);
     return Number.isFinite(date)
       ? Math.max(date - dependencies.clock.now(), 0)
-      : fallbackMs;
+      : undefined;
   }
 
   function defaultAppBuckets(hostname: string, now: number): RateBucket[] {
@@ -491,23 +491,20 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
     }
   }
 
-  function applyRetryAfterCooldown(
-    response: Response,
+  function applyScopedCooldown(
     hostname: string,
     method: string,
-    methodKey: string,
-    fallbackMs: number,
+    cooldownMs: number,
+    scope: "application" | "method",
   ) {
     const now = dependencies.clock.now();
-    const cooldownMs = retryAfterMs(response, fallbackMs);
     const cooldownUntil = now + cooldownMs;
-    const rateLimitType = response.headers.get("X-Rate-Limit-Type");
-    let buckets = rateLimitType === "method"
+    let buckets = scope === "method"
       ? [...methodBuckets.values()].filter((bucket) =>
         bucket.hostname === hostname && bucket.method === method
       )
       : ensureAppBuckets(hostname, now);
-    if (rateLimitType === "method" && buckets.length === 0) {
+    if (scope === "method" && buckets.length === 0) {
       const windowMs = Math.max(cooldownMs, 1);
       const key = `method:${hostname}:${method}:${windowMs}`;
       const bucket: RateBucket = {
@@ -528,9 +525,21 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
     for (const bucket of buckets) {
       bucket.cooldownUntil = Math.max(bucket.cooldownUntil, cooldownUntil);
     }
+  }
+
+  function applyRateLimitCooldown(
+    response: Response,
+    hostname: string,
+    method: string,
+    methodKey: string,
+    cooldownMs: number,
+  ) {
+    const rateLimitType = response.headers.get("X-Rate-Limit-Type");
+    const scope = rateLimitType === "method" ? "method" : "application";
+    applyScopedCooldown(hostname, method, cooldownMs, scope);
     try {
       dependencies.logger.warn("riot_api.rate_limited", {
-        rateLimitType: rateLimitType ?? "application",
+        rateLimitType: scope,
         methodKey,
         retryAfterMs: cooldownMs,
       });
@@ -573,13 +582,25 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
     }
 
     applyRiotRateHeaders(response, url.hostname, method);
+    const explicitRetryAfterMs = parseRetryAfterMs(response);
+    const retryDelayMs = explicitRetryAfterMs ?? fallbackCooldownMs;
     if (response.status === 429) {
-      applyRetryAfterCooldown(
+      applyRateLimitCooldown(
         response,
         url.hostname,
         method,
         methodKey,
-        fallbackCooldownMs,
+        retryDelayMs,
+      );
+    } else if (
+      response.status >= 500 && response.status < 600 &&
+      explicitRetryAfterMs !== undefined
+    ) {
+      applyScopedCooldown(
+        url.hostname,
+        method,
+        explicitRetryAfterMs,
+        "method",
       );
     }
     if (response.status === 404) {
@@ -588,7 +609,6 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
     }
     if (!response.ok) {
       const status = response.status;
-      const retryDelayMs = retryAfterMs(response, fallbackCooldownMs);
       cancelBody(response);
       return { kind: "http", status, retryAfterMs: retryDelayMs };
     }

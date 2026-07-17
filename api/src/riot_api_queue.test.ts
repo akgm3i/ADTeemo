@@ -329,6 +329,114 @@ describe("createRiotApi", () => {
     assertEquals(fake.sleeps, [2_000]);
   });
 
+  test("5xxのRetry-Afterを同一hostname/methodへ共有し、別scopeは遮断しない", async () => {
+    const pendingSleeps: Array<{ ms: number; resolve(): void }> = [];
+    const fetched: string[] = [];
+    let leaderCalls = 0;
+    const fake = createFakeRiotApi(
+      ((input: RequestInfo | URL) => {
+        const url = new URL(String(input));
+        fetched.push(`${url.hostname}|${url.pathname}`);
+        if (url.pathname.includes("/accounts/by-riot-id/")) {
+          const name = decodeURIComponent(
+            url.pathname.split("/").at(-2) ?? "",
+          );
+          if (url.hostname.startsWith("asia.") && name === "Leader") {
+            leaderCalls += 1;
+            if (leaderCalls === 1) {
+              return Promise.resolve(
+                new Response(null, {
+                  status: 503,
+                  headers: { "Retry-After": "2" },
+                }),
+              );
+            }
+          }
+          return Promise.resolve(accountResponse(name));
+        }
+        return Promise.resolve(matchResponse());
+      }) as typeof fetch,
+      {
+        sleeper: (ms, signal) => {
+          if (signal) {
+            return new Promise<void>((_resolve, reject) => {
+              const abort = () =>
+                reject(
+                  signal.reason ?? new DOMException("Aborted", "AbortError"),
+                );
+              if (signal.aborted) {
+                abort();
+                return;
+              }
+              signal.addEventListener("abort", abort, { once: true });
+            });
+          }
+          return new Promise<void>((resolve) => {
+            pendingSleeps.push({ ms, resolve });
+          });
+        },
+      },
+    );
+
+    const leader = fake.api.getAccountByRiotId("asia", "Leader", "JP1");
+    for (let index = 0; index < 20 && pendingSleeps.length === 0; index++) {
+      await Promise.resolve();
+    }
+    const follower = fake.api.getAccountByRiotId(
+      "asia",
+      "Follower",
+      "JP1",
+    );
+    const europe = fake.api.getAccountByRiotId(
+      "europe",
+      "Europe",
+      "EUW",
+    );
+    const match = fake.api.getMatchById("asia", "JP1_12345");
+    for (let index = 0; index < 100; index++) {
+      const europeFetched = fetched.some((value) =>
+        value.startsWith("europe.api.riotgames.com|")
+      );
+      const matchFetched = fetched.some((value) =>
+        value.includes("|/lol/match/v5/matches/")
+      );
+      if (pendingSleeps.length >= 2 && europeFetched && matchFetched) break;
+      await Promise.resolve();
+    }
+
+    const followerFetchedBeforeCooldown = fetched.some((value) =>
+      value.includes("/Follower/")
+    );
+    const europeFetchedBeforeCooldown = fetched.some((value) =>
+      value.startsWith("europe.api.riotgames.com|")
+    );
+    const matchFetchedBeforeCooldown = fetched.some((value) =>
+      value.includes("|/lol/match/v5/matches/")
+    );
+    const sharedCooldownInstalled = fake.api.__testing.rateLimiterSnapshot()
+      .methodBuckets.some((bucket) =>
+        bucket.hostname === "asia.api.riotgames.com" &&
+        bucket.method ===
+          "GET /riot/account/v1/accounts/by-riot-id/:gameName/:tagLine" &&
+        bucket.cooldownUntil === fake.now() + 2_000
+      );
+
+    fake.advance(2_000);
+    for (const sleep of pendingSleeps) sleep.resolve();
+    const [leaderResult, followerResult, europeResult, matchResult] =
+      await Promise
+        .all([leader, follower, europe, match]);
+
+    assertEquals(followerFetchedBeforeCooldown, false);
+    assertEquals(europeFetchedBeforeCooldown, true);
+    assertEquals(matchFetchedBeforeCooldown, true);
+    assertEquals(sharedCooldownInstalled, true);
+    assertEquals(leaderResult?.gameName, "Leader");
+    assertEquals(followerResult?.gameName, "Follower");
+    assertEquals(europeResult?.gameName, "Europe");
+    assertEquals(matchResult?.metadata.matchId, "JP1_12345");
+  });
+
   test("Match要求で5xxが続くとき、最大5attemptまで試す", async () => {
     let calls = 0;
     const fake = createFakeRiotApi(
@@ -573,7 +681,7 @@ describe("createRiotApi", () => {
     ) {
       await Promise.resolve();
     }
-    const ready = fake.api.getAccountByRiotId("europe", "Ready", "EUW");
+    const ready = fake.api.getAccountByRiotId("asia", "Ready", "JP1");
     for (let index = 0; index < 20; index++) await Promise.resolve();
 
     const readyFetchedBeforeBackoff = fetchedNames.includes("Ready");

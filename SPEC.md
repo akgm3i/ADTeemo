@@ -103,7 +103,7 @@ ADTeemoは複数Discordギルドへの導入を想定する。プレイヤー本
 - Backend APIはRiot Spectator-v5で試合開始・試合中概要・終了を検知し、Riot Match-v5で終了後の勝敗、KDA、CS、Gold、CS/min、キル関与率を取得する。BotはこれらをBackend API経由で取得してDiscordへ通知し、Riot APIを直接呼び出さない。
 - 同一 `guildId + channelId + Riot platform + gameId` で複数監視対象が同じ試合にいる場合、試合中通知は1投稿に統合する。Riot platformが異なる場合は numeric `gameId` が同じでも別試合として扱う。
 - 結果通知は監視対象ごとの個別通知である。共有された試合中投稿IDを結果通知へ使う場合も、上書き防止のため同一active group内で1回だけ再利用する。
-- Riot API呼び出しはBackend APIプロセス内の共有キューへ集約し、routing hostnameとAPI methodごとに429とrate limit headersを後続呼び出しへ反映する。送信可能なattemptをFIFOで直列化し、scope固有のcooldownやretry backoffを待つrequestは送信slotを解放して、別hostname/methodのrequestを遮断しない。各attemptは5秒、queue待機を含む要求全体は30秒で打ち切る。timeout、network error、429、5xxだけを残attemptとdeadlineの範囲で再試行し、その他の4xx、parse/schema error、要求全体のtimeoutは再試行しない。`Retry-After`を優先し、それがない場合は500ms刻みの線形backoffを使い、通常は最大3attempt、Match-v5は最大5attemptとする。このキューはprocess-localであり、Backend APIを1 processで動かすことを運用上の不変条件とする。
+- Riot API呼び出しはBackend APIプロセス内の共有キューへ集約し、routing hostnameとAPI methodごとに429とrate limit headersを後続呼び出しへ反映する。送信可能なattemptをFIFOで直列化し、scope固有のcooldownやretry backoffを待つrequestは送信slotを解放して、別hostname/methodのrequestを遮断しない。各attemptは5秒、queue待機を含む要求全体は30秒で打ち切る。timeout、network error、429、5xxだけを残attemptとdeadlineの範囲で再試行し、その他の4xx、parse/schema error、要求全体のtimeoutは再試行しない。`Retry-After`を優先し、5xxが明示する値は同一routing hostname/methodの一時cooldownとして後続requestへ共有する。`Retry-After`がない5xxでは500ms刻みの線形backoffだけを使い、通常は最大3attempt、Match-v5は最大5attemptとする。このキューはprocess-localであり、Backend APIを1 processで動かすことを運用上の不変条件とする。
 
 ## 5. 将来構想と追跡中のIssue
 
