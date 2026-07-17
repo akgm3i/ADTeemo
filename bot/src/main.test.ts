@@ -1,8 +1,8 @@
 import {
   assertEquals,
   assertFalse,
-  assertInstanceOf,
   assertRejects,
+  assertStrictEquals,
 } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
@@ -10,43 +10,187 @@ import { Collection, SlashCommandBuilder } from "discord.js";
 import { MockInteractionBuilder } from "./test_utils.ts";
 import type { Command } from "./types.ts";
 import { messageHandler, messageKeys } from "./messages.ts";
-import { handleInteractionCreate, startBot } from "./main.ts";
-import { botLogger, correlationIdForInteraction } from "./logger.ts";
+import {
+  BotStartupError,
+  handleInteractionCreate,
+  runBotEntrypoint,
+  startBot,
+} from "./main.ts";
+import { correlationIdForInteraction } from "./logger.ts";
 
 describe("Main Bot Logic", () => {
   describe("startBot", () => {
-    test("Bot service credentialが不正な場合、構造化エラーを記録してcode 1で終了する", async () => {
-      // Arrange
+    const validEnv = {
+      get(key: string) {
+        if (key === "DISCORD_TOKEN") return "test-discord-token";
+        if (key === "API_URL") return "http://api:8000";
+        if (key === "BOT_SERVICE_TOKEN") return "x".repeat(32);
+        return undefined;
+      },
+    };
+
+    test("Bot service credentialが不正なとき、秘密値を含まない型付きstartup errorを返す", async () => {
       const credential = "too-short";
-      const exitError = new Error("Deno.exit(1)");
-      using _envStub = stub(
-        Deno.env,
-        "get",
-        (key: string) => {
-          if (key === "DISCORD_TOKEN") return "test-discord-token";
-          if (key === "API_URL") return "http://api:8000";
-          if (key === "BOT_SERVICE_TOKEN") return credential;
-          return undefined;
-        },
+      const startupClient = {
+        commands: new Collection<string, Command>(),
+        login: () => Promise.resolve("token"),
+      };
+
+      const error = await assertRejects(
+        () =>
+          startBot({
+            env: {
+              get(key) {
+                if (key === "DISCORD_TOKEN") return "test-discord-token";
+                if (key === "API_URL") return "http://api:8000";
+                if (key === "BOT_SERVICE_TOKEN") return credential;
+                return undefined;
+              },
+            },
+            client: startupClient as never,
+          }),
+        BotStartupError,
+        "BOT_SERVICE_TOKEN is invalid",
       );
-      using errorStub = stub(botLogger, "error", () => {});
-      using exitStub = stub(Deno, "exit", (_code?: number): never => {
-        throw exitError;
-      });
 
-      // Act
-      await assertRejects(() => startBot(), Error, exitError.message);
-
-      // Assert
-      assertSpyCalls(errorStub, 1);
-      const [message, context, error] = errorStub.calls[0].args;
-      assertEquals(message, "bot.start.invalid_service_credential");
-      assertEquals(typeof context?.correlationId, "string");
-      assertEquals(context?.errorCategory, "validation");
-      assertInstanceOf(error, Error);
       assertFalse(error.message.includes(credential));
-      assertSpyCall(exitStub, 0, { args: [1] });
+      assertEquals(startupClient.commands.size, 0);
     });
+
+    test("command loadに失敗したとき、既存commandを変更せずloginしない", async () => {
+      const existing = new Collection<string, Command>();
+      existing.set("existing", {
+        data: new SlashCommandBuilder().setName("existing")
+          .setDescription("existing command"),
+        execute: () => Promise.resolve(),
+      });
+      let loginCalls = 0;
+      const startupClient = {
+        commands: existing,
+        login() {
+          loginCalls += 1;
+          return Promise.resolve("token");
+        },
+      };
+
+      await assertRejects(
+        () =>
+          startBot({
+            env: validEnv,
+            client: startupClient as never,
+            loadCommands: () =>
+              Promise.resolve({
+                ok: false,
+                errors: [{
+                  code: "IMPORT_FAILED",
+                  fileName: "broken.ts",
+                  message: "failed",
+                }],
+              }),
+          }),
+        BotStartupError,
+        "Failed to load slash commands: broken.ts (IMPORT_FAILED): failed",
+      );
+
+      assertEquals(loginCalls, 0);
+      assertStrictEquals(startupClient.commands, existing);
+    });
+
+    test("Discord loginがrejectしたとき、startup promiseもrejectする", async () => {
+      const loginError = new Error("Discord authentication failed");
+      const startupClient = {
+        commands: new Collection<string, Command>(),
+        login: () => Promise.reject(loginError),
+      };
+
+      const error = await assertRejects(() =>
+        startBot({
+          env: validEnv,
+          client: startupClient as never,
+          loadCommands: () => Promise.resolve({ ok: true, commands: [] }),
+        })
+      );
+
+      assertStrictEquals(error, loginError);
+    });
+
+    test("loginが完了するまでstartup promiseを完了扱いにしない", async () => {
+      let resolveLogin: ((token: string) => void) | undefined;
+      const loginPromise = new Promise<string>((resolve) => {
+        resolveLogin = resolve;
+      });
+      const loadedCommand: Command = {
+        data: new SlashCommandBuilder().setName("loaded")
+          .setDescription("loaded command"),
+        execute: () => Promise.resolve(),
+      };
+      const startupClient = {
+        commands: new Collection<string, Command>(),
+        login: () => loginPromise,
+      };
+      let completed = false;
+
+      const startup = startBot({
+        env: validEnv,
+        client: startupClient as never,
+        loadCommands: () =>
+          Promise.resolve({ ok: true, commands: [loadedCommand] }),
+      }).then(() => {
+        completed = true;
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+
+      assertFalse(completed);
+      assertEquals([...startupClient.commands.keys()], ["loaded"]);
+
+      resolveLogin?.("token");
+      await startup;
+      assertEquals(completed, true);
+    });
+
+    test("通常startupはcommand配備moduleへ依存しない", async () => {
+      const source = await Deno.readTextFile(
+        new URL("main.ts", import.meta.url),
+      );
+
+      assertFalse(source.includes("deploy-commands"));
+      assertFalse(source.includes("rest.put"));
+    });
+  });
+
+  test("entrypointでstartupが失敗するとき、fatalを1回記録してexitCodeを1にする", async () => {
+    const failure = new BotStartupError(
+      "MISSING_CONFIGURATION",
+      "DISCORD_TOKEN is required",
+    );
+    const errors: Array<{
+      event: string;
+      context?: Record<string, unknown>;
+      error?: unknown;
+    }> = [];
+    const exitCodes: number[] = [];
+
+    await runBotEntrypoint({
+      startBot: () => Promise.reject(failure),
+      logger: {
+        error(event, context, error) {
+          errors.push({ event, context, error });
+        },
+      },
+      correlationId: () => "startup-correlation-id",
+      setExitCode: (code) => exitCodes.push(code),
+    });
+
+    assertEquals(errors, [{
+      event: "bot.start.failed",
+      context: {
+        correlationId: "startup-correlation-id",
+        errorCategory: "validation",
+      },
+      error: failure,
+    }]);
+    assertEquals(exitCodes, [1]);
   });
 
   describe("handleInteractionCreate", () => {

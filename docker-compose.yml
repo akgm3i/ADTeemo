@@ -39,6 +39,7 @@ services:
   bot:
     profiles:
       - prod
+    image: adteemo-bot:local
     build:
       context: .
       dockerfile: ./docker/Dockerfile.prod
@@ -55,6 +56,27 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+
+  # Explicit one-shot operation. Normal Bot startup never changes commands.
+  command-deployer:
+    profiles:
+      - commands
+    image: adteemo-bot:local
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile.prod
+      target: bot
+    env_file:
+      - .env
+    command:
+      - deno
+      - run
+      - --allow-net
+      - --allow-read
+      - --allow-env
+      - --allow-sys
+      - --allow-ffi
+      - src/deploy-commands.ts
 
   # --- Development service (activate with --profile dev) ---
   dev:

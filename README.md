@@ -7,7 +7,7 @@ ADTeemoはLeague of Legendsのカスタムゲーム運営を支援するDiscord 
 ## 主な機能
 
 - Discord slash commandによるBot操作
-- Riot IDの登録・更新とRiot Gamesアカウント連携URLの発行
+- Riot IDの登録・更新
 - ギルド別のメインロール登録
 - Botが利用するDiscordロールの検出・作成
 - Discordスケジュールイベントと募集メッセージの作成
@@ -27,7 +27,6 @@ ADTeemoはLeague of Legendsのカスタムゲーム運営を支援するDiscord 
 | `/setup-roles`                                                              | `Top`, `JG`, `Mid`, `Bot`, `Sup`, `Custom` ロールを検出し、不足分を作成します。   |
 | `/set-main-role role:<role>`                                                | 自分のメインロールをギルド別に登録します。                                        |
 | `/set-riot-id riot-id:<GameName#TagLine> [platform:<platform>]`             | Riot IDを登録・更新します。                                                       |
-| `/link-riot-account`                                                        | Riot Gamesアカウント連携用URLを取得します。                                       |
 | `/create-custom-game title:<title> date:<MM/DD> time:<HH:mm> voice:<voice>` | Discordスケジュールイベントを作成し、実行チャンネルに募集メッセージを投稿します。 |
 | `/cancel-custom-game`                                                       | 自分が作成した有効なカスタムゲームイベントを選択してキャンセルします。            |
 | `/split-teams`                                                              | 募集リアクションを集計し、2チームへ分けてVCへ移動します。                         |

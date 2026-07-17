@@ -57,7 +57,7 @@ ADTeemoは複数Discordギルドへの導入を想定する。プレイヤー本
 ### 4.1. ユーザー・ロール管理
 
 - `/set-riot-id` はRiot IDをRiot Account-v1で解決し、PUUID、gameName、tagLine、platform、regionを `riot_accounts` に保存する。
-- `/link-riot-account` はRiot Sign On連携用URLを返す。利用には `RSO_CLIENT_ID`、`RSO_CLIENT_SECRET`、`RSO_REDIRECT_URI` が必要である。
+- `/link-riot-account` は #117 でcanonical Riot account modelへ接続するまで未提供とし、command registryで明示的に無効化する。
 - `/set-main-role` はユーザーのメインロールをギルド別に保存する。
 - Botはギルド参加時または `/setup-roles` 実行時に `Top`, `JG`, `Mid`, `Bot`, `Sup`, `Custom` ロールを検出し、不足分を作成する。
 - 自動作成・検出した DiscordロールIDの永続化は未実装である。
