@@ -23,6 +23,8 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Validate Docker Compose configuration
+        run: docker compose --env-file .env.example --profile "*" config --quiet --no-env-resolution
       - name: Set up Deno
         uses: denoland/setup-deno@v2
         with:

@@ -1,4 +1,9 @@
-import { assertEquals, assertFalse, assertRejects } from "@std/assert";
+import {
+  assertEquals,
+  assertFalse,
+  assertRejects,
+  assertStrictEquals,
+} from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import {
   ApplicationIntegrationType,
@@ -8,6 +13,7 @@ import {
 } from "discord.js";
 import type { Command } from "./types.ts";
 import {
+  CommandDeploymentError,
   type CommandRestClient,
   runCommandDeployment,
   runCommandDeploymentEntrypoint,
@@ -64,17 +70,18 @@ describe("slash command deployment", () => {
       }],
     };
 
-    await assertRejects(
+    const error = await assertRejects(
       () =>
         syncApplicationCommands({
           rest,
           clientId: "client-id",
           loadResult,
         }),
-      Error,
+      CommandDeploymentError,
       "Command loading failed: broken.ts (IMPORT_FAILED): failed",
     );
 
+    assertEquals(error.code, "COMMAND_LOAD_FAILED");
     assertEquals(rest.getCalls, []);
     assertEquals(rest.putCalls, []);
   });
@@ -82,17 +89,18 @@ describe("slash command deployment", () => {
   test("有効commandが0件のとき、全削除を防いでDiscord RESTを呼ばない", async () => {
     const rest = new FakeRest();
 
-    await assertRejects(
+    const error = await assertRejects(
       () =>
         syncApplicationCommands({
           rest,
           clientId: "client-id",
           loadResult: loaded(),
         }),
-      Error,
+      CommandDeploymentError,
       "No enabled commands",
     );
 
+    assertEquals(error.code, "NO_ENABLED_COMMANDS");
     assertEquals(rest.getCalls, []);
     assertEquals(rest.putCalls, []);
   });
@@ -330,22 +338,73 @@ describe("slash command deployment", () => {
     assertEquals(rest.putCalls.length, 1);
   });
 
+  test("Discord GETが失敗したとき、元の失敗をcauseに持つcurrent取得errorを返す", async () => {
+    // Arrange
+    const getFailure = new Error("raw provider response body from GET");
+    const rest: CommandRestClient = {
+      get: () => Promise.reject(getFailure),
+      put: () => Promise.resolve([]),
+    };
+
+    // Act
+    const error = await assertRejects(
+      () =>
+        syncApplicationCommands({
+          rest,
+          clientId: "client-id",
+          loadResult: loaded(command("health")),
+        }),
+      CommandDeploymentError,
+      "Failed to fetch current Discord commands",
+    );
+
+    // Assert
+    assertEquals(error.code, "DISCORD_CURRENT_FETCH_FAILED");
+    assertStrictEquals(error.cause, getFailure);
+  });
+
+  test("Discord PUTが失敗したとき、元の失敗をcauseに持つpublish errorを返す", async () => {
+    // Arrange
+    const putFailure = new Error("raw provider response body from PUT");
+    const rest: CommandRestClient = {
+      get: () => Promise.resolve([]),
+      put: () => Promise.reject(putFailure),
+    };
+
+    // Act
+    const error = await assertRejects(
+      () =>
+        syncApplicationCommands({
+          rest,
+          clientId: "client-id",
+          loadResult: loaded(command("health")),
+        }),
+      CommandDeploymentError,
+      "Failed to publish Discord commands",
+    );
+
+    // Assert
+    assertEquals(error.code, "DISCORD_PUBLISH_FAILED");
+    assertStrictEquals(error.cause, putFailure);
+  });
+
   test("DiscordのPUT応答が期待件数とnameに一致しないとき、配備成功にしない", async () => {
     const expected = command("health");
     const rest = new FakeRest([], [command("unexpected").data.toJSON()]);
 
-    await assertRejects(
+    const error = await assertRejects(
       () =>
         syncApplicationCommands({
           rest,
           clientId: "client-id",
           loadResult: loaded(expected),
         }),
-      Error,
-      "Expected: [1:health], Published: [1:unexpected], " +
-        "Added: [health], Removed: [unexpected], Updated: []",
+      CommandDeploymentError,
+      "Discord publish result validation failed",
     );
 
+    assertEquals(error.code, "PUBLISH_RESULT_VALIDATION_FAILED");
+    assertEquals(error.cause instanceof Error, true);
     assertEquals(rest.putCalls.length, 1);
   });
 
@@ -356,18 +415,73 @@ describe("slash command deployment", () => {
       [command("health", "stale description").data.toJSON()],
     );
 
-    await assertRejects(
+    const error = await assertRejects(
       () =>
         syncApplicationCommands({
           rest,
           clientId: "client-id",
           loadResult: loaded(expected),
         }),
-      Error,
-      "Added: [], Removed: [], Updated: [health]",
+      CommandDeploymentError,
+      "Discord publish result validation failed",
     );
 
+    assertEquals(error.code, "PUBLISH_RESULT_VALIDATION_FAILED");
     assertEquals(rest.putCalls.length, 1);
+  });
+
+  test("deploy設定が不足しているとき、configuration errorとして同期前に失敗する", async () => {
+    // Arrange
+    const rest = new FakeRest([]);
+
+    // Act
+    const error = await assertRejects(
+      () =>
+        runCommandDeployment({
+          env: { get: () => undefined },
+          loadCommands: () => Promise.resolve(loaded(command("health"))),
+          createRest: () => rest,
+          logger: { info() {}, warn() {}, error() {} },
+          correlationId: () => "deployment-correlation-id",
+        }),
+      CommandDeploymentError,
+      "DISCORD_TOKEN and DISCORD_CLIENT_ID are required",
+    );
+
+    // Assert
+    assertEquals(error.code, "MISSING_CONFIGURATION");
+    assertEquals(rest.getCalls, []);
+  });
+
+  test("command loaderがrejectしたとき、元の失敗をcauseに持つload errorを返す", async () => {
+    // Arrange
+    const loadFailure = new Error("raw command import failure");
+    const rest = new FakeRest([]);
+
+    // Act
+    const error = await assertRejects(
+      () =>
+        runCommandDeployment({
+          env: {
+            get(name) {
+              if (name === "DISCORD_TOKEN") return "secret-token";
+              if (name === "DISCORD_CLIENT_ID") return "client-id";
+              return undefined;
+            },
+          },
+          loadCommands: () => Promise.reject(loadFailure),
+          createRest: () => rest,
+          logger: { info() {}, warn() {}, error() {} },
+          correlationId: () => "deployment-correlation-id",
+        }),
+      CommandDeploymentError,
+      "Failed to load slash commands",
+    );
+
+    // Assert
+    assertEquals(error.code, "COMMAND_LOAD_FAILED");
+    assertStrictEquals(error.cause, loadFailure);
+    assertEquals(rest.getCalls, []);
   });
 
   test("通常のdeploy entrypointは全件load成功後だけ同期処理を実行する", async () => {
@@ -404,41 +518,131 @@ describe("slash command deployment", () => {
     assertFalse(JSON.stringify(infoEvents).includes("secret-token"));
   });
 
-  test("deploy entrypointが失敗するとき、fatalを1回記録してexitCodeを1にする", async () => {
-    const failure = new Error("deployment failed");
-    const errors: Array<{
-      event: string;
-      context?: Record<string, unknown>;
-      error?: unknown;
-    }> = [];
-    const exitCodes: number[] = [];
-    const receivedCorrelationIds: string[] = [];
-
-    await runCommandDeploymentEntrypoint({
-      runCommandDeployment: (correlationId) => {
-        receivedCorrelationIds.push(correlationId);
-        return Promise.reject(failure);
+  describe("runCommandDeploymentEntrypoint", () => {
+    const knownFailures = [
+      {
+        label: "設定不足",
+        code: "MISSING_CONFIGURATION",
+        reason: "configuration_invalid",
+        errorCategory: "validation",
       },
-      logger: {
-        info() {},
-        warn() {},
-        error(event, context, error) {
-          errors.push({ event, context, error });
-        },
-      },
-      correlationId: () => "fatal-correlation-id",
-      setExitCode: (code) => exitCodes.push(code),
-    });
-
-    assertEquals(errors, [{
-      event: "command.deploy.failed",
-      context: {
-        correlationId: "fatal-correlation-id",
+      {
+        label: "command load失敗",
+        code: "COMMAND_LOAD_FAILED",
+        reason: "command_load_failed",
         errorCategory: "unexpected",
       },
-      error: failure,
-    }]);
-    assertEquals(exitCodes, [1]);
-    assertEquals(receivedCorrelationIds, ["fatal-correlation-id"]);
+      {
+        label: "有効command空集合",
+        code: "NO_ENABLED_COMMANDS",
+        reason: "no_enabled_commands",
+        errorCategory: "validation",
+      },
+      {
+        label: "Discord current取得失敗",
+        code: "DISCORD_CURRENT_FETCH_FAILED",
+        reason: "discord_current_fetch_failed",
+        errorCategory: "remote_api",
+      },
+      {
+        label: "Discord publish失敗",
+        code: "DISCORD_PUBLISH_FAILED",
+        reason: "discord_publish_failed",
+        errorCategory: "remote_api",
+      },
+      {
+        label: "publish結果検証失敗",
+        code: "PUBLISH_RESULT_VALIDATION_FAILED",
+        reason: "publish_result_validation_failed",
+        errorCategory: "remote_api",
+      },
+    ] as const;
+
+    for (const knownFailure of knownFailures) {
+      test(`${knownFailure.label}のとき、固定reasonでfatalを記録してexitCodeを1にする`, async () => {
+        // Arrange
+        const failure = new CommandDeploymentError(
+          knownFailure.code,
+          "raw credential and provider response body",
+        );
+        const errors: Array<{
+          event: string;
+          context?: Record<string, unknown>;
+          error?: unknown;
+        }> = [];
+        const exitCodes: number[] = [];
+        const receivedCorrelationIds: string[] = [];
+
+        // Act
+        await runCommandDeploymentEntrypoint({
+          runCommandDeployment: (correlationId) => {
+            receivedCorrelationIds.push(correlationId);
+            return Promise.reject(failure);
+          },
+          logger: {
+            info() {},
+            warn() {},
+            error(event, context, error) {
+              errors.push({ event, context, error });
+            },
+          },
+          correlationId: () => "fatal-correlation-id",
+          setExitCode: (code) => exitCodes.push(code),
+        });
+
+        // Assert
+        assertEquals(errors, [{
+          event: "command.deploy.failed",
+          context: {
+            correlationId: "fatal-correlation-id",
+            errorCategory: knownFailure.errorCategory,
+            reason: knownFailure.reason,
+          },
+          error: failure,
+        }]);
+        assertFalse(
+          JSON.stringify(errors[0].context).includes("provider response body"),
+        );
+        assertEquals(exitCodes, [1]);
+        assertEquals(receivedCorrelationIds, ["fatal-correlation-id"]);
+      });
+    }
+
+    test("未知の配備例外のとき、unexpectedへfallbackしてログ記録後にexitCodeを1にする", async () => {
+      // Arrange
+      const failure = new Error("unknown deployment failure");
+      const errors: Array<{
+        event: string;
+        context?: Record<string, unknown>;
+        error?: unknown;
+      }> = [];
+      const exitCodes: number[] = [];
+
+      // Act
+      await runCommandDeploymentEntrypoint({
+        runCommandDeployment: () => Promise.reject(failure),
+        logger: {
+          info() {},
+          warn() {},
+          error(event, context, error) {
+            errors.push({ event, context, error });
+          },
+        },
+        correlationId: () => "fatal-correlation-id",
+        setExitCode: (code) => exitCodes.push(code),
+      });
+
+      // Assert
+      assertEquals(errors, [{
+        event: "command.deploy.failed",
+        context: {
+          correlationId: "fatal-correlation-id",
+          errorCategory: "unexpected",
+          reason: "unexpected",
+        },
+        error: failure,
+      }]);
+      assertEquals(exitCodes, [1]);
+    });
   });
 });
