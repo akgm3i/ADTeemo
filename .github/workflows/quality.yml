@@ -24,7 +24,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Validate Docker Compose configuration
-        run: docker compose --env-file .env.example --profile "*" config --quiet --no-env-resolution
+        run: |
+          touch .env .env.dev
+          docker compose --env-file .env.example --profile "*" config --quiet --no-env-resolution
       - name: Set up Deno
         uses: denoland/setup-deno@v2
         with:

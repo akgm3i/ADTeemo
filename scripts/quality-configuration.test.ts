@@ -85,14 +85,24 @@ describe("quality workflow", () => {
     // Act
     const runCommands = (workflow.jobs.quality?.steps ?? [])
       .map((step) => step.run ?? "")
-      .join("\n");
-    const composeCommand =
-      runCommands.split(/\r?\n/).find((line) =>
-        line.trimStart().startsWith("docker compose ") &&
-        line.includes(" config")
-      ) ?? "";
+      .join("\n")
+      .replace(/\\\r?\n/g, " ");
+    const commandLines = runCommands.split(/\r?\n/);
+    const envPlaceholderIndex = commandLines.findIndex((line) => {
+      const commandParts = line.trim().split(/\s+/);
+      return commandParts[0] === "touch" &&
+        commandParts.includes(".env") &&
+        commandParts.includes(".env.dev");
+    });
+    const composeCommandIndex = commandLines.findIndex((line) =>
+      line.trimStart().startsWith("docker compose ") &&
+      line.includes(" config")
+    );
+    const composeCommand = commandLines[composeCommandIndex] ?? "";
 
     // Assert
+    assert(envPlaceholderIndex >= 0);
+    assert(composeCommandIndex > envPlaceholderIndex);
     assertStringIncludes(composeCommand, "--env-file .env.example");
     assert(/--profile\s+(?:"\*"|'\*'|\*)/.test(composeCommand));
     assertStringIncludes(composeCommand, "config");
