@@ -31,6 +31,23 @@ export type CommandSyncResult = {
   diff: CommandDiff;
 };
 
+export class CommandDeploymentError extends Error {
+  constructor(
+    readonly code:
+      | "MISSING_CONFIGURATION"
+      | "COMMAND_LOAD_FAILED"
+      | "NO_ENABLED_COMMANDS"
+      | "DISCORD_CURRENT_FETCH_FAILED"
+      | "DISCORD_PUBLISH_FAILED"
+      | "PUBLISH_RESULT_VALIDATION_FAILED",
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "CommandDeploymentError";
+  }
+}
+
 interface SyncApplicationCommandsOptions {
   rest: CommandRestClient;
   clientId: string;
@@ -230,14 +247,16 @@ export async function syncApplicationCommands(
   options: SyncApplicationCommandsOptions,
 ): Promise<CommandSyncResult> {
   if (!options.loadResult.ok) {
-    throw new Error(
+    throw new CommandDeploymentError(
+      "COMMAND_LOAD_FAILED",
       `Command loading failed: ${
         formatCommandLoadErrors(options.loadResult.errors)
       }`,
     );
   }
   if (options.loadResult.commands.length === 0) {
-    throw new Error(
+    throw new CommandDeploymentError(
+      "NO_ENABLED_COMMANDS",
       "No enabled commands; refusing to replace Discord commands",
     );
   }
@@ -256,17 +275,43 @@ export async function syncApplicationCommands(
     ? Routes.applicationGuildCommands(options.clientId, options.guildId)
     : Routes.applicationCommands(options.clientId);
 
-  const response = await options.rest.get(route);
-  if (!Array.isArray(response)) {
-    throw new Error("Discord returned an invalid command list");
+  let diff: CommandDiff;
+  try {
+    const response = await options.rest.get(route);
+    if (!Array.isArray(response)) {
+      throw new Error("Discord returned an invalid command list");
+    }
+    diff = commandDiff(response, desired, guildScoped);
+  } catch (error) {
+    throw new CommandDeploymentError(
+      "DISCORD_CURRENT_FETCH_FAILED",
+      "Failed to fetch current Discord commands",
+      { cause: error },
+    );
   }
-  const diff = commandDiff(response, desired, guildScoped);
   if (!hasDiff(diff)) {
     return { status: "unchanged", expectedNames, diff };
   }
 
-  const published = await options.rest.put(route, { body: desired });
-  validatePublishedCommands(published, desired, guildScoped);
+  let published: unknown;
+  try {
+    published = await options.rest.put(route, { body: desired });
+  } catch (error) {
+    throw new CommandDeploymentError(
+      "DISCORD_PUBLISH_FAILED",
+      "Failed to publish Discord commands",
+      { cause: error },
+    );
+  }
+  try {
+    validatePublishedCommands(published, desired, guildScoped);
+  } catch (error) {
+    throw new CommandDeploymentError(
+      "PUBLISH_RESULT_VALIDATION_FAILED",
+      "Discord publish result validation failed",
+      { cause: error },
+    );
+  }
   return { status: "updated", expectedNames, diff };
 }
 
@@ -312,11 +357,23 @@ export async function runCommandDeployment(
   const clientId = dependencies.env.get("DISCORD_CLIENT_ID");
   const guildId = dependencies.env.get("DISCORD_GUILD_ID") || undefined;
   if (!token || !clientId) {
-    throw new Error("DISCORD_TOKEN and DISCORD_CLIENT_ID are required");
+    throw new CommandDeploymentError(
+      "MISSING_CONFIGURATION",
+      "DISCORD_TOKEN and DISCORD_CLIENT_ID are required",
+    );
   }
 
   const correlationId = dependencies.correlationId();
-  const loadResult = await dependencies.loadCommands();
+  let loadResult: CommandLoadResult;
+  try {
+    loadResult = await dependencies.loadCommands();
+  } catch (error) {
+    throw new CommandDeploymentError(
+      "COMMAND_LOAD_FAILED",
+      "Failed to load slash commands",
+      { cause: error },
+    );
+  }
   const expectedCount = loadResult.ok ? loadResult.commands.length : 0;
   dependencies.logger.info("command.deploy.started", {
     correlationId,
@@ -337,6 +394,49 @@ export async function runCommandDeployment(
     diff: result.diff,
   });
   return result;
+}
+
+function classifyCommandDeploymentFailure(error: unknown): {
+  reason:
+    | "configuration_invalid"
+    | "command_load_failed"
+    | "no_enabled_commands"
+    | "discord_current_fetch_failed"
+    | "discord_publish_failed"
+    | "publish_result_validation_failed"
+    | "unexpected";
+  errorCategory: "validation" | "remote_api" | "unexpected";
+} {
+  if (!(error instanceof CommandDeploymentError)) {
+    return { reason: "unexpected", errorCategory: "unexpected" };
+  }
+
+  switch (error.code) {
+    case "MISSING_CONFIGURATION":
+      return {
+        reason: "configuration_invalid",
+        errorCategory: "validation",
+      };
+    case "COMMAND_LOAD_FAILED":
+      return { reason: "command_load_failed", errorCategory: "unexpected" };
+    case "NO_ENABLED_COMMANDS":
+      return { reason: "no_enabled_commands", errorCategory: "validation" };
+    case "DISCORD_CURRENT_FETCH_FAILED":
+      return {
+        reason: "discord_current_fetch_failed",
+        errorCategory: "remote_api",
+      };
+    case "DISCORD_PUBLISH_FAILED":
+      return {
+        reason: "discord_publish_failed",
+        errorCategory: "remote_api",
+      };
+    case "PUBLISH_RESULT_VALIDATION_FAILED":
+      return {
+        reason: "publish_result_validation_failed",
+        errorCategory: "remote_api",
+      };
+  }
 }
 
 const defaultEntrypointDependencies: CommandDeploymentEntrypointDependencies = {
@@ -360,11 +460,13 @@ export async function runCommandDeploymentEntrypoint(
   try {
     await dependencies.runCommandDeployment(correlationId);
   } catch (error) {
+    const failure = classifyCommandDeploymentFailure(error);
     dependencies.logger.error(
       "command.deploy.failed",
       {
         correlationId,
-        errorCategory: "unexpected",
+        errorCategory: failure.errorCategory,
+        reason: failure.reason,
       },
       error,
     );

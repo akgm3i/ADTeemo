@@ -264,7 +264,8 @@ export class BotStartupError extends Error {
     readonly code:
       | "MISSING_CONFIGURATION"
       | "INVALID_SERVICE_CREDENTIAL"
-      | "COMMAND_LOAD_FAILED",
+      | "COMMAND_LOAD_FAILED"
+      | "DISCORD_LOGIN_FAILED",
     message: string,
     options?: ErrorOptions,
   ) {
@@ -348,7 +349,16 @@ export async function startBot(
     );
   }
 
-  const loadResult = await dependencies.loadCommands();
+  let loadResult: Awaited<ReturnType<typeof loadCommands>>;
+  try {
+    loadResult = await dependencies.loadCommands();
+  } catch (error) {
+    throw new BotStartupError(
+      "COMMAND_LOAD_FAILED",
+      "Failed to load slash commands",
+      { cause: error },
+    );
+  }
   if (!loadResult.ok) {
     throw new BotStartupError(
       "COMMAND_LOAD_FAILED",
@@ -368,7 +378,46 @@ export async function startBot(
     publicRpcClient,
   }));
   dependencies.client.commands = nextCommands;
-  await dependencies.client.login(discordToken);
+  try {
+    await dependencies.client.login(discordToken);
+  } catch (error) {
+    throw new BotStartupError(
+      "DISCORD_LOGIN_FAILED",
+      "Discord login failed",
+      { cause: error },
+    );
+  }
+}
+
+function classifyBotStartupFailure(error: unknown): {
+  reason:
+    | "configuration_invalid"
+    | "service_credential_invalid"
+    | "command_load_failed"
+    | "discord_login_failed"
+    | "unexpected";
+  errorCategory: "validation" | "remote_api" | "unexpected";
+} {
+  if (!(error instanceof BotStartupError)) {
+    return { reason: "unexpected", errorCategory: "unexpected" };
+  }
+
+  switch (error.code) {
+    case "MISSING_CONFIGURATION":
+      return {
+        reason: "configuration_invalid",
+        errorCategory: "validation",
+      };
+    case "INVALID_SERVICE_CREDENTIAL":
+      return {
+        reason: "service_credential_invalid",
+        errorCategory: "validation",
+      };
+    case "COMMAND_LOAD_FAILED":
+      return { reason: "command_load_failed", errorCategory: "unexpected" };
+    case "DISCORD_LOGIN_FAILED":
+      return { reason: "discord_login_failed", errorCategory: "remote_api" };
+  }
 }
 
 const defaultEntrypointDependencies: BotEntrypointDependencies = {
@@ -387,14 +436,13 @@ export async function runBotEntrypoint(
   try {
     await dependencies.startBot();
   } catch (error) {
+    const failure = classifyBotStartupFailure(error);
     dependencies.logger.error(
       "bot.start.failed",
       {
         correlationId,
-        errorCategory: error instanceof BotStartupError &&
-            error.code !== "COMMAND_LOAD_FAILED"
-          ? "validation"
-          : "unexpected",
+        errorCategory: failure.errorCategory,
+        reason: failure.reason,
       },
       error,
     );

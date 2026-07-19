@@ -1,40 +1,39 @@
-import { assertEquals, assertStringIncludes } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertFalse,
+  assertStringIncludes,
+} from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { parse } from "@std/yaml";
 
 const root = new URL("../", import.meta.url);
 
+interface WorkflowStep {
+  name?: string;
+  uses?: string;
+  run?: string;
+  with?: Record<string, unknown>;
+}
+
+interface WorkflowJob {
+  name?: string;
+  permissions?: Record<string, string>;
+  steps?: WorkflowStep[];
+}
+
 interface QualityWorkflow {
   on: {
-    pull_request: null;
-    push: {
-      branches: string[];
-    };
+    pull_request?: unknown;
+    push?: { branches?: string[] };
+    [event: string]: unknown;
   };
-  permissions: {
-    contents: string;
-  };
-  concurrency: {
-    group: string;
-    "cancel-in-progress": boolean;
-  };
-  jobs: {
-    quality: {
-      name: string;
-      "runs-on": string;
-      "timeout-minutes": number;
-      steps: Array<{
-        name: string;
-        uses?: string;
-        run?: string;
-        with?: Record<string, unknown>;
-      }>;
-    };
-  };
+  permissions: Record<string, string>;
+  jobs: Record<string, WorkflowJob>;
 }
 
 describe("quality workflow", () => {
-  test("Pull Requestとmain pushのとき、固定job qualityがfrozen lockfileで品質確認を実行する", async () => {
+  test("Pull Requestとmain pushのとき、read-onlyのquality jobが固定Denoで品質確認を実行する", async () => {
     // Arrange
     const workflow = parse(
       await Deno.readTextFile(
@@ -44,45 +43,79 @@ describe("quality workflow", () => {
 
     // Act
     const quality = workflow.jobs.quality;
-    const usesSecret = JSON.stringify(workflow).includes("secrets.");
+    const steps = quality?.steps ?? [];
+    const denoSetup = steps.find((step) =>
+      step.uses?.startsWith("denoland/setup-deno@")
+    );
+    const frozenInstallIndex = steps.findIndex((step) =>
+      /\bdeno install\b[^\n]*--frozen(?:=true)?(?:\s|$)/.test(step.run ?? "")
+    );
+    const qualityIndex = steps.findIndex((step) =>
+      step.run?.split(/\r?\n/).some((line) =>
+        line.trim() === "deno task quality"
+      )
+    );
+    const serialized = JSON.stringify(workflow);
 
     // Assert
-    assertEquals(workflow.on, {
-      pull_request: null,
-      push: { branches: ["main"] },
+    assert("pull_request" in workflow.on);
+    assert(workflow.on.push?.branches?.includes("main"));
+    assert(quality);
+    assertEquals(quality.name ?? "quality", "quality");
+    assertEquals(workflow.permissions.contents, "read");
+    assertFalse(Object.values(workflow.permissions).includes("write"));
+    assertFalse(Object.values(quality.permissions ?? {}).includes("write"));
+    assertEquals(denoSetup?.with?.["deno-version-file"], ".dvmrc");
+    assert(frozenInstallIndex >= 0);
+    assert(qualityIndex > frozenInstallIndex);
+    assertFalse(/"secrets":|\$\{\{[^}]*\bsecrets\b/.test(serialized));
+    assertFalse(serialized.includes("test:riot-live"));
+    assertFalse(serialized.includes("RIOT_LIVE_TEST"));
+    assertFalse(serialized.includes("riot_api.live.test.ts"));
+  });
+
+  test("quality jobを実行するとき、secretやservice起動なしで全Compose profileをparseする", async () => {
+    // Arrange
+    const workflow = parse(
+      await Deno.readTextFile(
+        new URL(".github/workflows/quality.yml", root),
+      ),
+    ) as unknown as QualityWorkflow;
+
+    // Act
+    const runCommands = (workflow.jobs.quality?.steps ?? [])
+      .map((step) => step.run ?? "")
+      .join("\n")
+      .replace(/\\\r?\n/g, " ");
+    const commandLines = runCommands.split(/\r?\n/);
+    const envPlaceholderIndex = commandLines.findIndex((line) => {
+      const commandParts = line.trim().split(/\s+/);
+      return commandParts[0] === "touch" &&
+        commandParts.includes(".env") &&
+        commandParts.includes(".env.dev");
     });
-    assertEquals(workflow.permissions, { contents: "read" });
-    assertEquals(workflow.concurrency, {
-      group: "${{ github.workflow }}-${{ github.ref }}",
-      "cancel-in-progress": true,
-    });
-    assertEquals(quality.name, "quality");
-    assertEquals(quality["runs-on"], "ubuntu-latest");
-    assertEquals(quality["timeout-minutes"], 15);
-    assertEquals(quality.steps, [
-      {
-        name: "Checkout repository",
-        uses: "actions/checkout@v7",
-        with: { "persist-credentials": false },
-      },
-      {
-        name: "Set up Deno",
-        uses: "denoland/setup-deno@v2",
-        with: {
-          "deno-version-file": ".dvmrc",
-          cache: true,
-        },
-      },
-      {
-        name: "Install locked dependencies",
-        run: "deno install --frozen=true",
-      },
-      {
-        name: "Run quality checks",
-        run: "deno task quality",
-      },
-    ]);
-    assertEquals(usesSecret, false);
+    const composeCommandIndex = commandLines.findIndex((line) =>
+      line.trimStart().startsWith("docker compose ") &&
+      line.includes(" config")
+    );
+    const composeCommand = commandLines[composeCommandIndex] ?? "";
+
+    // Assert
+    assert(envPlaceholderIndex >= 0);
+    assert(composeCommandIndex > envPlaceholderIndex);
+    assertStringIncludes(composeCommand, "--env-file .env.example");
+    assert(/--profile\s+(?:"\*"|'\*'|\*)/.test(composeCommand));
+    assertStringIncludes(composeCommand, "config");
+    assertStringIncludes(composeCommand, "--quiet");
+    assertStringIncludes(composeCommand, "--no-env-resolution");
+    assertFalse(
+      /\bdocker[^\n]*\b(?:build|buildx|pull)\b/.test(runCommands),
+    );
+    assertFalse(
+      /\bdocker compose[^\n]*\b(?:create|restart|run|start|up)\b/.test(
+        runCommands,
+      ),
+    );
   });
 });
 

@@ -96,22 +96,52 @@ describe("Main Bot Logic", () => {
       assertStrictEquals(startupClient.commands, existing);
     });
 
-    test("Discord loginがrejectしたとき、startup promiseもrejectする", async () => {
+    test("command loaderがrejectしたとき、元の失敗をcauseに持つ型付きstartup errorを返す", async () => {
+      // Arrange
+      const loadFailure = new Error("raw command import failure");
+      const startupClient = {
+        commands: new Collection<string, Command>(),
+        login: () => Promise.resolve("token"),
+      };
+
+      // Act
+      const error = await assertRejects(
+        () =>
+          startBot({
+            env: validEnv,
+            client: startupClient as never,
+            loadCommands: () => Promise.reject(loadFailure),
+          }),
+        BotStartupError,
+        "Failed to load slash commands",
+      );
+
+      // Assert
+      assertEquals(error.code, "COMMAND_LOAD_FAILED");
+      assertStrictEquals(error.cause, loadFailure);
+      assertEquals(startupClient.commands.size, 0);
+    });
+
+    test("Discord loginがrejectしたとき、元の失敗をcauseに持つ型付きstartup errorを返す", async () => {
       const loginError = new Error("Discord authentication failed");
       const startupClient = {
         commands: new Collection<string, Command>(),
         login: () => Promise.reject(loginError),
       };
 
-      const error = await assertRejects(() =>
-        startBot({
-          env: validEnv,
-          client: startupClient as never,
-          loadCommands: () => Promise.resolve({ ok: true, commands: [] }),
-        })
+      const error = await assertRejects(
+        () =>
+          startBot({
+            env: validEnv,
+            client: startupClient as never,
+            loadCommands: () => Promise.resolve({ ok: true, commands: [] }),
+          }),
+        BotStartupError,
+        "Discord login failed",
       );
 
-      assertStrictEquals(error, loginError);
+      assertEquals(error.code, "DISCORD_LOGIN_FAILED");
+      assertStrictEquals(error.cause, loginError);
     });
 
     test("loginが完了するまでstartup promiseを完了扱いにしない", async () => {
@@ -159,38 +189,111 @@ describe("Main Bot Logic", () => {
     });
   });
 
-  test("entrypointでstartupが失敗するとき、fatalを1回記録してexitCodeを1にする", async () => {
-    const failure = new BotStartupError(
-      "MISSING_CONFIGURATION",
-      "DISCORD_TOKEN is required",
-    );
-    const errors: Array<{
-      event: string;
-      context?: Record<string, unknown>;
-      error?: unknown;
-    }> = [];
-    const exitCodes: number[] = [];
-
-    await runBotEntrypoint({
-      startBot: () => Promise.reject(failure),
-      logger: {
-        error(event, context, error) {
-          errors.push({ event, context, error });
-        },
-      },
-      correlationId: () => "startup-correlation-id",
-      setExitCode: (code) => exitCodes.push(code),
-    });
-
-    assertEquals(errors, [{
-      event: "bot.start.failed",
-      context: {
-        correlationId: "startup-correlation-id",
+  describe("runBotEntrypoint", () => {
+    const knownFailures = [
+      {
+        label: "設定不足",
+        code: "MISSING_CONFIGURATION",
+        reason: "configuration_invalid",
         errorCategory: "validation",
       },
-      error: failure,
-    }]);
-    assertEquals(exitCodes, [1]);
+      {
+        label: "service credential不正",
+        code: "INVALID_SERVICE_CREDENTIAL",
+        reason: "service_credential_invalid",
+        errorCategory: "validation",
+      },
+      {
+        label: "command load失敗",
+        code: "COMMAND_LOAD_FAILED",
+        reason: "command_load_failed",
+        errorCategory: "unexpected",
+      },
+      {
+        label: "Discord login失敗",
+        code: "DISCORD_LOGIN_FAILED",
+        reason: "discord_login_failed",
+        errorCategory: "remote_api",
+      },
+    ] as const;
+
+    for (const knownFailure of knownFailures) {
+      test(`${knownFailure.label}のとき、固定reasonでfatalを記録してexitCodeを1にする`, async () => {
+        // Arrange
+        const failure = new BotStartupError(
+          knownFailure.code,
+          "raw credential and provider response body",
+        );
+        const errors: Array<{
+          event: string;
+          context?: Record<string, unknown>;
+          error?: unknown;
+        }> = [];
+        const exitCodes: number[] = [];
+
+        // Act
+        await runBotEntrypoint({
+          startBot: () => Promise.reject(failure),
+          logger: {
+            error(event, context, error) {
+              errors.push({ event, context, error });
+            },
+          },
+          correlationId: () => "startup-correlation-id",
+          setExitCode: (code) => exitCodes.push(code),
+        });
+
+        // Assert
+        assertEquals(errors, [{
+          event: "bot.start.failed",
+          context: {
+            correlationId: "startup-correlation-id",
+            errorCategory: knownFailure.errorCategory,
+            reason: knownFailure.reason,
+          },
+          error: failure,
+        }]);
+        assertFalse(
+          JSON.stringify(errors[0].context).includes("provider response body"),
+        );
+        assertEquals(exitCodes, [1]);
+      });
+    }
+
+    test("未知のstartup例外のとき、unexpectedへfallbackしてログ記録後にexitCodeを1にする", async () => {
+      // Arrange
+      const failure = new Error("unknown failure with raw credential");
+      const errors: Array<{
+        event: string;
+        context?: Record<string, unknown>;
+        error?: unknown;
+      }> = [];
+      const exitCodes: number[] = [];
+
+      // Act
+      await runBotEntrypoint({
+        startBot: () => Promise.reject(failure),
+        logger: {
+          error(event, context, error) {
+            errors.push({ event, context, error });
+          },
+        },
+        correlationId: () => "startup-correlation-id",
+        setExitCode: (code) => exitCodes.push(code),
+      });
+
+      // Assert
+      assertEquals(errors, [{
+        event: "bot.start.failed",
+        context: {
+          correlationId: "startup-correlation-id",
+          errorCategory: "unexpected",
+          reason: "unexpected",
+        },
+        error: failure,
+      }]);
+      assertEquals(exitCodes, [1]);
+    });
   });
 
   describe("handleInteractionCreate", () => {
