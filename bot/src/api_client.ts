@@ -29,6 +29,11 @@ import {
 import type { ApiRpcClient } from "./api_clients/transport.ts";
 
 export type {
+  FailureResult as ApiClientFailure,
+  HttpFailureResult as ApiClientHttpFailure,
+} from "./api_clients/transport.ts";
+
+export type {
   FinalizedRankSnapshot,
   MatchParticipant,
   OpggMatchDetail,

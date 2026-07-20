@@ -150,7 +150,10 @@ describe("routes/auth.ts", () => {
         // Assert
         assertEquals(res.status, 400);
         const body = await res.json() as Record<string, unknown>;
-        assertEquals(body, { error: "Invalid state." });
+        assertEquals(body, {
+          code: "INVALID_REQUEST",
+          message: "Invalid state.",
+        });
         assertFalse("success" in body);
         assertSpyCall(getAuthStateStub, 0, { args: ["invalid-state"] });
         assertSpyCall(mockFormatMessage, 0, {
@@ -178,11 +181,6 @@ describe("routes/auth.ts", () => {
           () => Promise.reject(error),
         );
         using errorStub = stub(deps.logger, "error", () => {});
-        using formatMessageStub = stub(
-          messageHandler,
-          "formatMessage",
-          () => "Internal server error.",
-        );
         const client = testClient(app, {}, undefined, {
           headers: TEST_BOT_SERVICE_AUTH_HEADERS,
         });
@@ -195,11 +193,11 @@ describe("routes/auth.ts", () => {
         // Assert
         assertEquals(res.status, 500);
         const body = await res.json() as Record<string, unknown>;
-        assertEquals(body, { error: "Internal server error." });
-        assertFalse("success" in body);
-        assertSpyCall(formatMessageStub, 0, {
-          args: [messageKeys.common.error.internalServerError],
+        assertEquals(body, {
+          code: "INTERNAL_ERROR",
+          message: "Internal server error",
         });
+        assertFalse("success" in body);
         assertSpyCalls(errorStub, 1);
         assertEquals(errorStub.calls[0].args[0], "request.failed");
         assertEquals(errorStub.calls[0].args[1]?.http, {

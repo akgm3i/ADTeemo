@@ -10,7 +10,8 @@ import { riotStaticDataRoutes } from "./routes/riot_static_data.ts";
 import type { AppDependencies } from "./dependencies.ts";
 import { createBotServiceAuthMiddleware } from "./service_auth.ts";
 import { isValidCorrelationId } from "../../lib/logger/mod.ts";
-import { recordRequestFailure, takeRequestFailure } from "./request_failure.ts";
+import { takeRequestFailure } from "./request_failure.ts";
+import { apiErrorResponse, handleApiError } from "./api_errors.ts";
 
 export const CORRELATION_ID_HEADER = "X-Correlation-ID";
 
@@ -102,8 +103,7 @@ export function createClassifiedRoutes(deps: AppDependencies) {
 }
 
 export function handleUnhandledRequestError(error: Error, c: Context) {
-  recordRequestFailure(c.req.raw, error);
-  return c.text("Internal Server Error", 500);
+  return handleApiError(error, c);
 }
 
 export function createApp(deps: AppDependencies) {
@@ -115,6 +115,7 @@ export function createApp(deps: AppDependencies) {
     .route("/", publicRoutes)
     .route("/", callbackRoutes)
     .route("/", botServiceRoutes)
+    .notFound((c) => apiErrorResponse(c, "ROUTE_NOT_FOUND"))
     .onError(handleUnhandledRequestError);
 }
 
@@ -139,3 +140,4 @@ const app = {
 
 export default app;
 export type AppType = CreatedApp;
+export * from "./contract/errors.ts";

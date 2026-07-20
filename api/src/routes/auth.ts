@@ -6,7 +6,7 @@ import {
 } from "../contract/schemas.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import type { AppDependencies } from "../dependencies.ts";
-import { recordRequestFailure } from "../request_failure.ts";
+import { apiErrorResponse, apiValidationHook } from "../api_errors.ts";
 
 type AuthDbActions = Pick<
   AppDependencies["dbActions"],
@@ -23,7 +23,7 @@ export function authBotServiceRoutes(deps: AuthRouteDependencies) {
   return new Hono()
     .get(
       "/rso/login-url",
-      zValidator("query", loginUrlQuerySchema),
+      zValidator("query", loginUrlQuerySchema, apiValidationHook),
       async (c) => {
         const { discordId } = c.req.valid("query");
         const state = crypto.randomUUID();
@@ -41,7 +41,7 @@ export function authCallbackRoutes(deps: AuthRouteDependencies) {
   const { dbActions, rso } = deps;
   return new Hono().get(
     "/rso/callback",
-    zValidator("query", callbackQuerySchema),
+    zValidator("query", callbackQuerySchema, apiValidationHook),
     async (c) => {
       const { code, state } = c.req.valid("query");
 
@@ -56,11 +56,11 @@ export function authCallbackRoutes(deps: AuthRouteDependencies) {
           // Clean up expired state to prevent it from being used again
           await dbActions.deleteAuthState(state);
         }
-        return c.json({
-          error: messageHandler.formatMessage(
+        return apiErrorResponse(c, "INVALID_REQUEST", {
+          message: messageHandler.formatMessage(
             messageKeys.riotAccount.link.error.invalidState,
           ),
-        }, 400);
+        });
       }
       const { discordId } = authState;
 
@@ -108,15 +108,7 @@ export function authCallbackRoutes(deps: AuthRouteDependencies) {
           </html>
         `);
       } catch (error) {
-        recordRequestFailure(c.req.raw, error);
-        return c.json(
-          {
-            error: messageHandler.formatMessage(
-              messageKeys.common.error.internalServerError,
-            ),
-          },
-          500,
-        );
+        return apiErrorResponse(c, "INTERNAL_ERROR", { cause: error });
       }
     },
   );

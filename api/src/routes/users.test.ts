@@ -18,7 +18,10 @@ describe("routes/users.ts", () => {
   const client = testClient(app, {}, undefined, {
     headers: TEST_BOT_SERVICE_AUTH_HEADERS,
   });
-  const errorResponseSchema = z.object({ error: z.string() });
+  const errorResponseSchema = z.object({
+    code: z.string(),
+    message: z.string(),
+  });
   const discordId = "test-discord-id";
   const gameName = "TestUser";
   const tagLine = "JP1";
@@ -133,7 +136,7 @@ describe("routes/users.ts", () => {
 
         // Assert
         assert(res.status === 404);
-        const { error } = errorResponseSchema.parse(await res.json());
+        const { code, message } = errorResponseSchema.parse(await res.json());
         assertSpyCalls(mockFormatMessage, 1);
         assertSpyCall(mockFormatMessage, 0, {
           args: [messageKeys.riotAccount.set.error.summonerNotFound],
@@ -141,7 +144,8 @@ describe("routes/users.ts", () => {
         assertSpyCall(getAccountStub, 0, {
           args: ["asia", gameName, tagLine],
         });
-        assertEquals(error, "error message");
+        assertEquals(code, "RIOT_ACCOUNT_NOT_FOUND");
+        assertEquals(message, "error message");
         assertEquals(upsertRiotAccountSpy.calls.length, 0);
       });
     });
@@ -224,7 +228,7 @@ describe("routes/users.ts", () => {
 
     describe("異常系", () => {
       test(
-        "ギルドIDが指定されていないとき、400エラーを返す",
+        "ギルドIDが指定されていないとき、422エラーを返す",
         async () => {
           // Arrange
           const role = "Jungle";
@@ -244,11 +248,11 @@ describe("routes/users.ts", () => {
           const res = await app.request(req);
 
           // Assert
-          assertEquals(res.status, 400);
+          assertEquals(res.status, 422);
         },
       );
 
-      test("無効なロールが指定されたとき、400エラーを返す", async () => {
+      test("無効なロールが指定されたとき、422エラーを返す", async () => {
         // Arrange
         const role = "InvalidRole";
         const req = new Request(
@@ -267,7 +271,7 @@ describe("routes/users.ts", () => {
         const res = await app.request(req);
 
         // Assert
-        assertEquals(res.status, 400);
+        assertEquals(res.status, 422);
       });
     });
   });

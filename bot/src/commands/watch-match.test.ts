@@ -59,6 +59,7 @@ describe("Command: watch-match", () => {
         Promise.resolve({
           success: false as const,
           error: "Riot account not found",
+          code: "RIOT_ACCOUNT_NOT_FOUND" as const,
           status: 404 as const,
         }),
     );

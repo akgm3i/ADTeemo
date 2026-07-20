@@ -11,7 +11,7 @@ import {
   RecordNotFoundError,
 } from "../errors.ts";
 import type { AppDependencies } from "../dependencies.ts";
-import { recordRequestFailure } from "../request_failure.ts";
+import { apiErrorResponse, apiValidationHook } from "../api_errors.ts";
 
 type MatchesDbActions = Pick<
   AppDependencies["dbActions"],
@@ -31,7 +31,11 @@ export function matchesRoutes(
   return new Hono()
     .post(
       "/rank-snapshots/pending",
-      zValidator("json", upsertPendingRankSnapshotsSchema),
+      zValidator(
+        "json",
+        upsertPendingRankSnapshotsSchema,
+        apiValidationHook,
+      ),
       async (c) => {
         const payload = c.req.valid("json");
         await dbActions.upsertPendingRankSnapshots(payload);
@@ -40,7 +44,7 @@ export function matchesRoutes(
     )
     .post(
       "/:matchId/rank-snapshots/finalize",
-      zValidator("json", finalizeRankSnapshotsSchema),
+      zValidator("json", finalizeRankSnapshotsSchema, apiValidationHook),
       async (c) => {
         const { matchId } = c.req.param();
         const payload = c.req.valid("json");
@@ -61,7 +65,7 @@ export function matchesRoutes(
               path: issue.path,
             })),
           });
-          return c.json({ error: "Invalid request body" }, 400);
+          return apiValidationHook(result, c);
         }
       }),
       async (c) => {
@@ -76,19 +80,18 @@ export function matchesRoutes(
           return c.json({ detail }, 200);
         } catch (error) {
           if (error instanceof RecordNotFoundError) {
-            return c.json({ error: error.message }, 404);
+            return apiErrorResponse(c, "RIOT_ACCOUNT_NOT_FOUND");
           }
           if (error instanceof OpggMatchParticipantMismatchError) {
-            return c.json({ error: error.message }, 400);
+            return apiErrorResponse(c, "OPGG_PARTICIPANT_MISMATCH");
           }
-          recordRequestFailure(c.req.raw, error);
-          return c.json({ error: "Failed to resolve OP.GG match detail" }, 500);
+          return apiErrorResponse(c, "INTERNAL_ERROR", { cause: error });
         }
       },
     )
     .post(
       "/:matchId/participants",
-      zValidator("json", createParticipantSchema),
+      zValidator("json", createParticipantSchema, apiValidationHook),
       async (c) => {
         const { matchId } = c.req.param();
         const participantData = c.req.valid("json");
@@ -101,7 +104,9 @@ export function matchesRoutes(
           return c.json({ id: result.id }, 201);
         } catch (e) {
           if (e instanceof RecordNotFoundError) {
-            return c.json({ error: e.message }, 404);
+            return apiErrorResponse(c, "RESOURCE_NOT_FOUND", {
+              message: "Match or user not found",
+            });
           }
           throw e;
         }

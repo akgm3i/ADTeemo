@@ -5,13 +5,22 @@ import {
   assertThrows,
 } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
-import { type Client } from "@adteemo/api/contract";
+import {
+  type ApiErrorCode,
+  type Client,
+  DEFAULT_API_ERROR_MESSAGE,
+} from "@adteemo/api/contract";
 import {
   createApiClient,
   createApiResourceClients,
   createApiRpcClients,
 } from "./api_client.ts";
-import { dateOrNull } from "./api_clients/transport.ts";
+import {
+  ApiResponseError,
+  dateOrNull,
+  type HttpFailureResult,
+  readApiError,
+} from "./api_clients/transport.ts";
 
 type RpcCall = {
   method: string;
@@ -35,6 +44,13 @@ function response(body: unknown, status = 200): RpcResponse {
     statusText: status === 200 ? "OK" : "Error",
     json: () => Promise.resolve(body),
   };
+}
+
+function apiError(
+  code: ApiErrorCode,
+  message: string = DEFAULT_API_ERROR_MESSAGE[code],
+) {
+  return { code, message };
 }
 
 function invalidJsonResponse(status = 502, statusText = "Bad Gateway") {
@@ -89,8 +105,45 @@ function createRpcClientStub(results: QueuedRpcResult[]) {
 
 describe("apiClient", () => {
   describe("transport", () => {
+    test("HTTP failure型はcodeに対応しないstatusを拒否する", () => {
+      const mismatchedPairIsRejected: {
+        success: false;
+        error: string;
+        code: "INTERNAL_ERROR";
+        status: 404;
+      } extends HttpFailureResult ? false : true = true;
+
+      assertEquals(mismatchedPairIsRejected, true);
+    });
+
     test("任意の日付フィールドがundefinedのとき、Date変換せずnullとして扱う", () => {
       assertEquals(dateOrNull(undefined), null);
+    });
+
+    test("共通error envelopeを受け取ると、statusとcodeの対応を検証して型付き結果を返す", async () => {
+      const parsed = await readApiError(
+        response(apiError("RIOT_ACCOUNT_NOT_FOUND"), 404),
+      );
+
+      assertEquals(parsed, {
+        code: "RIOT_ACCOUNT_NOT_FOUND",
+        message: "Riot account not found",
+        status: 404,
+      });
+    });
+
+    test("HTTP statusとerror codeが一致しないとき、bodyを転記せず契約不整合として拒否する", async () => {
+      await assertRejects(
+        () =>
+          readApiError(
+            response(
+              apiError("INTERNAL_ERROR", "private provider response body"),
+              404,
+            ),
+          ),
+        Error,
+        "API error status/code mismatch for HTTP 404",
+      );
     });
   });
 
@@ -428,7 +481,7 @@ describe("apiClient", () => {
 
     test("監視登録APIが404を返す場合、呼び出し側で未連携を識別できるステータスを返す", async () => {
       const rpc = createRpcClientStub([
-        response({ error: "Riot account not found" }, 404),
+        response(apiError("RIOT_ACCOUNT_NOT_FOUND"), 404),
       ]);
       const client = createApiClient({ rpcClient: rpc.rpcClient });
 
@@ -443,15 +496,19 @@ describe("apiClient", () => {
       if (result.success) return;
       assertEquals(result.error, "Riot account not found");
       assertEquals("status" in result ? result.status : undefined, 404);
+      assertEquals(
+        "code" in result ? result.code : undefined,
+        "RIOT_ACCOUNT_NOT_FOUND",
+      );
       assertEquals(rpc.calls[0].path, "/match-watchers");
     });
 
     test("watcher検査APIが404または502を返すとき、失敗結果へ安全なHTTP statusを保持する", async () => {
       const rpc = createRpcClientStub([
-        response({ error: "Riot account not found" }, 404),
-        response({ error: "Riot API request failed" }, 502),
-        response({ error: "Riot account not found" }, 404),
-        response({ error: "Riot API request failed" }, 502),
+        response(apiError("RIOT_ACCOUNT_NOT_FOUND"), 404),
+        response(apiError("RIOT_API_UNAVAILABLE"), 502),
+        response(apiError("RIOT_ACCOUNT_NOT_FOUND"), 404),
+        response(apiError("RIOT_API_UNAVAILABLE"), 502),
       ]);
       const client = createApiClient({ rpcClient: rpc.rpcClient });
 
@@ -480,21 +537,25 @@ describe("apiClient", () => {
       assertEquals(activeGameNotFound, {
         success: false,
         error: "Riot account not found",
+        code: "RIOT_ACCOUNT_NOT_FOUND",
         status: 404,
       });
       assertEquals(activeGameUpstreamFailure, {
         success: false,
         error: "Riot API request failed",
+        code: "RIOT_API_UNAVAILABLE",
         status: 502,
       });
       assertEquals(resultNotFound, {
         success: false,
         error: "Riot account not found",
+        code: "RIOT_ACCOUNT_NOT_FOUND",
         status: 404,
       });
       assertEquals(resultUpstreamFailure, {
         success: false,
         error: "Riot API request failed",
+        code: "RIOT_API_UNAVAILABLE",
         status: 502,
       });
     });
@@ -700,31 +761,30 @@ describe("apiClient", () => {
       assertEquals(rpc.calls[0].path, "/riot/league-entries/:platform/:puuid");
     });
 
-    test("Riot APIの認証が拒否されたとき、APIサーバーの診断情報をエラーとして返す", async () => {
-      const errorMessage =
-        "Riot API request failed: 403; authorization rejected; " +
-        "verify RIOT_API_KEY and endpoint access";
+    test("Riot API呼び出しが失敗したとき、公開用messageと型付きstatus/codeを持つエラーを返す", async () => {
       const rpc = createRpcClientStub([
-        response({ error: errorMessage }, 502),
+        response(apiError("RIOT_API_UNAVAILABLE"), 502),
       ]);
       const client = createApiClient({ rpcClient: rpc.rpcClient });
 
-      await assertRejects(
+      const error = await assertRejects(
         () => client.getActiveGameByPuuid("jp1", "puuid-1"),
-        Error,
-        errorMessage,
+        ApiResponseError,
+        "Riot API request failed",
       );
+      assertEquals(error.code, "RIOT_API_UNAVAILABLE");
+      assertEquals(error.status, 502);
       assertEquals(rpc.calls.length, 1);
     });
 
-    test("Riot APIがJSONではないエラーを返すとき、HTTPステータスを含むエラーを返す", async () => {
+    test("Riot APIがJSONではないエラーを返すとき、契約不整合として拒否する", async () => {
       const rpc = createRpcClientStub([invalidJsonResponse()]);
       const client = createApiClient({ rpcClient: rpc.rpcClient });
 
       await assertRejects(
         () => client.getActiveGameByPuuid("jp1", "puuid-1"),
         Error,
-        "HTTP 502 Bad Gateway",
+        "Invalid API error response for HTTP 502",
       );
     });
 
@@ -927,12 +987,19 @@ describe("apiClient", () => {
 
     test("Backend APIが静的データを解決できないとき、呼び出し側がfallbackできる失敗結果を返す", async () => {
       const error = "Failed to resolve Riot static data";
-      const rpc = createRpcClientStub([response({ error }, 502)]);
+      const rpc = createRpcClientStub([
+        response(apiError("RIOT_STATIC_DATA_UNAVAILABLE", error), 502),
+      ]);
       const client = createApiClient({ rpcClient: rpc.rpcClient });
 
       const result = await client.resolveRiotStaticData({ championIds: [17] });
 
-      assertEquals(result, { success: false, error });
+      assertEquals(result, {
+        success: false,
+        error,
+        code: "RIOT_STATIC_DATA_UNAVAILABLE",
+        status: 502,
+      });
     });
   });
 
@@ -1004,13 +1071,20 @@ describe("apiClient", () => {
     });
 
     test("Backend APIがOP.GG試合詳細を解決できないとき、失敗結果とエラーを返す", async () => {
-      const error = "Failed to resolve OP.GG match detail";
-      const rpc = createRpcClientStub([response({ error }, 500)]);
+      const error = "Internal server error";
+      const rpc = createRpcClientStub([
+        response(apiError("INTERNAL_ERROR", error), 500),
+      ]);
       const client = createApiClient({ rpcClient: rpc.rpcClient });
 
       const result = await client.resolveOpggMatchDetail(matchId, payload);
 
-      assertEquals(result, { success: false, error });
+      assertEquals(result, {
+        success: false,
+        error,
+        code: "INTERNAL_ERROR",
+        status: 500,
+      });
     });
 
     test("Backend APIへの通信に失敗したとき、通信失敗の結果を返す", async () => {
@@ -1044,15 +1118,19 @@ describe("apiClient", () => {
       });
     });
 
-    test("APIが200以外のステータスを返す場合にメインロールを設定すると、エラーステータスが返される", async () => {
-      const rpc = createRpcClientStub([response("Bad Request", 400)]);
+    test("APIがvalidation errorを返す場合にメインロールを設定すると、型付きstatus/codeを保持する", async () => {
+      const rpc = createRpcClientStub([
+        response(apiError("VALIDATION_ERROR"), 422),
+      ]);
       const client = createApiClient({ rpcClient: rpc.rpcClient });
 
       const result = await client.setMainRole("test-user", "test-guild", "Top");
 
       assertEquals(result, {
         success: false,
-        error: "Failed to communicate with API",
+        error: "Request validation failed",
+        code: "VALIDATION_ERROR",
+        status: 422,
       });
       assertEquals(rpc.calls.length, 1);
     });

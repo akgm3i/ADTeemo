@@ -292,7 +292,7 @@ describe("app.ts", () => {
         assertEquals(res.status, 401, endpointKey);
         assertEquals(await res.json(), {
           code: "UNAUTHORIZED",
-          error: "Unauthorized",
+          message: "Unauthorized",
         });
       }
     });
@@ -352,7 +352,7 @@ describe("app.ts", () => {
       assertEquals(res.status, 401);
       assertEquals(await res.json(), {
         code: "UNAUTHORIZED",
-        error: "Unauthorized",
+        message: "Unauthorized",
       });
       assertSpyCalls(repositoryStub, 0);
     });
@@ -380,7 +380,7 @@ describe("app.ts", () => {
       assertEquals(res.status, 401);
       assertEquals(JSON.parse(responseBody), {
         code: "UNAUTHORIZED",
-        error: "Unauthorized",
+        message: "Unauthorized",
       });
       assertSpyCalls(repositoryStub, 0);
       assertFalse(responseBody.includes(invalidCredential));

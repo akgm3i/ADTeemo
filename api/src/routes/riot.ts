@@ -5,17 +5,14 @@ import {
   regionAndMatchIdSchema,
 } from "../contract/schemas.ts";
 import type { AppDependencies } from "../dependencies.ts";
-
-function upstreamErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Riot API request failed";
-}
+import { apiValidationHook, remoteApiError } from "../api_errors.ts";
 
 export function riotRoutes(deps: Pick<AppDependencies, "riotApi">) {
   const { riotApi } = deps;
   return new Hono()
     .get(
       "/active-games/:platform/:puuid",
-      zValidator("param", platformAndPuuidSchema),
+      zValidator("param", platformAndPuuidSchema, apiValidationHook),
       async (c) => {
         const { platform, puuid } = c.req.valid("param");
         try {
@@ -25,26 +22,26 @@ export function riotRoutes(deps: Pick<AppDependencies, "riotApi">) {
           );
           return c.json({ activeGame }, 200);
         } catch (error) {
-          return c.json({ error: upstreamErrorMessage(error) }, 502);
+          throw remoteApiError("RIOT_API_UNAVAILABLE", error);
         }
       },
     )
     .get(
       "/matches/:region/:matchId",
-      zValidator("param", regionAndMatchIdSchema),
+      zValidator("param", regionAndMatchIdSchema, apiValidationHook),
       async (c) => {
         const { region, matchId } = c.req.valid("param");
         try {
           const match = await riotApi.getMatchById(region, matchId);
           return c.json({ match }, 200);
         } catch (error) {
-          return c.json({ error: upstreamErrorMessage(error) }, 502);
+          throw remoteApiError("RIOT_API_UNAVAILABLE", error);
         }
       },
     )
     .get(
       "/league-entries/:platform/:puuid",
-      zValidator("param", platformAndPuuidSchema),
+      zValidator("param", platformAndPuuidSchema, apiValidationHook),
       async (c) => {
         const { platform, puuid } = c.req.valid("param");
         try {
@@ -54,7 +51,7 @@ export function riotRoutes(deps: Pick<AppDependencies, "riotApi">) {
           );
           return c.json({ entries }, 200);
         } catch (error) {
-          return c.json({ error: upstreamErrorMessage(error) }, 502);
+          throw remoteApiError("RIOT_API_UNAVAILABLE", error);
         }
       },
     );

@@ -60,7 +60,7 @@ describe("routes/matches.ts", () => {
       });
     });
 
-    test("不正なbeforeスナップショットが指定されたとき、400を返す", async () => {
+    test("不正なbeforeスナップショットが指定されたとき、422を返す", async () => {
       // Arrange / Act
       const res = await app.request("/matches/rank-snapshots/pending", {
         method: "POST",
@@ -77,7 +77,7 @@ describe("routes/matches.ts", () => {
       });
 
       // Assert
-      assertEquals(res.status, 400);
+      assertEquals(res.status, 422);
     });
   });
 
@@ -247,7 +247,7 @@ describe("routes/matches.ts", () => {
       assertEquals(await res.json(), { detail: null });
     });
 
-    test("必須の試合時間が不正なとき、検証エラーを警告に記録しserviceを呼ばず400を返す", async () => {
+    test("必須の試合時間が不正なとき、検証エラーを警告に記録しserviceを呼ばず422を返す", async () => {
       // Arrange
       using resolveStub = stub(
         opggMatchDetailService,
@@ -273,8 +273,14 @@ describe("routes/matches.ts", () => {
       );
 
       // Assert
-      assertEquals(res.status, 400);
-      assertEquals(await res.json(), { error: "Invalid request body" });
+      assertEquals(res.status, 422);
+      assertEquals(await res.json(), {
+        code: "VALIDATION_ERROR",
+        message: "Request validation failed",
+        details: {
+          issues: [{ code: "too_small", path: ["match", "gameDuration"] }],
+        },
+      });
       assertSpyCalls(resolveStub, 0);
       assertSpyCall(warnStub, 0, {
         args: ["opgg_match_detail.invalid_request", {
@@ -313,7 +319,8 @@ describe("routes/matches.ts", () => {
       // Assert
       assertEquals(res.status, 404);
       assertEquals(await res.json(), {
-        error: "Riot account not found: target-1",
+        code: "RIOT_ACCOUNT_NOT_FOUND",
+        message: "Riot account not found",
       });
     });
 
@@ -346,7 +353,8 @@ describe("routes/matches.ts", () => {
       // Assert
       assertEquals(res.status, 400);
       assertEquals(await res.json(), {
-        error: "Match participant does not match Riot account",
+        code: "OPGG_PARTICIPANT_MISMATCH",
+        message: "Match participant does not match Riot account",
       });
     });
 
@@ -377,7 +385,8 @@ describe("routes/matches.ts", () => {
       // Assert
       assertEquals(res.status, 500);
       assertEquals(await res.json(), {
-        error: "Failed to resolve OP.GG match detail",
+        code: "INTERNAL_ERROR",
+        message: "Internal server error",
       });
       assertSpyCalls(errorStub, 1);
       assertEquals(errorStub.calls[0].args[0], "request.failed");
@@ -441,7 +450,7 @@ describe("routes/matches.ts", () => {
     });
 
     describe("異常系", () => {
-      test("無効なデータ（必須項目不足）が指定されたとき、400エラーを返す", async () => {
+      test("無効なデータ（必須項目不足）が指定されたとき、422エラーを返す", async () => {
         // Arrange
         const invalidData = {
           userId: "test-user-id",
@@ -463,7 +472,7 @@ describe("routes/matches.ts", () => {
         const res = await app.request(req);
 
         // Assert
-        assertEquals(res.status, 400);
+        assertEquals(res.status, 422);
       });
 
       test("存在しないIDが指定されたとき、404とエラーメッセージを返す", async () => {
@@ -483,7 +492,10 @@ describe("routes/matches.ts", () => {
         // Assert
         assert(res.status === 404);
         const body = await res.json();
-        assertEquals(body, { error: "Not found" });
+        assertEquals(body, {
+          code: "RESOURCE_NOT_FOUND",
+          message: "Match or user not found",
+        });
       });
 
       test("予期せぬDBエラーが発生したとき、500エラーを返す", async () => {

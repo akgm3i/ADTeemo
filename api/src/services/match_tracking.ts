@@ -90,6 +90,16 @@ export type InspectMatchWatcherResult =
     error: string;
   };
 
+export class MatchTrackingInspectionError extends Error {
+  constructor(
+    readonly source: "repository" | "riot_api",
+    cause: unknown,
+  ) {
+    super("Match tracking inspection failed", { cause });
+    this.name = "MatchTrackingInspectionError";
+  }
+}
+
 function rankedQueueTypeByQueueId(queueId: number | undefined) {
   return queueId === undefined
     ? undefined
@@ -267,9 +277,14 @@ export function createMatchTrackingInspectionService(
     input: InspectMatchWatcherActiveGameInput,
   ): Promise<InspectMatchWatcherActiveGameResult> {
     const now = clock.now();
-    const account = await dependencies.dbActions.getRiotAccountByDiscordId(
-      input.targetDiscordId,
-    );
+    let account;
+    try {
+      account = await dependencies.dbActions.getRiotAccountByDiscordId(
+        input.targetDiscordId,
+      );
+    } catch (error) {
+      throw new MatchTrackingInspectionError("repository", error);
+    }
     if (!account) {
       return {
         status: "riot_account_not_found",
@@ -277,10 +292,15 @@ export function createMatchTrackingInspectionService(
       };
     }
 
-    const activeGame = await dependencies.riotApi.getActiveGameByPuuid(
-      account.platform,
-      account.puuid,
-    );
+    let activeGame;
+    try {
+      activeGame = await dependencies.riotApi.getActiveGameByPuuid(
+        account.platform,
+        account.puuid,
+      );
+    } catch (error) {
+      throw new MatchTrackingInspectionError("riot_api", error);
+    }
     if (activeGame) {
       await capturePendingRankSnapshots(input, account, activeGame);
     }
@@ -408,9 +428,14 @@ export function createMatchTrackingInspectionService(
     input: InspectMatchWatcherResultInput,
   ): Promise<InspectMatchWatcherResult> {
     const now = clock.now();
-    const account = await dependencies.dbActions.getRiotAccountByDiscordId(
-      input.targetDiscordId,
-    );
+    let account;
+    try {
+      account = await dependencies.dbActions.getRiotAccountByDiscordId(
+        input.targetDiscordId,
+      );
+    } catch (error) {
+      throw new MatchTrackingInspectionError("repository", error);
+    }
     if (!account) {
       return {
         status: "riot_account_not_found",
@@ -444,10 +469,15 @@ export function createMatchTrackingInspectionService(
       };
     }
 
-    const match = await dependencies.riotApi.getMatchById(
-      account.region,
-      input.matchId,
-    );
+    let match;
+    try {
+      match = await dependencies.riotApi.getMatchById(
+        account.region,
+        input.matchId,
+      );
+    } catch (error) {
+      throw new MatchTrackingInspectionError("riot_api", error);
+    }
     if (!match) {
       return {
         status: "ok",

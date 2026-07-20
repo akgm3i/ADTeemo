@@ -563,7 +563,9 @@ function logWatcherInspectionFailure(
 ) {
   if (wasFailureLogged(result)) return;
 
-  if (result.status === 404) {
+  if (
+    result.status === 404 && result.code === "RIOT_ACCOUNT_NOT_FOUND"
+  ) {
     dependencies.logger.warn("match_tracking.riot_account_not_found", {
       guildId: watcher.guildId,
       targetDiscordId: watcher.targetDiscordId,
@@ -579,7 +581,9 @@ function logWatcherInspectionFailure(
     targetDiscordId: watcher.targetDiscordId,
     operation,
     ...(result.status === undefined ? {} : { status: result.status }),
-    reason: result.status === 502 ? "upstream_failure" : "unclassified_failure",
+    reason: result.status === 502 && result.code === "RIOT_API_UNAVAILABLE"
+      ? "upstream_failure"
+      : "unclassified_failure",
   });
 }
 

@@ -720,17 +720,20 @@ describe("match_tracking_service.ts", () => {
             ? Promise.resolve({
               success: false as const,
               error: "Riot account not found",
+              code: "RIOT_ACCOUNT_NOT_FOUND" as const,
               status: 404 as const,
             })
             : Promise.resolve({
               success: false as const,
               error: "provider body must not be logged",
+              code: "RIOT_API_UNAVAILABLE" as const,
               status: 502 as const,
             }),
         inspectMatchWatcherResult: () =>
           Promise.resolve({
             success: false as const,
             error: "provider body must not be logged",
+            code: "RIOT_API_UNAVAILABLE" as const,
             status: 502 as const,
           }),
         updateMatchWatcherState: () => {

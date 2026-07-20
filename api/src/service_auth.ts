@@ -6,11 +6,7 @@ import {
   isBotServiceCredentialLengthValid,
 } from "./contract/service_auth.ts";
 import type { AppDependencies, EnvReader } from "./dependencies.ts";
-
-const UNAUTHORIZED_RESPONSE = {
-  code: "UNAUTHORIZED",
-  error: "Unauthorized",
-} as const;
+import { apiErrorResponse } from "./api_errors.ts";
 const encoder = new TextEncoder();
 const BEARER_REGEX = new RegExp(
   `^${BOT_SERVICE_AUTH_SCHEME} +([^\\s]+)$`,
@@ -129,7 +125,7 @@ export function createBotServiceAuthMiddleware(
           : "missing",
       });
       c.header("WWW-Authenticate", 'Bearer realm="adteemo-api"');
-      return c.json(UNAUTHORIZED_RESPONSE, 401);
+      return apiErrorResponse(c, "UNAUTHORIZED");
     }
 
     await next();

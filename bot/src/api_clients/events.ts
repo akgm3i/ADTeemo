@@ -1,10 +1,9 @@
 import type { Event } from "@adteemo/api/contract";
 import {
   type ApiRpcClient,
-  readErrorMessage,
+  failureFromResponse,
   resultFromRequest,
   successOnly,
-  unexpectedResponseError,
 } from "./transport.ts";
 
 function parseEvent(
@@ -74,13 +73,7 @@ export function createEventsApiClient(
         };
         return { event: parseEvent(data.event) };
       },
-      async (res) => {
-        if (res.status === 404) {
-          return { success: false, error: await readErrorMessage(res) };
-        }
-
-        throw unexpectedResponseError(res);
-      },
+      failureFromResponse,
     );
   }
 
