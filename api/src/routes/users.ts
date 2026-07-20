@@ -9,6 +9,11 @@ import {
 import { linkByRiotIdSchema, roleSchema } from "../contract/schemas.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import type { AppDependencies, EnvReader } from "../dependencies.ts";
+import {
+  apiErrorResponse,
+  apiValidationHook,
+  remoteApiError,
+} from "../api_errors.ts";
 
 function defaultPlatform(env: EnvReader): RiotPlatform {
   const platform = env.get("RIOT_DEFAULT_PLATFORM") ?? "jp1";
@@ -38,7 +43,7 @@ export function usersRoutes(deps: {
   return new Hono()
     .patch(
       "/link-by-riot-id",
-      zValidator("json", linkByRiotIdSchema),
+      zValidator("json", linkByRiotIdSchema, apiValidationHook),
       async (c) => {
         const { discordId, gameName, tagLine, platform, region } = c.req.valid(
           "json",
@@ -46,18 +51,23 @@ export function usersRoutes(deps: {
         const resolvedPlatform = platform ?? defaultPlatform(env);
         const resolvedRegion = region ?? defaultRegion(env);
 
-        const account = await riotApi.getAccountByRiotId(
-          resolvedRegion,
-          gameName,
-          tagLine,
-        );
+        let account;
+        try {
+          account = await riotApi.getAccountByRiotId(
+            resolvedRegion,
+            gameName,
+            tagLine,
+          );
+        } catch (error) {
+          throw remoteApiError("RIOT_API_UNAVAILABLE", error);
+        }
 
         if (!account) {
-          return c.json({
-            error: messageHandler.formatMessage(
+          return apiErrorResponse(c, "RIOT_ACCOUNT_NOT_FOUND", {
+            message: messageHandler.formatMessage(
               messageKeys.riotAccount.set.error.summonerNotFound,
             ),
-          }, 404);
+          });
         }
 
         await dbActions.upsertRiotAccount({
@@ -76,13 +86,13 @@ export function usersRoutes(deps: {
       const { userId } = c.req.param();
       const account = await dbActions.getRiotAccountByDiscordId(userId);
       if (!account) {
-        return c.json({ error: "Riot account not found" }, 404);
+        return apiErrorResponse(c, "RIOT_ACCOUNT_NOT_FOUND");
       }
       return c.json({ account }, 200);
     })
     .put(
       "/:userId/main-role",
-      zValidator("json", roleSchema),
+      zValidator("json", roleSchema, apiValidationHook),
       async (c) => {
         const { userId } = c.req.param();
         const { guildId, role } = c.req.valid("json");

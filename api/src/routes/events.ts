@@ -2,6 +2,7 @@ import { Hono } from "@hono/hono";
 import { zValidator } from "@hono/zod-validator";
 import { createEventSchema } from "../contract/schemas.ts";
 import type { AppDependencies } from "../dependencies.ts";
+import { apiErrorResponse, apiValidationHook } from "../api_errors.ts";
 
 type EventsDbActions = Pick<
   AppDependencies["dbActions"],
@@ -14,11 +15,15 @@ type EventsDbActions = Pick<
 export function eventsRoutes(deps: { dbActions: EventsDbActions }) {
   const { dbActions } = deps;
   return new Hono()
-    .post("/", zValidator("json", createEventSchema), async (c) => {
-      const event = c.req.valid("json");
-      await dbActions.createCustomGameEvent(event);
-      return c.body(null, 201);
-    })
+    .post(
+      "/",
+      zValidator("json", createEventSchema, apiValidationHook),
+      async (c) => {
+        const event = c.req.valid("json");
+        await dbActions.createCustomGameEvent(event);
+        return c.body(null, 201);
+      },
+    )
     .get("/by-creator/:creatorId", async (c) => {
       const { creatorId } = c.req.param();
       const events = await dbActions.getCustomGameEventsByCreatorId(creatorId);
@@ -30,7 +35,7 @@ export function eventsRoutes(deps: { dbActions: EventsDbActions }) {
         creatorId,
       );
       if (!event) {
-        return c.json({ error: "Event not found" }, 404);
+        return apiErrorResponse(c, "EVENT_NOT_FOUND");
       }
       return c.json({ event }, 200);
     })

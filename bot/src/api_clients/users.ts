@@ -7,10 +7,9 @@ import type {
 import {
   type ApiRpcClient,
   dateOrNull,
-  readErrorMessage,
+  failureFromResponse,
   resultFromRequest,
   successOnly,
-  unexpectedResponseError,
 } from "./transport.ts";
 
 function parseRiotAccount(
@@ -42,13 +41,7 @@ export function createUsersApiClient(
           json: { discordId, gameName, tagLine, platform, region },
         }),
       successOnly,
-      async (res) => {
-        if (res.status === 404) {
-          return { success: false, error: await readErrorMessage(res) };
-        }
-
-        throw unexpectedResponseError(res);
-      },
+      failureFromResponse,
     );
   }
 
@@ -64,13 +57,7 @@ export function createUsersApiClient(
         };
         return { account: parseRiotAccount(body.account) };
       },
-      async (res) => {
-        if (res.status === 404) {
-          return { success: false, error: await readErrorMessage(res) };
-        }
-
-        throw unexpectedResponseError(res);
-      },
+      failureFromResponse,
     );
   }
 

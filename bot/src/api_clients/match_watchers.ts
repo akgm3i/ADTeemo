@@ -14,10 +14,10 @@ import type {
 import {
   type ApiRpcClient,
   dateOrNull,
-  readErrorMessage,
+  failureFromResponse,
+  type FailureResult,
   resultFromRequest,
   successOnly,
-  unexpectedResponseError,
 } from "./transport.ts";
 
 function parseMatchWatcher(
@@ -74,7 +74,7 @@ export type InspectMatchWatcherActiveGameResult =
     notificationIntent: MatchTrackingNotificationIntent | null;
     stateTransition: MatchTrackingStateTransition | null;
   }
-  | { success: false; error: string; status?: 404 | 502 };
+  | FailureResult;
 export type InspectMatchWatcherResultResult =
   | {
     success: true;
@@ -85,7 +85,7 @@ export type InspectMatchWatcherResultResult =
     notificationIntent: MatchTrackingNotificationIntent | null;
     stateTransition: MatchTrackingStateTransition | null;
   }
-  | { success: false; error: string; status?: 404 | 502 };
+  | FailureResult;
 
 function parseMatchRankSnapshot(
   snapshot: Omit<MatchRankSnapshot, "fetchedAt"> & {
@@ -194,17 +194,7 @@ export function createMatchWatchersApiClient(
     return await resultFromRequest(
       () => rpcClient["match-watchers"].$post({ json: watcher }),
       successOnly,
-      async (res) => {
-        if (res.status === 404 || res.status === 409) {
-          return {
-            success: false,
-            error: await readErrorMessage(res),
-            status: res.status,
-          };
-        }
-
-        throw unexpectedResponseError(res);
-      },
+      failureFromResponse,
     );
   }
 
@@ -317,18 +307,7 @@ export function createMatchWatchersApiClient(
           ),
         };
       },
-      async (res) => {
-        if (res.status === 404 || res.status === 502) {
-          const status: 404 | 502 = res.status === 404 ? 404 : 502;
-          return {
-            success: false,
-            error: await readErrorMessage(res),
-            status,
-          };
-        }
-
-        throw unexpectedResponseError(res);
-      },
+      failureFromResponse,
     );
   }
 
@@ -376,18 +355,7 @@ export function createMatchWatchersApiClient(
           ),
         };
       },
-      async (res) => {
-        if (res.status === 404 || res.status === 502) {
-          const status: 404 | 502 = res.status === 404 ? 404 : 502;
-          return {
-            success: false,
-            error: await readErrorMessage(res),
-            status,
-          };
-        }
-
-        throw unexpectedResponseError(res);
-      },
+      failureFromResponse,
     );
   }
 

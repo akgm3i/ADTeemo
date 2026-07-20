@@ -140,7 +140,7 @@ describe("routes/riot.ts", () => {
     assertSpyCall(entriesStub, 0, { args: ["jp1", "puuid-1"] });
   });
 
-  test("未対応platformを指定したとき、Riot APIを呼ばず400を返す", async () => {
+  test("未対応platformを指定したとき、Riot APIを呼ばず422を返す", async () => {
     // Arrange
     using activeGameStub = stub(
       riotApi,
@@ -155,7 +155,7 @@ describe("routes/riot.ts", () => {
     );
 
     // Assert
-    assertEquals(res.status, 400);
+    assertEquals(res.status, 422);
     assertEquals(activeGameStub.calls.length, 0);
   });
 
@@ -178,7 +178,10 @@ describe("routes/riot.ts", () => {
 
     // Assert
     assertEquals(res.status, 502);
-    assertEquals(await res.json(), { error: errorMessage });
+    assertEquals(await res.json(), {
+      code: "RIOT_API_UNAVAILABLE",
+      message: "Riot API request failed",
+    });
     assertSpyCall(activeGameStub, 0, { args: ["jp1", "puuid-1"] });
   });
 });

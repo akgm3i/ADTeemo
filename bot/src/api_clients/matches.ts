@@ -9,12 +9,12 @@ import type { RiotPlatform } from "@adteemo/api/contract";
 import {
   type ApiRpcClient,
   COMMUNICATION_ERROR,
+  failureFromResponse,
+  type FailureResult,
   logCommunicationError,
   markFailureLogged,
-  readErrorMessage,
   resultFromRequest,
   successOnly,
-  unexpectedResponseError,
 } from "./transport.ts";
 import { botLogger } from "../logger.ts";
 
@@ -53,7 +53,7 @@ export type OpggMatchDetail = {
 };
 export type ResolveOpggMatchDetailResult =
   | { success: true; detail: OpggMatchDetail | null }
-  | { success: false; error: string };
+  | FailureResult;
 
 function parseRankSnapshot(
   snapshot: Omit<FinalizedRankSnapshot, "fetchedAt"> & {
@@ -80,11 +80,7 @@ export function createMatchesApiClient(
       });
 
       if (!res.ok) {
-        if (res.status === 404) {
-          return { success: false, error: await readErrorMessage(res) };
-        }
-
-        throw unexpectedResponseError(res);
+        return await failureFromResponse(res);
       }
 
       const data = await res.json() as { id?: unknown } | null;
@@ -171,10 +167,7 @@ export function createMatchesApiClient(
           },
         };
       },
-      async (res) => ({
-        success: false,
-        error: await readErrorMessage(res),
-      }),
+      failureFromResponse,
     );
   }
 

@@ -27,7 +27,8 @@ describe("routes/events.ts", () => {
   });
 
   const errorResponseSchema = z.object({
-    error: z.string(),
+    code: z.string(),
+    message: z.string(),
   });
 
   describe("POST /events", () => {
@@ -64,7 +65,7 @@ describe("routes/events.ts", () => {
     });
 
     describe("異常系", () => {
-      test("無効なイベントデータ（必須項目不足）でリクエストを送信したとき、400エラーを返す", async () => {
+      test("無効なイベントデータ（必須項目不足）でリクエストを送信したとき、422エラーを返す", async () => {
         // Arrange
         const invalidData = { name: "Test Event" }; // Missing required fields
         const req = new Request("http://localhost/events", {
@@ -80,7 +81,7 @@ describe("routes/events.ts", () => {
         const res = await app.request(req);
 
         // Assert
-        assertEquals(res.status, 400);
+        assertEquals(res.status, 422);
       });
 
       test("DB操作に失敗したとき、500エラーを返す", async () => {
@@ -253,8 +254,9 @@ describe("routes/events.ts", () => {
 
         // Assert
         assert(res.status === 404);
-        const { error } = errorResponseSchema.parse(await res.json());
-        assertEquals(error, "Event not found");
+        const { code, message } = errorResponseSchema.parse(await res.json());
+        assertEquals(code, "EVENT_NOT_FOUND");
+        assertEquals(message, "Event not found");
         assertSpyCall(getEventStub, 0, { args: ["non-existent"] });
       });
 

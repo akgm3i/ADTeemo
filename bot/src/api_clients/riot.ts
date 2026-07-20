@@ -6,10 +6,11 @@ import type {
   RiotRegion,
 } from "@adteemo/api/contract";
 import {
-  type ApiResponse,
   type ApiRpcClient,
-  readErrorMessage,
+  failureFromResponse,
+  type FailureResult,
   resultFromRequest,
+  throwApiResponseError,
 } from "./transport.ts";
 
 export type RiotStaticDataResolveInput = {
@@ -30,20 +31,7 @@ export type RiotStaticDataResolveData = {
 };
 export type RiotStaticDataResolveResult =
   | { success: true; data: RiotStaticDataResolveData }
-  | { success: false; error: string };
-
-async function readRiotApiErrorMessage(res: ApiResponse): Promise<string> {
-  try {
-    const body = await res.json() as { error?: string } | null;
-    return body?.error ?? "Unknown error";
-  } catch {
-    return `HTTP ${res.status} ${res.statusText}`;
-  }
-}
-
-async function throwRiotApiError(res: ApiResponse): Promise<never> {
-  throw new Error(await readRiotApiErrorMessage(res));
-}
+  | FailureResult;
 
 export function createRiotApiClient(
   { rpcClient }: { rpcClient: ApiRpcClient },
@@ -57,7 +45,7 @@ export function createRiotApiClient(
         param: { platform, puuid },
       });
     if (!res.ok) {
-      await throwRiotApiError(res);
+      await throwApiResponseError(res);
     }
     const body = await res.json() as { activeGame?: ActiveGame | null } | null;
     return body?.activeGame ?? null;
@@ -68,7 +56,7 @@ export function createRiotApiClient(
       param: { region, matchId },
     });
     if (!res.ok) {
-      await throwRiotApiError(res);
+      await throwApiResponseError(res);
     }
     const body = await res.json() as { match?: RiotMatch | null } | null;
     return body?.match ?? null;
@@ -83,7 +71,7 @@ export function createRiotApiClient(
         param: { platform, puuid },
       });
     if (!res.ok) {
-      await throwRiotApiError(res);
+      await throwApiResponseError(res);
     }
     const body = await res.json() as { entries?: LeagueEntry[] } | null;
     return body?.entries ?? [];
@@ -101,10 +89,7 @@ export function createRiotApiClient(
         const data = await res.json() as RiotStaticDataResolveData;
         return { data };
       },
-      async (res) => ({
-        success: false,
-        error: await readErrorMessage(res),
-      }),
+      failureFromResponse,
     );
   }
 

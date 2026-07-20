@@ -8,7 +8,17 @@ import {
 } from "../contract/schemas.ts";
 import { MatchWatcherLimitError, RecordNotFoundError } from "../errors.ts";
 import type { AppDependencies } from "../dependencies.ts";
-import { createMatchTrackingInspectionService } from "../services/match_tracking.ts";
+import {
+  createMatchTrackingInspectionService,
+  MatchTrackingInspectionError,
+} from "../services/match_tracking.ts";
+import {
+  apiErrorResponse,
+  ApiHttpError,
+  apiValidationHook,
+  remoteApiError,
+  repositoryApiError,
+} from "../api_errors.ts";
 
 type MatchWatchersDbActions = Pick<
   AppDependencies["dbActions"],
@@ -21,6 +31,15 @@ type MatchWatchersDbActions = Pick<
   | "updateMatchWatcherState"
   | "disableMatchWatcher"
 >;
+
+function matchTrackingApiError(error: unknown): ApiHttpError {
+  if (error instanceof MatchTrackingInspectionError) {
+    return error.source === "riot_api"
+      ? remoteApiError("RIOT_API_UNAVAILABLE", error.cause)
+      : repositoryApiError(error.cause);
+  }
+  return new ApiHttpError("INTERNAL_ERROR", { cause: error });
+}
 
 export function matchWatchersRoutes(
   deps: {
@@ -38,21 +57,25 @@ export function matchWatchersRoutes(
   const { dbActions } = deps;
   const matchTrackingInspection = createMatchTrackingInspectionService(deps);
   return new Hono()
-    .post("/", zValidator("json", createMatchWatcherSchema), async (c) => {
-      const watcher = c.req.valid("json");
-      try {
-        await dbActions.upsertMatchWatcher(watcher);
-        return c.body(null, 204);
-      } catch (e) {
-        if (e instanceof RecordNotFoundError) {
-          return c.json({ error: e.message }, 404);
+    .post(
+      "/",
+      zValidator("json", createMatchWatcherSchema, apiValidationHook),
+      async (c) => {
+        const watcher = c.req.valid("json");
+        try {
+          await dbActions.upsertMatchWatcher(watcher);
+          return c.body(null, 204);
+        } catch (e) {
+          if (e instanceof RecordNotFoundError) {
+            return apiErrorResponse(c, "RIOT_ACCOUNT_NOT_FOUND");
+          }
+          if (e instanceof MatchWatcherLimitError) {
+            return apiErrorResponse(c, "MATCH_WATCHER_LIMIT_REACHED");
+          }
+          throw e;
         }
-        if (e instanceof MatchWatcherLimitError) {
-          return c.json({ error: e.message }, 409);
-        }
-        throw e;
-      }
-    })
+      },
+    )
     .get("/enabled", async (c) => {
       const watchers = await dbActions.getEnabledMatchWatchers();
       return c.json({ watchers }, 200);
@@ -64,7 +87,7 @@ export function matchWatchersRoutes(
     })
     .patch(
       "/:guildId/:targetDiscordId/state",
-      zValidator("json", updateMatchWatcherStateSchema),
+      zValidator("json", updateMatchWatcherStateSchema, apiValidationHook),
       async (c) => {
         const { guildId, targetDiscordId } = c.req.param();
         const state = c.req.valid("json");
@@ -78,7 +101,11 @@ export function matchWatchersRoutes(
     )
     .post(
       "/:guildId/:targetDiscordId/tracking/active-game",
-      zValidator("json", inspectMatchWatcherActiveGameSchema),
+      zValidator(
+        "json",
+        inspectMatchWatcherActiveGameSchema,
+        apiValidationHook,
+      ),
       async (c) => {
         const { guildId, targetDiscordId } = c.req.param();
         const state = c.req.valid("json");
@@ -90,7 +117,7 @@ export function matchWatchersRoutes(
             ...state,
           });
           if (result.status === "riot_account_not_found") {
-            return c.json({ error: result.error }, 404);
+            return apiErrorResponse(c, "RIOT_ACCOUNT_NOT_FOUND");
           }
           return c.json({
             account: result.account,
@@ -99,17 +126,13 @@ export function matchWatchersRoutes(
             stateTransition: result.stateTransition,
           }, 200);
         } catch (error) {
-          return c.json({
-            error: error instanceof Error
-              ? error.message
-              : "Riot API request failed",
-          }, 502);
+          throw matchTrackingApiError(error);
         }
       },
     )
     .post(
       "/:guildId/:targetDiscordId/tracking/result",
-      zValidator("json", inspectMatchWatcherResultSchema),
+      zValidator("json", inspectMatchWatcherResultSchema, apiValidationHook),
       async (c) => {
         const { guildId, targetDiscordId } = c.req.param();
         const payload = c.req.valid("json");
@@ -124,7 +147,7 @@ export function matchWatchersRoutes(
             resultFetchTimeoutMs: payload.resultFetchTimeoutMs,
           });
           if (result.status === "riot_account_not_found") {
-            return c.json({ error: result.error }, 404);
+            return apiErrorResponse(c, "RIOT_ACCOUNT_NOT_FOUND");
           }
           return c.json({
             account: result.account,
@@ -135,11 +158,7 @@ export function matchWatchersRoutes(
             stateTransition: result.stateTransition,
           }, 200);
         } catch (error) {
-          return c.json({
-            error: error instanceof Error
-              ? error.message
-              : "Riot API request failed",
-          }, 502);
+          throw matchTrackingApiError(error);
         }
       },
     )

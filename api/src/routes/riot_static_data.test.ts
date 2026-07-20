@@ -58,7 +58,7 @@ describe("POST /riot/static-data/resolve", () => {
     });
   });
 
-  test("負の識別子を指定したとき、静的データを解決せず400を返す", async () => {
+  test("負の識別子を指定したとき、静的データを解決せず422を返す", async () => {
     // Arrange
     using resolveStub = stub(
       riotStaticData,
@@ -83,9 +83,13 @@ describe("POST /riot/static-data/resolve", () => {
     });
 
     // Assert
-    assertEquals(res.status, 400);
+    assertEquals(res.status, 422);
     assertEquals(await res.json(), {
-      error: "Invalid Riot static data resolve request",
+      code: "VALIDATION_ERROR",
+      message: "Request validation failed",
+      details: {
+        issues: [{ code: "too_small", path: ["championIds", 0] }],
+      },
     });
     assertSpyCalls(resolveStub, 0);
   });
@@ -111,7 +115,8 @@ describe("POST /riot/static-data/resolve", () => {
     // Assert
     assertEquals(res.status, 502);
     assertEquals(await res.json(), {
-      error: "Failed to fetch Riot static data: 503",
+      code: "RIOT_STATIC_DATA_UNAVAILABLE",
+      message: "Failed to resolve Riot static data",
     });
   });
 });

@@ -41,7 +41,8 @@ export async function execute(interaction: CommandInteraction) {
   });
 
   if (!result.success) {
-    const content = "status" in result && result.status === 404
+    const content = result.status === 404 &&
+        result.code === "RIOT_ACCOUNT_NOT_FOUND"
       ? messageHandler.formatMessage(
         messageKeys.matchTracking.watch.error.riotAccountRequired,
         { member: String(target) },
