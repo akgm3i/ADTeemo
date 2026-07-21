@@ -137,6 +137,8 @@ Backend APIは既定で `http://localhost:8000` に公開されます。
 | `db:generate`           | Drizzle migrationを生成します。                                               |
 | `db:migrate`            | Drizzle migrationを適用します。                                               |
 
+`test:all` と `test:target` は、migration済み一時SQLite fileを作るrepository integration testのため `--allow-read`、`--allow-write`、`--allow-sys`、`--allow-ffi` を指定します。外部サービスへ接続する `--allow-net` は持たず、GitHub Actionsの `quality` も同じroot taskを実行します。
+
 ## Docker
 
 ### Development

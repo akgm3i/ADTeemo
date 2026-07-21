@@ -41,6 +41,8 @@ export function createTestDependencies(
         ),
       getEventStartingTodayByCreatorId: () =>
         unexpectedDependencyCall("dbActions.getEventStartingTodayByCreatorId"),
+      createMatchWithParticipants: () =>
+        unexpectedDependencyCall("dbActions.createMatchWithParticipants"),
       createMatchParticipant: () =>
         unexpectedDependencyCall("dbActions.createMatchParticipant"),
       upsertPendingRankSnapshots: () =>

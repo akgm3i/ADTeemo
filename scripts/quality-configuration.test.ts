@@ -139,6 +139,12 @@ describe("test tasks", () => {
       fullTask as string,
       "--ignore=api/src/riot_api.live.test.ts",
     );
+    for (const task of [targetTask as string, fullTask as string]) {
+      assertStringIncludes(task, "--allow-read");
+      assertStringIncludes(task, "--allow-write");
+      assertStringIncludes(task, "--allow-sys");
+      assertStringIncludes(task, "--allow-ffi");
+    }
     assertEquals((targetTask as string).includes("--allow-net"), false);
     assertEquals((fullTask as string).includes("--allow-net"), false);
   });

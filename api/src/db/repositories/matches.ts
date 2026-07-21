@@ -39,10 +39,55 @@ type RankSnapshotPayload = {
   fetchedAt?: Date;
 };
 
+type MatchParticipantPayload = Omit<
+  z.infer<typeof matchParticipantInsertSchema>,
+  "id" | "matchId"
+>;
+
 export function createMatchesRepository(
   database: Database,
   config: Pick<DbActionsConfig, "pendingRankSnapshotTtlMs">,
 ) {
+  async function createMatchWithParticipants(input: {
+    matchId: string;
+    participants: MatchParticipantPayload[];
+  }) {
+    return await database.transaction(async (tx) => {
+      const [createdMatch] = await tx.insert(matches).values({
+        id: input.matchId,
+      }).onConflictDoNothing().returning({ id: matches.id });
+
+      if (!createdMatch) {
+        const savedParticipants = await tx.query.matchParticipants.findMany({
+          where: eq(matchParticipants.matchId, input.matchId),
+        });
+        return {
+          created: false as const,
+          matchId: input.matchId,
+          participants: savedParticipants,
+        };
+      }
+
+      const savedParticipants = [];
+      for (const participant of input.participants) {
+        const payload = matchParticipantInsertSchema.parse({
+          ...participant,
+          matchId: input.matchId,
+        });
+        const [savedParticipant] = await tx.insert(matchParticipants).values(
+          payload,
+        ).returning();
+        savedParticipants.push(savedParticipant);
+      }
+
+      return {
+        created: true as const,
+        matchId: input.matchId,
+        participants: savedParticipants,
+      };
+    });
+  }
+
   async function createMatchParticipant(
     participantData: z.infer<typeof matchParticipantInsertSchema>,
   ) {
@@ -322,6 +367,7 @@ export function createMatchesRepository(
   }
 
   return {
+    createMatchWithParticipants,
     createMatchParticipant,
     upsertPendingRankSnapshots,
     finalizeMatchRankSnapshots,
