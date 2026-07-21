@@ -385,6 +385,74 @@ describe("migration適用済みSQLiteでのrepository integration", () => {
     assertEquals(savedParticipants.length, 2);
   });
 
+  test("単体participantだけが保存済みのmatchへ全participantを保存すると、不足分だけ追加して再送時は重複しない", async () => {
+    // Arrange
+    await using database = await createMigratedTestDatabase();
+    await database.actions.upsertUser("user-1");
+    await database.actions.upsertUser("user-2");
+    await database.db.insert(matches).values({ id: "match-partial" });
+    await database.actions.createMatchParticipant({
+      matchId: "match-partial",
+      ...participant("user-1", "Top"),
+    });
+    const input = {
+      matchId: "match-partial",
+      participants: [
+        participant("user-1", "Top"),
+        participant("user-2", "Jungle"),
+      ],
+    };
+
+    // Act
+    const first = await database.actions.createMatchWithParticipants(input);
+    const second = await database.actions.createMatchWithParticipants(input);
+    const savedParticipants = await database.db.select().from(
+      matchParticipants,
+    );
+
+    // Assert
+    assertEquals(first.created, true);
+    assertEquals(
+      first.participants.map((savedParticipant) => savedParticipant.userId)
+        .toSorted(),
+      ["user-1", "user-2"],
+    );
+    assertEquals(second.created, false);
+    assertEquals(
+      savedParticipants.map((savedParticipant) => savedParticipant.userId)
+        .toSorted(),
+      ["user-1", "user-2"],
+    );
+  });
+
+  test("同じuserIdを複数participantとして保存すると、入力を拒否してmatchもparticipantも作成しない", async () => {
+    // Arrange
+    await using database = await createMigratedTestDatabase();
+    await database.actions.upsertUser("user-1");
+    const input = {
+      matchId: "match-duplicate-user",
+      participants: [
+        participant("user-1", "Top"),
+        participant("user-1", "Jungle"),
+      ],
+    };
+
+    // Act & Assert
+    await assertRejects(() =>
+      database.actions.createMatchWithParticipants(input)
+    );
+    assertEquals(
+      await database.db.select().from(matches).where(
+        eq(matches.id, input.matchId),
+      ),
+      [],
+    );
+    assertEquals(
+      await database.db.select().from(matchParticipants),
+      [],
+    );
+  });
+
   test("participant一括保存でforeign key違反になると、matchを含めてrollbackし次のtransactionを実行できる", async () => {
     // Arrange
     await using database = await createMigratedTestDatabase();

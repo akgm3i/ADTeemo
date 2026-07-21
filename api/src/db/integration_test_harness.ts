@@ -1,5 +1,5 @@
 import { migrate } from "drizzle-orm/libsql/migrator";
-import { toFileUrl } from "@std/path";
+import { fromFileUrl, join, toFileUrl } from "@std/path";
 import {
   createDbActions,
   type DbActions,
@@ -7,8 +7,8 @@ import {
 } from "./actions.ts";
 import { createDb, type DatabaseConnection } from "./index.ts";
 
-export const migrationsFolder = decodeURIComponent(
-  new URL("../../../drizzle", import.meta.url).pathname,
+export const migrationsFolder = fromFileUrl(
+  new URL("../../../drizzle", import.meta.url),
 );
 
 export type MigratedTestDatabase =
@@ -29,7 +29,7 @@ export async function createMigratedTestDatabase(
   const temporaryDirectory = await Deno.makeTempDir({
     prefix: "adteemo-repository-test-",
   });
-  const databasePath = `${temporaryDirectory}/database.sqlite`;
+  const databasePath = join(temporaryDirectory, "database.sqlite");
   const connection = createDb({
     url: toFileUrl(databasePath).href,
     logger: false,

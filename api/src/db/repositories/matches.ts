@@ -18,6 +18,24 @@ import {
 } from "../schema.ts";
 
 const matchParticipantInsertSchema = createInsertSchema(matchParticipants);
+const matchParticipantPayloadSchema = matchParticipantInsertSchema.omit({
+  id: true,
+  matchId: true,
+});
+const matchParticipantsPayloadSchema = z.array(matchParticipantPayloadSchema)
+  .superRefine((participants, context) => {
+    const userIds = new Set<string>();
+    participants.forEach((participant, index) => {
+      if (userIds.has(participant.userId)) {
+        context.addIssue({
+          code: "custom",
+          message: "Participant userId must be unique within a match",
+          path: [index, "userId"],
+        });
+      }
+      userIds.add(participant.userId);
+    });
+  });
 const externalMatchDetailInsertSchema = createInsertSchema(
   externalMatchDetails,
 );
@@ -39,10 +57,7 @@ type RankSnapshotPayload = {
   fetchedAt?: Date;
 };
 
-type MatchParticipantPayload = Omit<
-  z.infer<typeof matchParticipantInsertSchema>,
-  "id" | "matchId"
->;
+type MatchParticipantPayload = z.infer<typeof matchParticipantPayloadSchema>;
 
 export function createMatchesRepository(
   database: Database,
@@ -52,30 +67,40 @@ export function createMatchesRepository(
     matchId: string;
     participants: MatchParticipantPayload[];
   }) {
+    const participants = matchParticipantsPayloadSchema.parse(
+      input.participants,
+    );
+
     return await database.transaction(async (tx) => {
       const [createdMatch] = await tx.insert(matches).values({
         id: input.matchId,
       }).onConflictDoNothing().returning({ id: matches.id });
 
-      if (!createdMatch) {
-        const savedParticipants = await tx.query.matchParticipants.findMany({
+      const existingParticipants = createdMatch
+        ? []
+        : await tx.query.matchParticipants.findMany({
           where: eq(matchParticipants.matchId, input.matchId),
         });
-        if (savedParticipants.length > 0 || input.participants.length === 0) {
-          return {
-            created: false as const,
+      const existingUserIds = new Set(
+        existingParticipants.map((participant) => participant.userId),
+      );
+
+      const payloads = participants
+        .filter((participant) => !existingUserIds.has(participant.userId))
+        .map((participant) =>
+          matchParticipantInsertSchema.parse({
+            ...participant,
             matchId: input.matchId,
-            participants: savedParticipants,
-          };
-        }
+          })
+        );
+      if (!createdMatch && payloads.length === 0) {
+        return {
+          created: false as const,
+          matchId: input.matchId,
+          participants: existingParticipants,
+        };
       }
 
-      const payloads = input.participants.map((participant) =>
-        matchParticipantInsertSchema.parse({
-          ...participant,
-          matchId: input.matchId,
-        })
-      );
       const savedParticipants = payloads.length === 0
         ? []
         : await tx.insert(matchParticipants).values(payloads).returning();
@@ -83,7 +108,7 @@ export function createMatchesRepository(
       return {
         created: true as const,
         matchId: input.matchId,
-        participants: savedParticipants,
+        participants: [...existingParticipants, ...savedParticipants],
       };
     });
   }
