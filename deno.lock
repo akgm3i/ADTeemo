@@ -801,6 +801,7 @@
           "jsr:@hono/hono@^4.9.6",
           "jsr:@hono/zod-validator@~0.7.2",
           "jsr:@std/assert@^1.0.14",
+          "jsr:@std/path@^1.1.2",
           "jsr:@std/testing@^1.0.15",
           "npm:@libsql/client@~0.15.15",
           "npm:drizzle-orm@~0.44.5",

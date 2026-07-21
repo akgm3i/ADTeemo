@@ -1,4 +1,5 @@
 import { migrate } from "drizzle-orm/libsql/migrator";
+import { toFileUrl } from "@std/path";
 import {
   createDbActions,
   type DbActions,
@@ -30,7 +31,7 @@ export async function createMigratedTestDatabase(
   });
   const databasePath = `${temporaryDirectory}/database.sqlite`;
   const connection = createDb({
-    url: `file:${databasePath}`,
+    url: toFileUrl(databasePath).href,
     logger: false,
   });
   let disposed = false;

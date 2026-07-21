@@ -61,24 +61,24 @@ export function createMatchesRepository(
         const savedParticipants = await tx.query.matchParticipants.findMany({
           where: eq(matchParticipants.matchId, input.matchId),
         });
-        return {
-          created: false as const,
-          matchId: input.matchId,
-          participants: savedParticipants,
-        };
+        if (savedParticipants.length > 0 || input.participants.length === 0) {
+          return {
+            created: false as const,
+            matchId: input.matchId,
+            participants: savedParticipants,
+          };
+        }
       }
 
-      const savedParticipants = [];
-      for (const participant of input.participants) {
-        const payload = matchParticipantInsertSchema.parse({
+      const payloads = input.participants.map((participant) =>
+        matchParticipantInsertSchema.parse({
           ...participant,
           matchId: input.matchId,
-        });
-        const [savedParticipant] = await tx.insert(matchParticipants).values(
-          payload,
-        ).returning();
-        savedParticipants.push(savedParticipant);
-      }
+        })
+      );
+      const savedParticipants = payloads.length === 0
+        ? []
+        : await tx.insert(matchParticipants).values(payloads).returning();
 
       return {
         created: true as const,

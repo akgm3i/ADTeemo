@@ -349,7 +349,43 @@ describe("migration適用済みSQLiteでのrepository integration", () => {
     );
   });
 
-  test("participant途中保存でforeign key違反になると、matchを含めてrollbackし次のtransactionを実行できる", async () => {
+  test("別処理でmatch行だけが作成済みでも、全participantを保存して再送時は重複しない", async () => {
+    // Arrange
+    await using database = await createMigratedTestDatabase();
+    await database.actions.upsertUser("user-1");
+    await database.actions.upsertUser("user-2");
+    await database.actions.upsertExternalMatchDetail({
+      matchId: "match-existing",
+      provider: "opgg",
+      providerRegion: "jp",
+      providerMatchId: "existing",
+      detailUrl: "https://example.com/matches/existing",
+      providerCreatedAt: new Date("2026-07-21T00:00:00.000Z"),
+      averageTier: null,
+    });
+    const input = {
+      matchId: "match-existing",
+      participants: [
+        participant("user-1", "Top"),
+        participant("user-2", "Jungle"),
+      ],
+    };
+
+    // Act
+    const first = await database.actions.createMatchWithParticipants(input);
+    const second = await database.actions.createMatchWithParticipants(input);
+    const savedParticipants = await database.db.select().from(
+      matchParticipants,
+    );
+
+    // Assert
+    assertEquals(first.created, true);
+    assertEquals(first.participants.length, 2);
+    assertEquals(second.created, false);
+    assertEquals(savedParticipants.length, 2);
+  });
+
+  test("participant一括保存でforeign key違反になると、matchを含めてrollbackし次のtransactionを実行できる", async () => {
     // Arrange
     await using database = await createMigratedTestDatabase();
     await database.actions.upsertUser("user-1");
