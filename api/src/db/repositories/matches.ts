@@ -18,6 +18,24 @@ import {
 } from "../schema.ts";
 
 const matchParticipantInsertSchema = createInsertSchema(matchParticipants);
+const matchParticipantPayloadSchema = matchParticipantInsertSchema.omit({
+  id: true,
+  matchId: true,
+});
+const matchParticipantsPayloadSchema = z.array(matchParticipantPayloadSchema)
+  .superRefine((participants, context) => {
+    const userIds = new Set<string>();
+    participants.forEach((participant, index) => {
+      if (userIds.has(participant.userId)) {
+        context.addIssue({
+          code: "custom",
+          message: "Participant userId must be unique within a match",
+          path: [index, "userId"],
+        });
+      }
+      userIds.add(participant.userId);
+    });
+  });
 const externalMatchDetailInsertSchema = createInsertSchema(
   externalMatchDetails,
 );
@@ -39,10 +57,62 @@ type RankSnapshotPayload = {
   fetchedAt?: Date;
 };
 
+type MatchParticipantPayload = z.infer<typeof matchParticipantPayloadSchema>;
+
 export function createMatchesRepository(
   database: Database,
   config: Pick<DbActionsConfig, "pendingRankSnapshotTtlMs">,
 ) {
+  async function createMatchWithParticipants(input: {
+    matchId: string;
+    participants: MatchParticipantPayload[];
+  }) {
+    const participants = matchParticipantsPayloadSchema.parse(
+      input.participants,
+    );
+
+    return await database.transaction(async (tx) => {
+      const [createdMatch] = await tx.insert(matches).values({
+        id: input.matchId,
+      }).onConflictDoNothing().returning({ id: matches.id });
+
+      const existingParticipants = createdMatch
+        ? []
+        : await tx.query.matchParticipants.findMany({
+          where: eq(matchParticipants.matchId, input.matchId),
+        });
+      const existingUserIds = new Set(
+        existingParticipants.map((participant) => participant.userId),
+      );
+
+      const payloads = participants
+        .filter((participant) => !existingUserIds.has(participant.userId))
+        .map((participant) =>
+          matchParticipantInsertSchema.parse({
+            ...participant,
+            matchId: input.matchId,
+          })
+        );
+      if (!createdMatch && payloads.length === 0) {
+        return {
+          created: false as const,
+          matchId: input.matchId,
+          participants: existingParticipants,
+        };
+      }
+
+      const savedParticipants = payloads.length === 0
+        ? []
+        : await tx.insert(matchParticipants).values(payloads).returning();
+
+      return {
+        created: true as const,
+        matchId: input.matchId,
+        participants: [...existingParticipants, ...savedParticipants],
+      };
+    });
+  }
+
   async function createMatchParticipant(
     participantData: z.infer<typeof matchParticipantInsertSchema>,
   ) {
@@ -322,6 +392,7 @@ export function createMatchesRepository(
   }
 
   return {
+    createMatchWithParticipants,
     createMatchParticipant,
     upsertPendingRankSnapshots,
     finalizeMatchRankSnapshots,

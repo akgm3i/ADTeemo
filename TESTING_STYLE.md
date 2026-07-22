@@ -12,7 +12,7 @@
 deno task test:all
 ```
 
-`test:all` は `.env.example` を読み込み、coverage を出力します。Docker 内で同じ検証を行う場合は次を使います。
+`test:all` は `.env.example` を読み込み、coverage を出力します。一時SQLite DBを使うrepository integration testのため、通常テストtaskはread/write/sys/ffi権限を持ちますが、network権限は持ちません。Docker 内で同じ検証を行う場合は次を使います。
 
 対象を絞る場合も、秘密情報を含む `.env` ではなく `.env.example` を読むtaskを使います。
 
@@ -26,16 +26,17 @@ docker compose --profile dev run --rm dev deno task test:all
 
 ## 2. テスト分類
 
-| 分類            | 対象                                        | 配置                               | 主な依存の扱い                                             |
-| --------------- | ------------------------------------------- | ---------------------------------- | ---------------------------------------------------------- |
-| Unit            | 純粋関数、helper、formatter、ロール管理など | 対象ファイルと同階層の `*.test.ts` | 直接依存のみ stub / spy                                    |
-| Hono route      | API route handler                           | `api/src/routes/*.test.ts`         | DB action、Riot API、RSO などを stub                       |
-| Bot command     | slash command handler                       | `bot/src/commands/*.test.ts`       | `apiClient`、messages、helper を stub                      |
-| API client      | Bot の API 境界                             | `bot/src/api_client.test.ts`       | 注入したHono RPC clientの呼び出しをstub / fake             |
-| DB action       | Drizzle query / transaction                 | `api/src/db/actions.test.ts`       | `createDb` で接続先を分離し、一時SQLite DBまたはfakeを使用 |
-| Integration     | Bot / API / DB の連携                       | 将来 `tests/integration/`          | Discord / Riot など外部サービスは mock                     |
-| Live external   | 実際の Riot API 疎通                        | `api/src/*.live.test.ts`           | 明示 opt-in。通常の `test:all` では skip                   |
-| Message catalog | 多言語メッセージ整合性                      | `messages/src/*.test.ts`           | 一時ディレクトリや環境変数を stub                          |
+| 分類                   | 対象                                        | 配置                               | 主な依存の扱い                                 |
+| ---------------------- | ------------------------------------------- | ---------------------------------- | ---------------------------------------------- |
+| Unit                   | 純粋関数、helper、formatter、ロール管理など | 対象ファイルと同階層の `*.test.ts` | 直接依存のみ stub / spy                        |
+| Hono route             | API route handler                           | `api/src/routes/*.test.ts`         | DB action、Riot API、RSO などを stub           |
+| Bot command            | slash command handler                       | `bot/src/commands/*.test.ts`       | `apiClient`、messages、helper を stub          |
+| API client             | Bot の API 境界                             | `bot/src/api_client.test.ts`       | 注入したHono RPC clientの呼び出しをstub / fake |
+| DB action              | 設定値、純粋なdomain分岐                    | `api/src/db/actions.test.ts`       | DB query chainは模倣せず、直接依存だけをfake化 |
+| Repository integration | migration、制約、transaction、repository    | `api/src/db/*.integration.test.ts` | migration済みのテスト別一時SQLite DBを使用     |
+| Integration            | Bot / API / DB の連携                       | 将来 `tests/integration/`          | Discord / Riot など外部サービスは mock         |
+| Live external          | 実際の Riot API 疎通                        | `api/src/*.live.test.ts`           | 明示 opt-in。通常の `test:all` では skip       |
+| Message catalog        | 多言語メッセージ整合性                      | `messages/src/*.test.ts`           | 一時ディレクトリや環境変数を stub              |
 
 ## 3. Deno とテストライブラリ
 
@@ -310,9 +311,11 @@ type ApiClientResult<T> =
 
 `api/src/db/index.ts` の `createDb({ url, logger })` はDB接続、Drizzle DB、`close` を返します。`createDbActions(db, config)` は接続と設定を引数で受け取り、default connection / actionsはcomposition rootで生成されます。
 
-`api/src/db/actions.test.ts` では、`file::memory:` の接続をテストごとに生成して接続先の分離を検証し、transactionの順序やTTLなどDB action固有の分岐にはfake transactionも使います。実DBを使うテストでは接続を終了し、テスト間で状態を共有しません。
+Repositoryの永続化動作は `api/src/db/integration_test_harness.ts` の `createMigratedTestDatabase` を使います。harnessはテストごとに隔離した一時SQLite fileを作り、productionと同じ `createDb`、全migration、`createDbActions` を順に適用します。Migration後はproduction接続と同じくforeign key enforcementが有効であることを検証し、test側だけのPRAGMA設定でproductionとの差を隠しません。`await using` または `dispose` でnative clientを閉じ、一時directoryを確実に削除してください。
 
-route testでは `createApp({ dbActions })` へテスト用actionを注入し、DB action自体を検証する場合以外はDB実体へ触れません。
+Migration自体の検証は `migrations.integration.test.ts`、migration適用後のrepository動作は `repositories.integration.test.ts` に分けます。後者ではquery builderの呼出順ではなく、commit後のtable状態、foreign key、unique、cascade、rollback、再操作可能性をassertします。`actions.test.ts` のunit testは環境設定やDBを必要としない分岐に限定し、Drizzle chainを再実装するfakeは追加しません。
+
+このharnessは #113/#114/#117 のreal Hono appを使う縦断テストでも再利用し、`actions` をapplicationへ注入できます。route単体の責務だけを検証する場合は従来どおりDB実体を使わず、`createApp({ dbActions })` へ直接依存のstubを渡します。
 
 DB action 以外の route test では、DB 実体に触れず `dbActions` を stub してください。
 

@@ -1,325 +1,61 @@
+import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
-import { assert, assertEquals, assertRejects } from "@std/assert";
-import { createDbActions } from "./actions.ts";
-import { createDb } from "./index.ts";
-import type { MatchRankSnapshot } from "./schema.ts";
-import { MatchWatcherLimitError } from "../errors.ts";
+import { createDbActionsConfigFromEnv } from "./actions.ts";
 
-function createFakeDbWithTransaction(fakeTx: unknown) {
+function env(values: Record<string, string | undefined>) {
   return {
-    transaction: async (callback: (tx: unknown) => Promise<unknown>) =>
-      await callback(fakeTx),
-  } as never;
+    get(name: string) {
+      return values[name];
+    },
+  };
 }
 
-async function createUsersTable(connection: ReturnType<typeof createDb>) {
-  await connection.client.execute(`
-    CREATE TABLE users (
-      discord_id text PRIMARY KEY NOT NULL,
-      riot_id text,
-      created_at integer NOT NULL,
-      updated_at integer
-    )
-  `);
-}
+describe("createDbActionsConfigFromEnv", () => {
+  test("DB action設定が未指定のとき、既定の監視上限とsnapshot TTLを返す", () => {
+    // Arrange
+    const environment = env({});
 
-describe("db/actions.ts", () => {
-  describe("createDbActions", () => {
-    test("DB接続先を指定してactionsを生成するとき、指定したDBだけを更新する", async () => {
-      // Arrange
-      const connectionA = createDb({ url: "file::memory:", logger: false });
-      try {
-        const connectionB = createDb({ url: "file::memory:", logger: false });
-        try {
-          await createUsersTable(connectionA);
-          await createUsersTable(connectionB);
-          const actionsA = createDbActions(connectionA.db);
-          const actionsB = createDbActions(connectionB.db);
+    // Act
+    const config = createDbActionsConfigFromEnv(environment);
 
-          // Act
-          await actionsA.upsertUser("user-a");
-          await actionsB.upsertUser("user-b");
-          const resultA = await connectionA.client.execute(
-            "SELECT discord_id FROM users ORDER BY discord_id",
-          );
-          const resultB = await connectionB.client.execute(
-            "SELECT discord_id FROM users ORDER BY discord_id",
-          );
-
-          // Assert
-          assertEquals(resultA.rows.map((row) => row.discord_id), ["user-a"]);
-          assertEquals(resultB.rows.map((row) => row.discord_id), ["user-b"]);
-        } finally {
-          connectionB.close();
-        }
-      } finally {
-        connectionA.close();
-      }
+    // Assert
+    assertEquals(config, {
+      matchWatcherMaxEnabledPerGuild: 20,
+      pendingRankSnapshotTtlMs: 6 * 60 * 60 * 1_000,
     });
   });
 
-  describe("upsertPendingRankSnapshots", () => {
-    test("beforeスナップショットを一時保存するとき、期限切れのpendingスナップショットを先に削除する", async () => {
-      // Arrange
-      const events: string[] = [];
-      const fakeTx = {
-        delete: () => ({
-          where: () => ({
-            execute: () => {
-              events.push("delete-expired");
-              return Promise.resolve();
-            },
-          }),
-        }),
-        insert: () => ({
-          values: () => {
-            events.push("insert-pending");
-            return {
-              onConflictDoUpdate: () => ({
-                execute: () => Promise.resolve(),
-              }),
-            };
-          },
-        }),
-      };
-      const dbActions = createDbActions(createFakeDbWithTransaction(fakeTx));
-
-      // Act
-      await dbActions.upsertPendingRankSnapshots({
-        platform: "jp1",
-        gameId: "12345",
-        puuid: "puuid-1",
-        snapshots: [{
-          queueType: "RANKED_SOLO_5x5",
-          tier: "EMERALD",
-          rank: "IV",
-          leaguePoints: 2,
-          wins: 10,
-          losses: 8,
-          fetchedAt: new Date("2026-01-01T00:00:00.000Z"),
-        }],
-      });
-
-      // Assert
-      assertEquals(events, ["delete-expired", "insert-pending"]);
+  test("正の数値を指定したとき、DB action設定へ反映する", () => {
+    // Arrange
+    const environment = env({
+      MATCH_WATCH_MAX_ENABLED_PER_GUILD: "5",
+      PENDING_RANK_SNAPSHOT_TTL_MS: "30000",
     });
 
-    test("TTLを指定してbeforeスナップショットを保存するとき、指定TTLでexpiresAtを設定する", async () => {
-      // Arrange
-      let expiresAt: Date | undefined;
-      const fakeTx = {
-        delete: () => ({
-          where: () => ({
-            execute: () => Promise.resolve(),
-          }),
-        }),
-        insert: () => ({
-          values: (payload: { expiresAt: Date }) => {
-            expiresAt = payload.expiresAt;
-            return {
-              onConflictDoUpdate: () => ({
-                execute: () => Promise.resolve(),
-              }),
-            };
-          },
-        }),
-      };
-      const dbActions = createDbActions(createFakeDbWithTransaction(fakeTx), {
-        pendingRankSnapshotTtlMs: 1_000,
-      });
+    // Act
+    const config = createDbActionsConfigFromEnv(environment);
 
-      // Act
-      await dbActions.upsertPendingRankSnapshots({
-        platform: "jp1",
-        gameId: "12345",
-        puuid: "puuid-1",
-        snapshots: [{
-          queueType: "RANKED_SOLO_5x5",
-          tier: "EMERALD",
-          rank: "IV",
-          leaguePoints: 2,
-          wins: 10,
-          losses: 8,
-          fetchedAt: new Date("2026-01-01T00:00:00.000Z"),
-        }],
-      });
-
-      // Assert
-      assertEquals(expiresAt, new Date("2026-01-01T00:00:01.000Z"));
+    // Assert
+    assertEquals(config, {
+      matchWatcherMaxEnabledPerGuild: 5,
+      pendingRankSnapshotTtlMs: 30_000,
     });
   });
 
-  describe("finalizeMatchRankSnapshots", () => {
-    test("pendingスナップショットが消費済みの試合を再確定するとき、保存済みbeforeスナップショットを返す", async () => {
-      // Arrange
-      const existingBefore: MatchRankSnapshot = {
-        id: 1,
-        matchId: "JP1_12345",
-        platform: "jp1",
-        puuid: "puuid-1",
-        queueType: "RANKED_SOLO_5x5",
-        phase: "before",
-        tier: "EMERALD",
-        rank: "IV",
-        leaguePoints: 2,
-        wins: 10,
-        losses: 8,
-        fetchedAt: new Date("2026-01-01T00:00:00.000Z"),
-      };
-      const fakeTx = {
-        query: {
-          pendingMatchRankSnapshots: {
-            findMany: () => Promise.resolve([]),
-          },
-          matchRankSnapshots: {
-            findMany: () => Promise.resolve([existingBefore]),
-          },
-        },
-        insert: () => ({
-          values: (payload: unknown) => ({
-            onConflictDoNothing: () => ({
-              execute: () => Promise.resolve(),
-            }),
-            onConflictDoUpdate: () => ({
-              returning: () =>
-                Promise.resolve([{
-                  id: 2,
-                  ...(payload as Omit<MatchRankSnapshot, "id">),
-                }]),
-            }),
-          }),
-        }),
-        delete: () => ({
-          where: () => ({
-            execute: () => Promise.resolve(),
-          }),
-        }),
-      };
-      const dbActions = createDbActions(createFakeDbWithTransaction(fakeTx));
-
-      // Act
-      const result = await dbActions.finalizeMatchRankSnapshots({
-        matchId: "JP1_12345",
-        platform: "jp1",
-        gameId: "12345",
-        puuid: "puuid-1",
-        snapshots: [{
-          queueType: "RANKED_SOLO_5x5",
-          tier: "EMERALD",
-          rank: "IV",
-          leaguePoints: 19,
-          wins: 11,
-          losses: 8,
-          fetchedAt: new Date("2026-01-01T00:10:00.000Z"),
-        }],
-      });
-
-      // Assert
-      assertEquals(result.before, [existingBefore]);
-      assertEquals(result.after[0].phase, "after");
-      assertEquals(result.after[0].leaguePoints, 19);
+  test("0以下または数値でない値を指定したとき、安全な既定値へ戻す", () => {
+    // Arrange
+    const environment = env({
+      MATCH_WATCH_MAX_ENABLED_PER_GUILD: "0",
+      PENDING_RANK_SNAPSHOT_TTL_MS: "invalid",
     });
-  });
 
-  describe("linkUserWithRiotId", () => {
-    test("既存ユーザーへRiot IDを紐づけるとき、updatedAtも更新する", async () => {
-      // Arrange
-      let updateSet: { riotId: string; updatedAt?: Date } | undefined;
-      const fakeDb = {
-        insert: () => ({
-          values: () => ({
-            onConflictDoUpdate: (
-              config: { set: { riotId: string; updatedAt?: Date } },
-            ) => {
-              updateSet = config.set;
-              return { execute: () => Promise.resolve() };
-            },
-          }),
-        }),
-      } as never;
-      const dbActions = createDbActions(fakeDb);
+    // Act
+    const config = createDbActionsConfigFromEnv(environment);
 
-      // Act
-      await dbActions.linkUserWithRiotId("user-1", "riot-puuid-1");
-
-      // Assert
-      assertEquals(updateSet?.riotId, "riot-puuid-1");
-      assert(updateSet?.updatedAt instanceof Date);
-    });
-  });
-
-  describe("upsertRiotAccount", () => {
-    test("既存ユーザーへRiotアカウントを紐づけるとき、users.updatedAtも更新する", async () => {
-      // Arrange
-      const updateSets: Array<{ riotId?: string; updatedAt?: Date }> = [];
-      const fakeTx = {
-        insert: () => ({
-          values: () => ({
-            onConflictDoUpdate: (
-              config: { set: { riotId?: string; updatedAt?: Date } },
-            ) => {
-              updateSets.push(config.set);
-              return { execute: () => Promise.resolve() };
-            },
-          }),
-        }),
-      };
-      const dbActions = createDbActions(createFakeDbWithTransaction(fakeTx));
-
-      // Act
-      await dbActions.upsertRiotAccount({
-        discordId: "user-1",
-        puuid: "riot-puuid-1",
-        gameName: "Teemo",
-        tagLine: "JP1",
-        platform: "jp1",
-        region: "asia",
-      });
-
-      // Assert
-      assertEquals(updateSets[0].riotId, "riot-puuid-1");
-      assert(updateSets[0].updatedAt instanceof Date);
-    });
-  });
-
-  describe("upsertMatchWatcher", () => {
-    test("監視上限を指定して新規対象を追加するとき、指定上限を超える場合はエラーにする", async () => {
-      // Arrange
-      const fakeTx = {
-        insert: () => ({
-          values: () => ({
-            onConflictDoNothing: () => ({
-              execute: () => Promise.resolve(),
-            }),
-            onConflictDoUpdate: () => ({
-              execute: () => Promise.resolve(),
-            }),
-          }),
-        }),
-        query: {
-          riotAccounts: {
-            findFirst: () => Promise.resolve({ discordId: "target-2" }),
-          },
-          matchWatchers: {
-            findMany: () => Promise.resolve([{ targetDiscordId: "target-1" }]),
-          },
-        },
-      };
-      const dbActions = createDbActions(createFakeDbWithTransaction(fakeTx), {
-        matchWatcherMaxEnabledPerGuild: 1,
-      });
-
-      // Act & Assert
-      await assertRejects(
-        () =>
-          dbActions.upsertMatchWatcher({
-            guildId: "guild-1",
-            targetDiscordId: "target-2",
-            requesterId: "requester-1",
-            channelId: "channel-1",
-          }),
-        MatchWatcherLimitError,
-      );
+    // Assert
+    assertEquals(config, {
+      matchWatcherMaxEnabledPerGuild: 20,
+      pendingRankSnapshotTtlMs: 6 * 60 * 60 * 1_000,
     });
   });
 });
