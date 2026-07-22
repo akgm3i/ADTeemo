@@ -22,6 +22,22 @@ function sorted(values: string[]) {
 }
 
 describe("SQLite migrations", () => {
+  test("production DB factoryでmigrationを適用すると、foreign key enforcementが有効である", async () => {
+    // Arrange
+    await using database = await createMigratedTestDatabase();
+
+    // Act
+    const foreignKeySettings = await database.client.execute(
+      "PRAGMA foreign_keys",
+    );
+
+    // Assert
+    assertEquals(
+      Number(foreignKeySettings.rows[0]?.foreign_keys),
+      1,
+    );
+  });
+
   test("空の一時SQLite DBへ全migrationを適用すると、journalの全entryが記録され再適用しても重複しない", async () => {
     // Arrange
     await using database = await createMigratedTestDatabase();

@@ -311,7 +311,7 @@ type ApiClientResult<T> =
 
 `api/src/db/index.ts` の `createDb({ url, logger })` はDB接続、Drizzle DB、`close` を返します。`createDbActions(db, config)` は接続と設定を引数で受け取り、default connection / actionsはcomposition rootで生成されます。
 
-Repositoryの永続化動作は `api/src/db/integration_test_harness.ts` の `createMigratedTestDatabase` を使います。harnessはテストごとに隔離した一時SQLite fileを作り、productionと同じ `createDb`、全migration、`createDbActions` を順に適用します。`await using` または `dispose` でnative clientを閉じ、一時directoryを確実に削除してください。
+Repositoryの永続化動作は `api/src/db/integration_test_harness.ts` の `createMigratedTestDatabase` を使います。harnessはテストごとに隔離した一時SQLite fileを作り、productionと同じ `createDb`、全migration、`createDbActions` を順に適用します。Migration後はproduction接続と同じくforeign key enforcementが有効であることを検証し、test側だけのPRAGMA設定でproductionとの差を隠しません。`await using` または `dispose` でnative clientを閉じ、一時directoryを確実に削除してください。
 
 Migration自体の検証は `migrations.integration.test.ts`、migration適用後のrepository動作は `repositories.integration.test.ts` に分けます。後者ではquery builderの呼出順ではなく、commit後のtable状態、foreign key、unique、cascade、rollback、再操作可能性をassertします。`actions.test.ts` のunit testは環境設定やDBを必要としない分岐に限定し、Drizzle chainを再実装するfakeは追加しません。
 

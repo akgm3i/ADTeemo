@@ -49,6 +49,14 @@ export async function createMigratedTestDatabase(
 
   try {
     await migrate(connection.db, { migrationsFolder });
+    const foreignKeySettings = await connection.client.execute(
+      "PRAGMA foreign_keys",
+    );
+    if (Number(foreignKeySettings.rows[0]?.foreign_keys) !== 1) {
+      throw new Error(
+        "Migrated test database requires foreign key enforcement",
+      );
+    }
   } catch (error) {
     await dispose();
     throw error;
