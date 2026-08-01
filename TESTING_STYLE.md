@@ -315,7 +315,7 @@ Repositoryの永続化動作は `api/src/db/integration_test_harness.ts` の `cr
 
 Migration自体の検証は `migrations.integration.test.ts`、migration適用後のrepository動作は `repositories.integration.test.ts` に分けます。後者ではquery builderの呼出順ではなく、commit後のtable状態、foreign key、unique、cascade、rollback、再操作可能性をassertします。`actions.test.ts` のunit testは環境設定やDBを必要としない分岐に限定し、Drizzle chainを再実装するfakeは追加しません。
 
-このharnessは #113/#114/#117 のreal Hono appを使う縦断テストでも再利用し、`actions` をapplicationへ注入できます。route単体の責務だけを検証する場合は従来どおりDB実体を使わず、`createApp({ dbActions })` へ直接依存のstubを渡します。
+このharnessはreal Hono appを使う縦断テストでも再利用し、`actions` をapplicationへ注入できます。route単体の責務だけを検証する場合は従来どおりDB実体を使わず、`createApp({ dbActions })` へ直接依存のstubを渡します。
 
 DB action 以外の route test では、DB 実体に触れず `dbActions` を stub してください。
 
