@@ -1,8 +1,16 @@
 # ADR 0002: 構造化ログの信頼境界をfield schemaに置く
 
-- Status: Accepted
-- Date: 2026-07-17
-- Related: GitHub Issue #121
+- Type: adr
+- Status: accepted
+- Summary: 機密値をopaqueな本文解析に依存せず保護する判断。
+- Read when: ログfield・Error envelopeを変更するとき。
+- Related: [#121](https://github.com/akgm3i/ADTeemo/issues/121)
+- Code: [shared logger](../../lib/logger/mod.ts)
+- Tests: [logger tests](../../lib/logger/mod.test.ts)
+- Reviewed: 2026-09-25
+- Verified: local code review, 2026-09-25
+
+- Decided: 2026-07-17
 
 ## Context
 
@@ -48,3 +56,7 @@ APIとBotはstdoutの1行JSONを本番ログの正本とする。Issue #121で�
 - URLのquery/hashをkey名で選択的に維持する: 未知のkeyやpathにもtoken・個人情報が入り得るため採用しない。
 - DEBUG時だけraw errorやprovider bodyを記録する: 設定ミスや共有環境での保存を防げず、Issue #121の機密性境界が環境変数に依存するため採用しない。
 - raw errorをhash化して記録する: 低entropyの個人情報には推測耐性がなく、原因追跡に必要な意味も維持できないため採用しない。
+
+## Enforcement
+
+上記Code/Testsを判断の実行可能な検証先とする。運用手順は[CONTRIBUTING](../../CONTRIBUTING.md)を参照する。

@@ -1,12 +1,12 @@
 # ADTeemo 開発者向けガイド
 
-この文書は ADTeemo の開発・検証・ローカル実行に必要な情報をまとめます。利用者向けの概要は [README.md](./README.md)、仕様は [SPEC.md](./SPEC.md)、テスト規約は [TESTING_STYLE.md](./TESTING_STYLE.md) を参照してください。
+この文書は ADTeemo の開発・検証・ローカル実行に必要な情報をまとめます。利用者向けの概要は [README.md](./README.md)、設計・調査の入口は [docs/README.md](./docs/README.md)、テスト規約は [TESTING_STYLE.md](./TESTING_STYLE.md) を参照してください。
 
 ## 技術構成
 
 | Area        | Stack                                          |
 | ----------- | ---------------------------------------------- |
-| Runtime     | Deno 2.5.7, TypeScript                         |
+| Runtime     | [.dvmrc](./.dvmrc)に固定したDeno、TypeScript   |
 | Backend API | Hono RPC                                       |
 | Database    | SQLite, Drizzle ORM                            |
 | Discord Bot | discord.js                                     |
@@ -21,14 +21,14 @@
 ├── bot/       # Discord Bot、slash command、Bot側機能
 ├── messages/  # 多言語・テーマ別メッセージ
 ├── lib/       # 共通ライブラリ
-├── docs/      # 調査メモ、補足仕様
+├── docs/      # 索引、ADR、Proposal、Research、利用・連携ガイド
 ├── docker/    # Dockerfileとhealthcheck
 └── drizzle/   # Drizzle migration
 ```
 
 ## Requirements
 
-- Deno 2.5.7（root `.dvmrc` を正本とする）
+- [.dvmrc](./.dvmrc)に固定されたDeno
 - Docker / Docker Compose
 - Discord Bot tokenとapplication client ID
 - Riot API key
@@ -54,36 +54,11 @@ cp .env.example .env
 
 ローカル開発では `.env.dev`、本番Dockerでは `.env` を使用します。
 
-## 主要な環境変数
+## 環境変数の正本
 
-| Variable                                                   | Description                                                                                      |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `TZ`                                                       | アプリケーションのタイムゾーン。例: `Asia/Tokyo`                                                 |
-| `API_LOG_LEVEL` / `BOT_LOG_LEVEL`                          | API / Botのstdout log level。`DEBUG`, `INFO`, `WARN`, `ERROR`。既定は`INFO`                      |
-| `DB_QUERY_LOG`                                             | `1`かつ`API_LOG_LEVEL=DEBUG`のときだけSQL templateを記録する。parameterは常に記録しない。        |
-| `DISCORD_TOKEN`                                            | Discord Bot token                                                                                |
-| `DISCORD_CLIENT_ID`                                        | Discord application client ID                                                                    |
-| `DISCORD_GUILD_ID`                                         | 指定時はguild commandとしてslash commandを登録します。未指定時はglobal commandとして登録します。 |
-| `API_URL`                                                  | Botから参照するBackend API URL                                                                   |
-| `BOT_SERVICE_TOKEN`                                        | Bot service route用の32〜256文字のランダムBearer credential。APIとBotへ同じ現行値を設定します。  |
-| `BOT_SERVICE_TOKEN_PREVIOUS`                               | credential rotation中にAPIだけが追加で受理する旧値。通常は空にします。                           |
-| `DATABASE_URL`                                             | SQLite DB URL。例: `file:./data/sqlite.db`                                                       |
-| `RIOT_API_KEY`                                             | Backend APIが使用するRiot API key                                                                |
-| `RIOT_DEFAULT_PLATFORM`                                    | Riot platform routing。例: `jp1`                                                                 |
-| `RIOT_DEFAULT_REGION`                                      | Riot regional routing。例: `asia`                                                                |
-| `MATCH_WATCH_POLL_INTERVAL_MS`                             | 試合監視のポーリング間隔                                                                         |
-| `MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS`                   | 試合中通知の更新間隔                                                                             |
-| `MATCH_WATCH_RESULT_FETCH_TIMEOUT_MS`                      | 試合終了後の結果取得タイムアウト                                                                 |
-| `MATCH_WATCH_MAX_ENABLED_PER_GUILD`                        | ギルドごとの有効監視対象数上限                                                                   |
-| `RIOT_RATE_LIMIT_SHORT_WINDOW_LIMIT`                       | Backend API内のRiot共有キューの短期window上限。Personal Key既定値: `20`                          |
-| `RIOT_RATE_LIMIT_SHORT_WINDOW_MS`                          | Backend API内のRiot共有キューの短期window。Personal Key既定値: `1000` ms                         |
-| `RIOT_RATE_LIMIT_LONG_WINDOW_LIMIT`                        | Backend API内のRiot共有キューの長期window上限。Personal Key既定値: `100`                         |
-| `RIOT_RATE_LIMIT_LONG_WINDOW_MS`                           | Backend API内のRiot共有キューの長期window。Personal Key既定値: `120000` ms                       |
-| `RIOT_STATIC_DATA_CACHE_TTL_MS`                            | Riot static data cacheのTTL                                                                      |
-| `OPGG_ENABLED`                                             | Backend APIのOP.GG試合詳細連携を有効化する                                                       |
-| `API_MESSAGE_LANG` / `BOT_MESSAGE_LANG`                    | API / Botのメッセージ言語                                                                        |
-| `BOT_MESSAGE_THEME`                                        | Botメッセージテーマ                                                                              |
-| `RSO_CLIENT_ID` / `RSO_CLIENT_SECRET` / `RSO_REDIRECT_URI` | Riot Sign On連携設定                                                                             |
+環境変数名と例は[.env.example](./.env.example)、受理値・必須条件・既定値は[APIの依存生成](./api/src/default_dependencies.ts)、[Bot起動](./bot/src/main.ts)、[service credential schema](./api/src/contract/service_auth.ts)および各設定読込コードが正本です。変数一覧をこの文書へ複製しません。
+
+API接続・DB・Riot routing/rate limit・監視周期・ログlevel・message言語/テーマは`.env.example`を見て設定します。OP.GGの有効化と外部副作用は[連携ガイド](./docs/integrations/opgg.md)を確認してください。実際の秘密値は`.env`/`.env.dev`に置き、表示・転載・commitしません。
 
 ## ローカル起動
 
@@ -116,30 +91,19 @@ Backend APIは既定で `http://localhost:8000` に公開されます。
 
 ## Deno Tasks
 
-| Task                    | Description                                                                   |
-| ----------------------- | ----------------------------------------------------------------------------- |
-| `dev:all`               | APIとBotを開発モードで起動します。                                            |
-| `dev:api`               | APIのみ開発モードで起動します。                                               |
-| `dev:bot`               | Botのみ開発モードで起動します。                                               |
-| `dev:deploy-commands`   | `.env.dev` を使ってslash commandを登録します。                                |
-| `deploy-commands`       | `.env` を使ってslash commandを登録します。                                    |
-| `fmt:check`             | フォーマット差分を確認します。                                                |
-| `lint`                  | Deno lintを実行します。                                                       |
-| `check`                 | 主要entrypointの型チェックを実行します。                                      |
-| `test:all`              | `.env.example` を読み込み、coverage付きで全テストを実行します。               |
-| `test:target`           | `.env.example` を読み込み、引数で指定したテストだけを実行します。             |
-| `test:riot-live`        | 実Riot APIで疎通確認を行います。通常はopt-inで使用します。                    |
-| `quality`               | root `deno.json` のdependenciesに定義された品質確認をまとめて実行します。     |
-| `check:bot-boundary`    | Bot runtimeからBackend実装・DB・外部I/Oへ直接依存していないことを確認します。 |
-| `check:messages`        | メッセージ定義の整合性を確認します。                                          |
-| `check:runtime-version` | workflowとDockerのDeno versionが`.dvmrc`と一致するか確認します。              |
-| `db:push`               | Drizzle schemaをDBに反映します。                                              |
-| `db:generate`           | Drizzle migrationを生成します。                                               |
-| `db:migrate`            | Drizzle migrationを適用します。                                               |
+完全なtask定義、実行権限、依存taskは[root deno.json](./deno.json)と[api](./api/deno.json)・[bot](./bot/deno.json)・[messages](./messages/deno.json)の定義を参照します。`deno task`で現在の一覧を表示できます。
 
-`test:all` と `test:target` は、migration済み一時SQLite fileを作るrepository integration testのため `--allow-read`、`--allow-write`、`--allow-sys`、`--allow-ffi` を指定します。外部サービスへ接続する `--allow-net` は持たず、GitHub Actionsの `quality` も同じroot taskを実行します。
+通常検証は`deno task quality`、対象テストは`deno task test:target <test path>`を使います。いずれも`.env.example`を使い、通常テストは外部サービスへ接続しません。実Riot APIを使うlive testは[TESTING_STYLE](./TESTING_STYLE.md)のopt-in手順だけで実行します。
+
+## Schema変更とmigration
+
+DBの正本は[schema](./api/src/db/schema.ts)と[drizzle migrations](./drizzle)です。変更をmigrationとして生成し、既存データを保持したまま適用できることをmigration/repository integration testで検証します。新規のローカルDBで使う`db:push`と、既存DBへ履歴を適用する`db:migrate`を混同しないでください。
+
+共有・本番DBの変更は対象`DATABASE_URL`、停止範囲、backup、事前query、適用後確認、rollback条件を先に確定し、明示確認を得て実行します。カスタムイベント・戦績の移行は[イベント整合性](./docs/custom-game-event-consistency.md)と[戦績移行手順](./docs/record-match-consistency.md)に従い、不明な旧データを推測で補完・削除しません。
 
 ## Docker
+
+現行の開発・配備にはDocker / Docker Composeを使用します。Podman対応（#49）は保留で、runtime設定やCIには採用していません。実起動未検証を含む[調査記録](./docs/research/podman-compatibility.md)は参考資料として保持します。
 
 ### Development
 
@@ -218,7 +182,7 @@ APIより先にBotを切り替えると新credentialが拒否されるため、A
 deno task quality
 ```
 
-Pull Requestと`main`へのpushでは、GitHub Actionsの固定job名`quality`が同じtaskをDeno 2.5.7で実行します。workflowは`.env.example`だけを使う通常テストを実行し、repository secretやlive external testは使用しません。
+Pull Requestと`main`へのpushでは、GitHub Actionsの固定job名`quality`が同じtaskを`.dvmrc`の固定runtimeで実行します。workflowは`.env.example`だけを使う通常テストを実行し、repository secretやlive external testは使用しません。
 
 フォーマット差分がある場合は内容を確認してから `deno fmt` を実行し、その後に再度 `deno task fmt:check` を確認します。
 
@@ -235,3 +199,21 @@ commit messageは日本語のConventional Commits形式を使います。
 ```
 
 `type` は `feat`, `fix`, `refactor`, `perf`, `style`, `test`, `docs`, `build`, `ci`, `chore` を使います。`scope` は必要に応じて `api`, `bot`, `messages`, `db`, `docker` などを使います。
+
+依頼外の既存差分はcommitへ含めません。PRには問題、変更後の振る舞い、関連Issue/doc、実施した検証と未実施の理由を記載し、実装途中の履歴で最終内容を埋めないようにします。
+
+## Issueと文書の運用
+
+Conventional Commitsはcommit messageだけに適用し、Issueタイトルは解決したい問題・結果を自然文で表します。種類と領域は既存Labelsで分類します。
+
+- 親子はGitHub native sub-issueで表現し、connectorで関係を取得できない場合にも辿れるよう本文へ`Parent: #番号`と親側の`Sub-issues: #番号`を残します。
+- 実装順序を制約する関係は`Depends on`、背景の共有だけは`Related`にします。親子関係だけから依存順を推測しません。
+- Issue本文は問題、scope、受け入れ条件、依存、関連docリンクを保持します。作業状態・子タスク・完了履歴をrepo内のRoadmapへコピーしません。
+- 調査・選択肢・採用判断は[docsの分類規則](./docs/README.md)に従ってrepo文書へ残し、Issue/PRからリンクします。文書を移動した場合は参照元を直し、外部リンクを更新できない旧pathには短い移管案内を残します。
+- 仕様はcode/schema/tests、message本文はcatalogが正本です。文書には意味、判断理由、運用上必要な条件を残し、実装の列・定数・field順序を二重管理しません。
+
+文書変更の検証は[文書索引の手順](./docs/README.md)に従います。テスト戦略とmock境界は[TESTING_STYLE](./TESTING_STYLE.md)を参照します。
+
+## Discordメンバー同期
+
+既定監視は起動時に完全なguildメンバー一覧を同期します。Developer PortalのServer Members Intentを有効にし、必要な承認条件を確認してください。同期できるまで監視workerを開始しません。通知先設定、上限、移行前の重複PUUID確認は[account監視の運用](./docs/integrations/account-monitoring.md)を参照してください。
