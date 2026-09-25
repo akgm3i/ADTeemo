@@ -7,9 +7,18 @@ export const data = new SlashCommandBuilder()
   .setDescription("Riot GamesアカウントをBotに連携します。");
 
 export async function execute(interaction: CommandInteraction) {
+  if (!interaction.guildId) {
+    await interaction.reply({
+      content: messageHandler.formatMessage(
+        messageKeys.common.info.guildOnlyCommand,
+      ),
+      ephemeral: true,
+    });
+    return;
+  }
   const discordId = interaction.user.id;
 
-  const result = await apiClient.getLoginUrl(discordId);
+  const result = await apiClient.getLoginUrl(discordId, interaction.guildId);
 
   if (!result.success) {
     await interaction.reply({
@@ -17,21 +26,6 @@ export async function execute(interaction: CommandInteraction) {
         messageKeys.riotAccount.link.error.generic,
         {
           error: result.error,
-        },
-      ),
-      ephemeral: true,
-    });
-    return;
-  }
-
-  if (!result.url) {
-    await interaction.reply({
-      content: messageHandler.formatMessage(
-        messageKeys.riotAccount.link.error.generic,
-        {
-          error: messageHandler.formatMessage(
-            messageKeys.riotAccount.link.error.urlNotFound,
-          ),
         },
       ),
       ephemeral: true,

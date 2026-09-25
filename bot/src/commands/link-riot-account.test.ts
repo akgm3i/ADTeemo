@@ -40,7 +40,7 @@ describe("Command: link-riot-account", () => {
     await execute(mockInteraction as unknown as CommandInteraction);
 
     // Assert
-    assertSpyCall(getLoginUrlStub, 0, { args: [mockUserId] });
+    assertSpyCall(getLoginUrlStub, 0, { args: [mockUserId, "mock-guild-id"] });
     assertSpyCall(replySpy, 0);
     assertObjectMatch(replySpy.calls[0].args[0] as object, {
       content: MOCKED_MESSAGE,
@@ -76,7 +76,7 @@ describe("Command: link-riot-account", () => {
     await execute(mockInteraction as unknown as CommandInteraction);
 
     // Assert
-    assertSpyCall(getLoginUrlStub, 0, { args: [mockUserId] });
+    assertSpyCall(getLoginUrlStub, 0, { args: [mockUserId, "mock-guild-id"] });
     assertSpyCall(replySpy, 0);
     assertObjectMatch(replySpy.calls[0].args[0] as object, {
       content: MOCKED_MESSAGE,

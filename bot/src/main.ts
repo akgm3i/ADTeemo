@@ -1,8 +1,10 @@
+import { handleMatchingSelection } from "./commands/split-teams.ts";
 import {
   Client,
   Collection,
   Events,
   GatewayIntentBits,
+  type Guild,
   Interaction,
   MessageFlags,
 } from "discord.js";
@@ -17,15 +19,25 @@ import {
   createApiClient,
   createApiRpcClients,
 } from "./api_client.ts";
+import { createMatchWatchMembershipSync } from "./features/match_watch_membership.ts";
+import { handleRiotAccountSelection } from "./commands/riot-accounts.ts";
 import { matchTracker } from "./features/match_tracking.ts";
+import {
+  findCustomGameRecruitmentMessage,
+  findCustomGameScheduledEvent,
+} from "./features/custom_game_event_discord.ts";
+import { createCustomGameEventSaga } from "./features/custom_game_event_saga.ts";
 import { messageHandler, messageKeys } from "./messages.ts";
 import { botLogger, correlationIdForInteraction } from "./logger.ts";
 import type { Command } from "./types.ts";
+
+const customGameEventSaga = createCustomGameEventSaga(apiClient);
 
 // Create a new client instance
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.GuildVoiceStates,
@@ -36,6 +48,77 @@ const client = new Client({
 
 client.commands = new Collection();
 
+const membershipSync = createMatchWatchMembershipSync(apiClient, {
+  onFailure: (guildId, error) =>
+    botLogger.error("watch.membership_sync_failed", {
+      correlationId: crypto.randomUUID(),
+      guildId,
+      errorCategory: "remote_api",
+    }, error),
+});
+
+async function initializeMatchTracking(readyClient: Client<true>) {
+  try {
+    const persisted = await apiClient.getEnabledMatchWatchers();
+    if (!persisted.success) {
+      throw new Error("Persisted watchers could not be loaded");
+    }
+    for (
+      const guildId of new Set(
+        persisted.watchers.map((watcher) => watcher.guildId),
+      )
+    ) {
+      if (!readyClient.guilds.cache.has(guildId)) {
+        await membershipSync.sync(guildId, () => Promise.resolve([]));
+      }
+    }
+    await membershipSync.initialize(
+      [...readyClient.guilds.cache.values()].map((guild) => ({
+        id: guild.id,
+        readMemberIds: async () => {
+          const members = await guild.members.fetch();
+          return members.filter((member) => !member.user.bot).map((member) =>
+            member.id
+          );
+        },
+      })),
+      () => matchTracker.startMatchTrackingWorker(readyClient),
+    );
+  } catch (error) {
+    botLogger.error("watch.membership_initial_sync_failed", {
+      correlationId: crypto.randomUUID(),
+      errorCategory: "remote_api",
+    }, error);
+    // A failed membership read must not resume persisted outbox work. Retry the
+    // complete startup boundary after the service/Discord connection recovers.
+    setTimeout(() => {
+      void initializeMatchTracking(readyClient);
+    }, 30_000);
+  }
+}
+async function refreshGuildMembers(guild: Guild) {
+  await membershipSync.refresh(guild.id, async () => {
+    if (!client.guilds.cache.has(guild.id)) return [];
+    const members = await guild.members.fetch();
+    return members.filter((member) => !member.user.bot).map((member) =>
+      member.id
+    );
+  });
+}
+client.on(Events.GuildMemberAdd, (member) => {
+  void refreshGuildMembers(member.guild);
+});
+client.on(Events.GuildMemberRemove, (member) => {
+  void refreshGuildMembers(member.guild);
+});
+client.on(Events.GuildAvailable, (guild) => {
+  void refreshGuildMembers(guild);
+});
+client.on(Events.GuildDelete, (guild) => {
+  membershipSync.cancelRefresh(guild.id);
+  void membershipSync.refresh(guild.id, () => Promise.resolve([]));
+});
+
 // When the client is ready, run this code (only once)
 client.once(Events.ClientReady, (c) => {
   botLogger.info("bot.ready", {
@@ -43,7 +126,7 @@ client.once(Events.ClientReady, (c) => {
     userTag: c.user.tag,
     userId: c.user.id,
   });
-  matchTracker.startMatchTrackingWorker(c);
+  void initializeMatchTracking(c);
 });
 
 export async function handleInteractionCreate(interaction: Interaction) {
@@ -96,18 +179,21 @@ export async function handleInteractionCreate(interaction: Interaction) {
   }
 
   if (interaction.isStringSelectMenu()) {
+    if (interaction.customId.startsWith("riot-accounts:")) {
+      await handleRiotAccountSelection(interaction);
+      return;
+    }
+    if (interaction.customId === "split-event-select") {
+      await handleMatchingSelection(interaction);
+      return;
+    }
     if (interaction.customId === "cancel-event-select") {
       await interaction.deferUpdate();
 
       try {
-        const [discordEventId, recruitmentMessageId] = interaction.values[0]
-          .split(":");
-
-        const deleteResult = await apiClient.deleteCustomGameEvent(
-          discordEventId,
-        );
-
-        if (!deleteResult.success) {
+        if (
+          !interaction.inGuild() || !interaction.guild || !interaction.channel
+        ) {
           await interaction.editReply({
             content: messageHandler.formatMessage(
               messageKeys.customGame.cancel.error.interaction,
@@ -117,37 +203,85 @@ export async function handleInteractionCreate(interaction: Interaction) {
           return;
         }
 
-        try {
-          await interaction.guild?.scheduledEvents.delete(discordEventId);
-        } catch (e) {
-          botLogger.error(
-            "custom_game.cancel.discord_event_delete_failed",
-            {
-              correlationId,
-              errorCategory: "remote_api",
-              discordEventId,
-              guildId: interaction.guild?.id ?? null,
-            },
-            e,
-          );
+        const eventId = Number(interaction.values[0]);
+        if (!Number.isSafeInteger(eventId) || eventId <= 0) {
+          await interaction.editReply({
+            content: messageHandler.formatMessage(
+              messageKeys.customGame.cancel.error.interaction,
+            ),
+            components: [],
+          });
+          return;
         }
 
-        try {
-          if (interaction.channel) {
-            await interaction.channel.messages.delete(recruitmentMessageId);
-          }
-        } catch (e) {
+        const guild = interaction.guild;
+        const recruitmentChannel = interaction.channel;
+        const ownedEventsResult = await apiClient.getCustomGameEventsByCreator(
+          guild.id,
+          recruitmentChannel.id,
+          interaction.user.id,
+        );
+        if (
+          !ownedEventsResult.success ||
+          !ownedEventsResult.events.some((event) => event.id === eventId)
+        ) {
+          await interaction.editReply({
+            content: messageHandler.formatMessage(
+              messageKeys.customGame.cancel.error.interaction,
+            ),
+            components: [],
+          });
+          return;
+        }
+
+        const cancelResult = await customGameEventSaga.cancel({
+          eventId,
+          guildId: guild.id,
+          recruitmentChannelId: recruitmentChannel.id,
+        }, {
+          findScheduledEvent: async ({ operationKey }) => {
+            const event = await findCustomGameScheduledEvent(
+              guild,
+              operationKey,
+            );
+            return event ? { id: event.id } : null;
+          },
+          findRecruitmentMessage: async (lookupInput) => {
+            const message = await findCustomGameRecruitmentMessage(
+              recruitmentChannel.messages,
+              lookupInput,
+            );
+            return message ? { id: message.id } : null;
+          },
+          deleteScheduledEvent: async (discordScheduledEventId) => {
+            await guild.scheduledEvents.delete(discordScheduledEventId);
+          },
+          deleteRecruitmentMessage: async (recruitmentMessageId) => {
+            await recruitmentChannel.messages.delete(recruitmentMessageId);
+          },
+        });
+
+        if (!cancelResult.success) {
           botLogger.error(
-            "custom_game.cancel.recruitment_delete_failed",
+            "custom_game.cancel.saga_failed",
             {
               correlationId,
               errorCategory: "remote_api",
-              recruitmentMessageId,
-              channelId: interaction.channel?.id ?? null,
-              guildId: interaction.guild?.id ?? null,
+              eventId,
+              failedStep: cancelResult.error.primaryFailure.step,
+              recoveryFailureCount: cancelResult.error.recoveryFailures.length,
+              channelId: recruitmentChannel.id,
+              guildId: guild.id,
             },
-            e,
+            cancelResult.error,
           );
+          await interaction.editReply({
+            content: messageHandler.formatMessage(
+              messageKeys.customGame.cancel.error.interaction,
+            ),
+            components: [],
+          });
+          return;
         }
 
         await interaction.editReply({
@@ -190,6 +324,7 @@ client.on(Events.GuildCreate, async (guild) => {
   });
 
   try {
+    await refreshGuildMembers(guild);
     const owner = await guild.fetchOwner();
     const result = await ensureRoles(guild);
     let message = "";

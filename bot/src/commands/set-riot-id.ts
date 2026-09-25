@@ -55,6 +55,13 @@ export const data = new SlashCommandBuilder()
           value: platform,
         })),
       )
+  ).addStringOption((option) =>
+    option.setName("watch-preference").setDescription(
+      "このサーバーでの本人の監視設定",
+    ).addChoices({ name: "停止する", value: "opt-out" }, {
+      name: "監視を許可する",
+      value: "opt-in",
+    })
   );
 
 export async function execute(interaction: CommandInteraction) {
@@ -79,6 +86,28 @@ export async function execute(interaction: CommandInteraction) {
     (interaction.options.getString("platform") ?? "jp1") as RiotPlatform;
   const region = regionForPlatform(platform);
 
+  const preference = interaction.options.getString("watch-preference");
+  if (preference && !interaction.guildId) {
+    await interaction.editReply({
+      content: messageHandler.formatMessage(
+        messageKeys.common.info.guildOnlyCommand,
+      ),
+    });
+    return;
+  }
+  if (preference && interaction.guildId) {
+    const updated = await apiClient.setMatchWatchOptOut(
+      interaction.guildId,
+      interaction.user.id,
+      preference === "opt-out",
+    );
+    if (!updated.success) {
+      await interaction.editReply({
+        content: messageHandler.formatMessage(messageKeys.watchPolicy.error),
+      });
+      return;
+    }
+  }
   const result = await apiClient.linkAccountByRiotId(
     interaction.user.id,
     gameName,
@@ -102,6 +131,7 @@ export async function execute(interaction: CommandInteraction) {
   await interaction.editReply({
     content: messageHandler.formatMessage(
       messageKeys.riotAccount.link.success.title,
-    ),
+    ) + "\n" +
+      messageHandler.formatMessage(messageKeys.watchPolicy.registration),
   });
 }

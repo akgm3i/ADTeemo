@@ -39,6 +39,27 @@ const guildAndBotDm = [
 
 export const commandRegistry = [
   {
+    fileName: "setup-custom-game.ts",
+    expectedName: "setup-custom-game",
+    status: "enabled",
+    contexts: guildOnly,
+    integrationTypes: guildInstall,
+  },
+  {
+    fileName: "start-matching.ts",
+    expectedName: "start-matching",
+    status: "enabled",
+    contexts: guildOnly,
+    integrationTypes: guildInstall,
+  },
+  {
+    fileName: "next-game.ts",
+    expectedName: "next-game",
+    status: "enabled",
+    contexts: guildOnly,
+    integrationTypes: guildInstall,
+  },
+  {
     fileName: "cancel-custom-game.ts",
     expectedName: "cancel-custom-game",
     status: "enabled",
@@ -64,7 +85,7 @@ export const commandRegistry = [
     expectedName: "link-riot-account",
     status: "disabled",
     disabledReason:
-      "Issue #117でcanonical Riot account modelへ接続するまで未提供",
+      "RSOのProduction承認・client credential・redirect登録を未確認のため未提供",
   },
   {
     fileName: "record-match.ts",
@@ -104,9 +125,9 @@ export const commandRegistry = [
   {
     fileName: "unwatch-match.ts",
     expectedName: "unwatch-match",
-    status: "enabled",
-    contexts: guildOnly,
-    integrationTypes: guildInstall,
+    status: "disabled",
+    disabledReason:
+      "全登録accountの既定監視へ移行。watch-settingsと本人のwatch-preferenceを使用",
   },
   {
     fileName: "watch-list.ts",
@@ -118,6 +139,27 @@ export const commandRegistry = [
   {
     fileName: "watch-match.ts",
     expectedName: "watch-match",
+    status: "disabled",
+    disabledReason:
+      "全登録accountの既定監視へ移行。watch-settingsと本人のwatch-preferenceを使用",
+  },
+  {
+    fileName: "riot-accounts.ts",
+    expectedName: "riot-accounts",
+    status: "enabled",
+    contexts: guildAndBotDm,
+    integrationTypes: guildInstall,
+  },
+  {
+    fileName: "watch-settings.ts",
+    expectedName: "watch-settings",
+    status: "enabled",
+    contexts: guildOnly,
+    integrationTypes: guildInstall,
+  },
+  {
+    fileName: "watch-preference.ts",
+    expectedName: "watch-preference",
     status: "enabled",
     contexts: guildOnly,
     integrationTypes: guildInstall,

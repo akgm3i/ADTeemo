@@ -21,6 +21,7 @@ describe("Command: set-riot-id", () => {
       assertEquals(options.map((option) => option.name), [
         "riot-id",
         "platform",
+        "watch-preference",
       ]);
       const riotIdOption = options[0];
       assertEquals(
@@ -59,6 +60,32 @@ describe("Command: set-riot-id", () => {
     assertSpyCall(formatMessageSpy, 0, {
       args: [messageKeys.riotAccount.link.success.title],
     });
+  });
+
+  test("登録時にopt-outを指定すると、account登録より先に現在guildの本人停止を保存する", async () => {
+    const interaction = new MockInteractionBuilder("set-riot-id").withUser({
+      id: "owner",
+    }).withStringOption("riot-id", "Sub#JP1").withStringOption(
+      "watch-preference",
+      "opt-out",
+    ).build();
+    const calls: unknown[] = [];
+    using _preference = stub(apiClient, "setMatchWatchOptOut", (...args) => {
+      calls.push(args);
+      return Promise.resolve({ success: true });
+    });
+    using _register = stub(apiClient, "linkAccountByRiotId", (...args) => {
+      calls.push(args);
+      return Promise.resolve({ success: true });
+    });
+    await execute(interaction);
+    assertEquals(calls, [["mock-guild-id", "owner", true], [
+      "owner",
+      "Sub",
+      "JP1",
+      "jp1",
+      "asia",
+    ]]);
   });
 
   test("OCEプラットフォームが指定された場合、Regional Routingをseaとして登録する", async () => {
