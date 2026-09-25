@@ -8,7 +8,7 @@
   },
   "customGame": {
     "create": {
-      "success": "カスタムゲームのイベントを作成しました。募集メッセージを投稿します。",
+      "success": "カスタムゲームのイベントを作成し、募集メッセージを投稿しました。",
       "recruitmentMessage": "### ⚔️ カスタムゲーム参加者募集 ⚔️\n\n@Custom\n\n**{startTime}** からカスタムゲーム **{eventName}** を開催します！\n参加希望の方は、希望するロールのリアクションを押してください。\n\n複数ロールでの参加も可能です。\n\n主催者: {organizer}",
       "error": {
         "invalidDateTimeFormat": "日付または時刻のフォーマットが正しくありません。MM/DD HH:mmの形式で入力してください。"
@@ -40,6 +40,24 @@
         "invalidRoleCount": "ロール「{role}」の参加者が2人ではありません。",
         "noVoiceChannels": "「Red Team」または「Blue Team」のボイスチャンネルが見つかりませんでした。"
       }
+    },
+    "flow": {
+      "permission": "この設定にはサーバー管理権限が必要です。",
+      "roles": "各ロールを1つずつ用意してください。/setup-roles で作成でき、同名ロールが複数ある場合は管理者が整理してください。",
+      "distinctVc": "ロビー・Red・Blueには別々のVCを選択してください。",
+      "saved": "募集チャンネル・VC・ロールを保存しました。",
+      "saveFailed": "設定を保存できませんでした。時間をおいて再試行してください。",
+      "noOwnedEvent": "このチャンネルに自分が作成した募集イベントが見つかりません。",
+      "noEvents": "このチャンネルに自分が作成した募集イベントがありません。",
+      "fetchFailed": "イベントを取得できませんでした。",
+      "selectPlaceholder": "チーム分けするイベントを選択",
+      "selectPrompt": "参加を確定するイベントを選択してください。25件を超える場合は /split-teams の event でIDを指定できます。",
+      "matchingFailed": "チーム分けを完了できませんでした。",
+      "setupRequired": "管理者が /setup-custom-game でロビー・Red・BlueのVCを設定してください。",
+      "nextFetchFailed": "次ゲームの情報を取得できませんでした。",
+      "missingParticipants": "参加者の一部がサーバーにいません。参加者を確認してください。",
+      "nextFailed": "次ゲームの準備に失敗しました。",
+      "nextReady": "第{game}ゲームの参加者をロビーへ戻しました。/split-teams event:{eventId} で同じチームのVCへ移動し、終了後は /record-match event:{eventId} game:{game} で記録してください。"
     }
   },
   "guild": {
@@ -96,6 +114,14 @@
       "cancelButton": "キャンセル",
       "success": "戦績を登録しました！",
       "failure": "戦績の登録に失敗しました。 {error}",
+      "failureReason": {
+        "api": "APIが登録を拒否しました。入力内容とRiot ID登録を確認してください。",
+        "database": "データベースへの保存に失敗しました。時間を置いて同じ試合番号で再実行してください。",
+        "communication": "APIと通信できませんでした。時間を置いて同じ試合番号で再実行してください。",
+        "contract": "APIから想定外の応答を受け取りました。管理者へ連絡してください。",
+        "input": "Discordから戦績入力を受け取れませんでした。もう一度実行してください。",
+        "unknown": "予期しないエラーが発生しました。"
+      },
       "cancelled": "戦績の登録をキャンセルしました。",
       "timeout": "時間切れのため、戦績の登録をキャンセルしました。"
     }
@@ -161,7 +187,10 @@
         "visionScore": "視界スコア",
         "visionScorePerMinute": "視界スコア/min",
         "rank": "ランク",
-        "opgg": "OP.GG"
+        "opgg": "OP.GG",
+        "matchDetails": "試合情報",
+        "duration": "試合時間",
+        "role": "ロール"
       },
       "opgg": {
         "detail": "[試合詳細]({url})",
@@ -181,6 +210,21 @@
         "gameOnly": "{platform} Game {gameId}",
         "match": "Match {matchId}",
         "matchWithRiotId": "Match {matchId} / {riotId}"
+      },
+      "role": {
+        "TOP": "Top",
+        "JUNGLE": "Jungle",
+        "MIDDLE": "Mid",
+        "BOTTOM": "Bot",
+        "SUPPORT": "Support",
+        "UNKNOWN": "不明"
+      },
+      "metric": {
+        "totalWithRate": "{total} ({rate}/min)",
+        "minionCs": "ミニオン: {value}",
+        "jungleCs": "JG等 合計: {value}",
+        "allyJungleCs": "自陣JG: {value}",
+        "enemyJungleCs": "敵陣JG: {value}"
       }
     }
   },
@@ -203,5 +247,23 @@
         "invalidState": "認証セッションが無効か期限切れです。もう一度コマンドを実行してください。"
       }
     }
+  },
+  "riotAccounts": {
+    "empty": "登録済みのRiotアカウントがありません。/set-riot-id で登録してください。",
+    "header": "登録アカウント（{page}/{pages}ページ）。main はカスタムゲームで使います。",
+    "main": "メイン",
+    "choose": "対象のアカウントを選んでください",
+    "saved": "メインアカウントを変更しました。",
+    "removed": "選んだアカウントの登録を解除しました。",
+    "error": "アカウントを更新できませんでした。もう一度一覧を開いてください。",
+    "ownerOnly": "この選択は一覧を開いた本人だけが操作できます。"
+  },
+  "watchPolicy": {
+    "permission": "サーバー管理権限と、このサーバーの通知先チャンネルが必要です。",
+    "saved": "試合監視設定を保存しました。上限により監視されないアカウント数: {count}。",
+    "error": "監視設定を保存できませんでした。時間をおいて再実行してください。",
+    "optOut": "このサーバーで、あなたの全アカウントの試合監視と待機中の通知を停止しました。",
+    "optIn": "このサーバーで、あなたの全アカウントの監視を再び許可しました。通知先とサーバーの監視設定が有効な場合に監視します。",
+    "registration": "通知先を設定したサーバーでは、登録した全アカウントの試合を監視します。本人の設定は /watch-preference、メイン選択・解除は /riot-accounts で変更できます。"
   }
 }
