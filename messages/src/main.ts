@@ -87,7 +87,7 @@ export function initializeMessages(options: InitializeMessagesOptions) {
       "ja_JP").split(".")[0];
   const theme = options.theme ?? "system";
 
-  const defaultMessages = loadMessages("ja", "system");
+  const defaultMessages = loadMessages("ja_JP", "system");
   const langSystemMessages = loadMessages(lang, "system");
   const themeMessages = (theme !== "system") ? loadMessages(lang, theme) : {};
 

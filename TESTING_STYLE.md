@@ -24,6 +24,16 @@ deno task test:target path/to/example.test.ts
 docker compose --profile dev run --rm dev deno task test:all
 ```
 
+## Red・Green・Refactorの終了条件
+
+新しい振る舞いまたはバグ修正では、最小の所有レイヤーに日本語の期待値を先に書く。Redでは対象テストを実行し、意図した期待値が失敗することを確認する。import、型、fixtureの不備で止まっただけの実行は業務上のRedとは区別する。
+
+Greenでは現在必要な処理だけを実装し、同じ対象テストを通す。APIやDBの失敗を成功に変換せず、Result失敗、例外、timeout、外部副作用後の保存失敗も同じ境界で注入する。テスト内にBackendの意思決定やDB query chainを再実装しない。
+
+Refactorでは重複している規則の所有者を決め、直接依存へのfixtureとassertionへ整理する。既存の正しい振る舞いを移す際は初回からGreenになることがあるため、重要な回帰は不具合を一時コピーへ注入するなどして検出性を確認する。注入した変更を作業ツリーへ残さず、対象テストの再成功と必要な統合検証を確認して終了する。
+
+旧characterization testの削除は、保証する振る舞い・移管先・仕様変更の理由を対応表に記録し、移管先を実行してから行う。件数や行数を削減目標にはしない。失敗通知を成功として扱う等の危険な旧期待は、受入条件に基づく新仕様のテストで置き換え、黙って削除しない。[match trackingの54シナリオ対応表](./docs/match-tracking-test-ownership.md)が実施例である。
+
 ## 2. テスト分類
 
 | 分類                   | 対象                                        | 配置                               | 主な依存の扱い                                 |
@@ -34,9 +44,23 @@ docker compose --profile dev run --rm dev deno task test:all
 | API client             | Bot の API 境界                             | `bot/src/api_client.test.ts`       | 注入したHono RPC clientの呼び出しをstub / fake |
 | DB action              | 設定値、純粋なdomain分岐                    | `api/src/db/actions.test.ts`       | DB query chainは模倣せず、直接依存だけをfake化 |
 | Repository integration | migration、制約、transaction、repository    | `api/src/db/*.integration.test.ts` | migration済みのテスト別一時SQLite DBを使用     |
-| Integration            | Bot / API / DB の連携                       | 将来 `tests/integration/`          | Discord / Riot など外部サービスは mock         |
+| Integration            | Bot / API / DB の連携                       | `tests/integration/`               | Discord / Riot など外部サービスは mock         |
 | Live external          | 実際の Riot API 疎通                        | `api/src/*.live.test.ts`           | 明示 opt-in。通常の `test:all` では skip       |
 | Message catalog        | 多言語メッセージ整合性                      | `messages/src/*.test.ts`           | 一時ディレクトリや環境変数を stub              |
+
+### 振る舞いを所有する最小レイヤー
+
+| 所有者                 | 固定する規則                                                   | 上位で再確認する場合                       |
+| ---------------------- | -------------------------------------------------------------- | ------------------------------------------ |
+| pure state             | 状態遷移、同一性、通知ID選択、時刻境界、数値計算               | 異なる境界の結合でその規則を迂回し得る場合 |
+| renderer               | 注入したデータ・clockから作る表示、localeと欠損fallback        | compositionでrendererが接続されることだけ  |
+| service                | API出力の解釈、副作用順序、通知と保存の失敗伝播、watcher間分離 | 重要use caseの実API・DB縦断                |
+| notifier / delivery    | Discord取得・edit・send、receipt、再試行、再起動               | 永続outboxとの整合性をintegrationで確認    |
+| worker                 | scheduler、重複tick、stop、失敗後の継続                        | compositionの少数smoke                     |
+| HTTP contract          | request/response schema、status、日時変換、RPCの実経路         | routeとBot clientの接続が必要な代表ケース  |
+| repository integration | unique、foreign key、transaction、rollback、再送               | domain入力からcommitまでの少数縦断         |
+
+上位テストで下位の全分岐を再列挙しない。別レイヤーの接続、実保存、責務を越える再発事故に根拠がある場合だけ重ねる。通常のunitはnetwork権限なしで実行し、Riot live testはopt-inのまま維持する。
 
 ## 3. Deno とテストライブラリ
 
@@ -145,7 +169,24 @@ Interaction、Guild、Message、DB seed などの繰り返しセットアップ�
 
 - Bot command の interaction 生成は `bot/src/test_utils.ts` の builder を優先します。
 - helper はテストを読みやすくするために使い、検証したい振る舞いを隠しすぎないようにします。
-- utility の配置は利用範囲に合わせます。Bot 専用なら `bot/src/`、API 専用なら `api/src/`、横断的なら将来 `tests/` 配下を検討します。
+- utility の配置は利用範囲に合わせます。Bot 専用なら `bot/src/`、API 専用なら `api/src/`、横断的なら `tests/` 配下を検討します。
+
+### 型付きfixtureとstrict fake
+
+watcher/account/game等は [match tracking fixtures](./bot/src/features/testing/match_tracking_fixtures.ts) のように契約型を返すbuilderを使い、シナリオの差はoverrideで明示する。fixtureから次状態や通知intentを計算せず、Backendの契約出力を直接与える。
+
+複数回の応答を扱う直接依存は [strict fake](./bot/src/features/testing/strict_fake.ts) で順序・引数・応答を宣言する。未予定呼び出しと引数違いは即失敗し、未消費responseは `using` の終了時に失敗する。SUTが例外をcatchしてもfake側の失敗記録を失わない。
+
+```typescript
+using fetchAccount = strictFake<[string], Promise<RiotAccount>>(
+  "fetchAccount",
+  [{ args: ["target-1"], value: Promise.resolve(accountFixture) }],
+);
+const service = createService({ fetchAccount: fetchAccount.invoke });
+await service.execute("target-1");
+```
+
+通常のstub / spyも直接依存に限り `using` で復元する。manual global restoreやテスト間共有の応答queueを増やさない。clock、乱数、scheduler、transportはfactoryの入力から制御し、完了をPromiseまたはfake schedulerで待つ。固定回数のmicrotask flushや実時間sleepは使わない。
 
 ## 8. 意味のあるアサーション
 
@@ -347,7 +388,7 @@ live test の注意点:
 
 ## 15. Integration Tests
 
-統合テストは、Bot command から API と DB を通じて状態が変わる重要シナリオに限定します。配置は将来 `tests/integration/` を使います。
+統合テストは、Bot command から API と DB を通じて状態が変わる重要シナリオに限定します。配置は`tests/integration/` を使います。
 
 優先シナリオ:
 
@@ -369,7 +410,7 @@ Discord API と Riot API はプロジェクト外部のサービスなので、�
 
 ## 17. Coverage と品質
 
-coverage は品質確認の補助指標です。数値だけを目的化せず、仕様上重要な分岐、失敗時のユーザー応答、DB 制約、外部 API 失敗時の扱いを優先してテストします。
+coverage は未検証分岐を探す補助指標であり、一律の数値ゲートは設けません。数値だけを目的化せず、仕様上重要な分岐、失敗時のユーザー応答、DB 制約、外部 API 失敗時の扱いを優先してテストします。
 
 コード変更後の標準確認は、root `deno.json` のtask定義を正とした `quality` です。
 

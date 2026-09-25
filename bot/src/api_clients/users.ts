@@ -1,29 +1,6 @@
-import type {
-  Lane,
-  RiotAccount,
-  RiotPlatform,
-  RiotRegion,
-} from "@adteemo/api/contract";
-import {
-  type ApiRpcClient,
-  dateOrNull,
-  failureFromResponse,
-  resultFromRequest,
-  successOnly,
-} from "./transport.ts";
-
-function parseRiotAccount(
-  account: {
-    createdAt: string | Date;
-    updatedAt: string | Date | null;
-  } & Omit<RiotAccount, "createdAt" | "updatedAt">,
-): RiotAccount {
-  return {
-    ...account,
-    createdAt: new Date(account.createdAt),
-    updatedAt: dateOrNull(account.updatedAt),
-  };
-}
+import { responseContracts } from "@adteemo/api/contract";
+import type { Lane, RiotPlatform, RiotRegion } from "@adteemo/api/contract";
+import { type ApiRpcClient, requestResult } from "./transport.ts";
 
 export function createUsersApiClient(
   { rpcClient }: { rpcClient: ApiRpcClient },
@@ -35,46 +12,73 @@ export function createUsersApiClient(
     platform?: RiotPlatform,
     region?: RiotRegion,
   ) {
-    return await resultFromRequest(
+    return await requestResult(
+      responseContracts.linkAccount,
       () =>
         rpcClient.users["link-by-riot-id"].$patch({
           json: { discordId, gameName, tagLine, platform, region },
         }),
-      successOnly,
-      failureFromResponse,
     );
   }
 
-  async function getRiotAccount(discordId: string) {
-    return await resultFromRequest(
+  async function getRiotAccount(discordId: string, puuid?: string) {
+    return await requestResult(
+      responseContracts.riotAccount,
       () =>
         rpcClient.users[":userId"]["riot-account"].$get({
           param: { userId: discordId },
+          query: puuid ? { puuid } : {},
         }),
-      async (res) => {
-        const body = await res.json() as {
-          account: Parameters<typeof parseRiotAccount>[0];
-        };
-        return { account: parseRiotAccount(body.account) };
-      },
-      failureFromResponse,
+    );
+  }
+
+  async function getRiotAccounts(discordId: string) {
+    return await requestResult(
+      responseContracts.riotAccounts,
+      () =>
+        rpcClient.users[":userId"]["riot-accounts"].$get({
+          param: { userId: discordId },
+        }),
+    );
+  }
+
+  async function setMainRiotAccount(discordId: string, puuid: string) {
+    return await requestResult(
+      responseContracts.mainRiotAccount,
+      () =>
+        rpcClient.users[":userId"]["riot-accounts"][":puuid"].main.$put({
+          param: { userId: discordId, puuid },
+        }),
+    );
+  }
+
+  async function deleteRiotAccount(discordId: string, puuid: string) {
+    return await requestResult(
+      responseContracts.deleteRiotAccount,
+      () =>
+        rpcClient.users[":userId"]["riot-accounts"][":puuid"].$delete({
+          param: { userId: discordId, puuid },
+        }),
     );
   }
 
   async function setMainRole(userId: string, guildId: string, role: Lane) {
-    return await resultFromRequest(
+    return await requestResult(
+      responseContracts.mainRole,
       () =>
         rpcClient.users[":userId"]["main-role"].$put({
           param: { userId },
           json: { guildId, role },
         }),
-      successOnly,
     );
   }
 
   return {
     linkAccountByRiotId,
     getRiotAccount,
+    getRiotAccounts,
+    setMainRiotAccount,
+    deleteRiotAccount,
     setMainRole,
   };
 }

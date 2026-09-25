@@ -1,3 +1,4 @@
+import { createNotificationDeliveriesRepository } from "./repositories/notification_deliveries.ts";
 import type { Database } from "./index.ts";
 import { createAuthRepository } from "./repositories/auth.ts";
 import { createEventsRepository } from "./repositories/events.ts";
@@ -53,6 +54,7 @@ export function createDbActions(
   const resolvedConfig = { ...DEFAULT_DB_ACTIONS_CONFIG, ...config };
 
   return {
+    ...createNotificationDeliveriesRepository(database),
     ...createUsersRepository(database),
     ...createGuildsRepository(database),
     ...createEventsRepository(database),

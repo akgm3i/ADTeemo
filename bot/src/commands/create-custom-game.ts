@@ -1,14 +1,24 @@
 import {
   ChannelType,
   CommandInteraction,
-  GuildScheduledEventEntityType,
-  GuildScheduledEventPrivacyLevel,
+  type Message,
   MessageFlags,
   SlashCommandBuilder,
 } from "discord.js";
 import { format, parse } from "@std/datetime";
 import { apiClient } from "../api_client.ts";
+import { ROLE_EMOJIS } from "../constants.ts";
+import {
+  findCustomGameRecruitmentMessage,
+  findCustomGameScheduledEvent,
+  findOrCreateCustomGameRecruitmentMessage,
+  findOrCreateCustomGameScheduledEvent,
+} from "../features/custom_game_event_discord.ts";
+import { createCustomGameEventSaga } from "../features/custom_game_event_saga.ts";
+import { botLogger, correlationIdForInteraction } from "../logger.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
+
+const customGameEventSaga = createCustomGameEventSaga(apiClient);
 
 function parseDate(dateStr: string, timeStr: string): Date | null {
   const now = new Date(Date.now());
@@ -74,6 +84,9 @@ export async function execute(interaction: CommandInteraction) {
     return;
   }
 
+  const guild = interaction.guild;
+  const recruitmentChannel = interaction.channel;
+
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const eventName = interaction.options.getString("title", true);
@@ -91,13 +104,93 @@ export async function execute(interaction: CommandInteraction) {
     return;
   }
 
-  const event = await interaction.guild.scheduledEvents.create({
+  const displayDate = format(scheduledStartTime, "yyyy/MM/dd HH:mm");
+
+  const recruitmentMessageContent = messageHandler.formatMessage(
+    messageKeys.customGame.create.recruitmentMessage,
+    {
+      startTime: displayDate,
+      eventName,
+      organizer: `<@${interaction.user.id}>`,
+    },
+  );
+
+  let createdRecruitmentMessage: Message | null = null;
+  const result = await customGameEventSaga.create({
+    operationKey: interaction.id,
     name: eventName,
-    scheduledStartTime: scheduledStartTime,
-    privacyLevel: GuildScheduledEventPrivacyLevel.GuildOnly,
-    entityType: GuildScheduledEventEntityType.Voice,
-    channel: voiceChannel.id,
+    guildId: guild.id,
+    creatorId: interaction.user.id,
+    recruitmentChannelId: recruitmentChannel.id,
+    voiceChannelId: voiceChannel.id,
+    scheduledStartAt: scheduledStartTime,
+    recruitmentMessageContent,
+  }, {
+    createScheduledEvent: async (input) => {
+      const event = await findOrCreateCustomGameScheduledEvent(guild, input);
+      return { id: event.id };
+    },
+    createRecruitmentMessage: async ({ content, nonce, createdAfter }) => {
+      const message = await findOrCreateCustomGameRecruitmentMessage(
+        recruitmentChannel,
+        {
+          operationKey: nonce,
+          content,
+          createdAfter,
+        },
+      );
+      createdRecruitmentMessage = message;
+      return { id: message.id };
+    },
+    addRecruitmentReactions: async (messageId) => {
+      const message = createdRecruitmentMessage?.id === messageId
+        ? createdRecruitmentMessage
+        : await recruitmentChannel.messages.fetch(messageId);
+      for (const emoji of Object.values(ROLE_EMOJIS)) {
+        await message.react(emoji);
+      }
+    },
+    findScheduledEvent: async ({ operationKey }) => {
+      const event = await findCustomGameScheduledEvent(guild, operationKey);
+      return event ? { id: event.id } : null;
+    },
+    findRecruitmentMessage: async (lookupInput) => {
+      const message = await findCustomGameRecruitmentMessage(
+        recruitmentChannel.messages,
+        lookupInput,
+      );
+      return message ? { id: message.id } : null;
+    },
+    deleteScheduledEvent: async (discordScheduledEventId) => {
+      await guild.scheduledEvents.delete(discordScheduledEventId);
+    },
+    deleteRecruitmentMessage: async (recruitmentMessageId) => {
+      if (createdRecruitmentMessage?.id === recruitmentMessageId) {
+        await createdRecruitmentMessage.delete();
+        return;
+      }
+      await recruitmentChannel.messages.delete(recruitmentMessageId);
+    },
   });
+
+  if (!result.success) {
+    botLogger.error(
+      "custom_game.create.saga_failed",
+      {
+        correlationId: correlationIdForInteraction(interaction),
+        errorCategory: "remote_api",
+        guildId: guild.id,
+        channelId: recruitmentChannel.id,
+        failedStep: result.error.primaryFailure.step,
+        recoveryFailureCount: result.error.recoveryFailures.length,
+      },
+      result.error,
+    );
+    await interaction.editReply(
+      messageHandler.formatMessage(messageKeys.common.error.command),
+    );
+    return;
+  }
 
   let replyContent = messageHandler.formatMessage(
     messageKeys.customGame.create.success,
@@ -112,32 +205,4 @@ export async function execute(interaction: CommandInteraction) {
   }
 
   await interaction.editReply(replyContent);
-
-  const displayDate = format(scheduledStartTime, "yyyy/MM/dd HH:mm");
-
-  const recruitmentMessageContent = messageHandler.formatMessage(
-    messageKeys.customGame.create.recruitmentMessage,
-    {
-      startTime: displayDate,
-      eventName,
-      organizer: `<@${interaction.user.id}>`,
-    },
-  );
-
-  const message = await interaction.channel.send(recruitmentMessageContent);
-
-  await message.react("🇹");
-  await message.react("🇯");
-  await message.react("🇲");
-  await message.react("🇧");
-  await message.react("🇸");
-
-  await apiClient.createCustomGameEvent({
-    name: eventName,
-    guildId: interaction.guild.id,
-    creatorId: interaction.user.id,
-    discordScheduledEventId: event.id,
-    recruitmentMessageId: message.id,
-    scheduledStartAt: scheduledStartTime,
-  });
 }

@@ -105,6 +105,7 @@ describe("riot_api.ts", () => {
                   goldEarned: 12345,
                   totalDamageDealtToChampions: 23456,
                   visionScore: 20,
+                  totalAllyJungleMinionsKilled: 3,
                   totalEnemyJungleMinionsKilled: 7,
                   teamPosition: "TOP",
                   individualPosition: "TOP",
@@ -124,6 +125,7 @@ describe("riot_api.ts", () => {
       23456,
     );
     assertEquals(match?.info.participants[0].visionScore, 20);
+    assertEquals(match?.info.participants[0].totalAllyJungleMinionsKilled, 3);
     assertEquals(
       match?.info.participants[0].totalEnemyJungleMinionsKilled,
       7,

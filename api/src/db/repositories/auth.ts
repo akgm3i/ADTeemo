@@ -1,6 +1,14 @@
 import { eq } from "drizzle-orm";
+import type { RiotPlatform, RiotRegion } from "../../contract/domain.ts";
 import type { Database } from "../index.ts";
 import { authStates } from "../schema.ts";
+
+export type AuthStateBinding = {
+  discordId: string;
+  guildId: string;
+  platform: RiotPlatform;
+  region: RiotRegion;
+};
 
 export function createAuthRepository(database: Database) {
   async function getAuthState(state: string) {
@@ -9,20 +17,19 @@ export function createAuthRepository(database: Database) {
     });
   }
 
-  async function deleteAuthState(state: string) {
-    await database.delete(authStates).where(eq(authStates.state, state))
-      .execute();
+  async function consumeAuthState(state: string) {
+    // DELETE RETURNING atomically claims a state even for concurrent callbacks.
+    const claimed = await database.delete(authStates).where(
+      eq(authStates.state, state),
+    ).returning();
+    return claimed.at(0);
   }
 
-  async function createAuthState(state: string, discordId: string) {
-    await database.insert(authStates).values({ state, discordId }).execute();
+  async function createAuthState(state: string, binding: AuthStateBinding) {
+    await database.insert(authStates).values({ state, ...binding }).execute();
   }
 
-  return {
-    getAuthState,
-    deleteAuthState,
-    createAuthState,
-  };
+  return { getAuthState, consumeAuthState, createAuthState };
 }
 
 export type AuthRepository = ReturnType<typeof createAuthRepository>;

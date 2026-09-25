@@ -1,7 +1,16 @@
 {
-  "workspace": ["./api", "./bot", "./messages"],
+  "workspace": [
+    "./api",
+    "./bot",
+    "./messages"
+  ],
   "tasks": {
-    "dev:all": { "dependencies": ["dev:api", "dev:bot"] },
+    "dev:all": {
+      "dependencies": [
+        "dev:api",
+        "dev:bot"
+      ]
+    },
     "dev:api": "deno task --cwd=api dev",
     "dev:bot": "deno task --cwd=bot dev",
     "dev:deploy-commands": "deno run --allow-net --allow-read --allow-env --allow-sys --allow-ffi --env=.env.dev bot/src/deploy-commands.ts",
@@ -35,18 +44,40 @@
     "strict": true
   },
   "fmt": {
-    "include": ["api/", "bot/", "messages/", "lib/", "scripts/"],
-    "exclude": ["node_modules/", "coverage/"],
+    "include": [
+      "api/",
+      "bot/",
+      "messages/",
+      "lib/",
+      "scripts/",
+      "tests/"
+    ],
+    "exclude": [
+      "node_modules/",
+      "coverage/"
+    ],
     "useTabs": false,
     "indentWidth": 2,
     "singleQuote": false,
     "proseWrap": "preserve"
   },
   "lint": {
-    "include": ["api/", "bot/", "messages/", "lib/", "scripts/"],
-    "exclude": ["node_modules/", "coverage/"],
+    "include": [
+      "api/",
+      "bot/",
+      "messages/",
+      "lib/",
+      "scripts/",
+      "tests/"
+    ],
+    "exclude": [
+      "node_modules/",
+      "coverage/"
+    ],
     "rules": {
-      "tags": ["recommended"]
+      "tags": [
+        "recommended"
+      ]
     }
   },
   "imports": {

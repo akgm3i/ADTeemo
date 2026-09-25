@@ -6,11 +6,13 @@ import {
 } from "../contract/schemas.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
 import type { AppDependencies } from "../dependencies.ts";
+import { DomainConflictError } from "../errors.ts";
+import { RsoProviderError } from "../rso.ts";
 import { apiErrorResponse, apiValidationHook } from "../api_errors.ts";
 
 type AuthDbActions = Pick<
   AppDependencies["dbActions"],
-  "createAuthState" | "getAuthState" | "deleteAuthState" | "linkUserWithRiotId"
+  "createAuthState" | "consumeAuthState" | "upsertRiotAccount"
 >;
 
 type AuthRouteDependencies = {
@@ -25,14 +27,13 @@ export function authBotServiceRoutes(deps: AuthRouteDependencies) {
       "/rso/login-url",
       zValidator("query", loginUrlQuerySchema, apiValidationHook),
       async (c) => {
-        const { discordId } = c.req.valid("query");
+        const binding = c.req.valid("query");
         const state = crypto.randomUUID();
 
-        await dbActions.createAuthState(state, discordId);
-
         const authorizationUrl = rso.getAuthorizationUrl(state);
+        await dbActions.createAuthState(state, binding);
 
-        return c.json({ url: authorizationUrl });
+        return c.json({ url: authorizationUrl }, 200);
       },
     );
 }
@@ -45,39 +46,31 @@ export function authCallbackRoutes(deps: AuthRouteDependencies) {
     async (c) => {
       const { code, state } = c.req.valid("query");
 
-      // 1. Validate state and get discordId
-      const authState = await dbActions.getAuthState(state);
-      const stateMaxAge = 5 * 60 * 1000; // 5 minutes
-      if (
-        !authState ||
-        new Date().getTime() - authState.createdAt.getTime() > stateMaxAge
-      ) {
-        if (authState) {
-          // Clean up expired state to prevent it from being used again
-          await dbActions.deleteAuthState(state);
-        }
-        return apiErrorResponse(c, "INVALID_REQUEST", {
-          message: messageHandler.formatMessage(
-            messageKeys.riotAccount.link.error.invalidState,
-          ),
-        });
-      }
-      const { discordId } = authState;
-
       try {
-        // 2. Exchange code for tokens
+        const authState = await dbActions.consumeAuthState(state);
+        const age = authState ? Date.now() - authState.createdAt.getTime() : -1;
+        if (
+          !authState || !authState.guildId || age < 0 || age >= 5 * 60 * 1000
+        ) {
+          return apiErrorResponse(c, "INVALID_REQUEST", {
+            message: messageHandler.formatMessage(
+              messageKeys.riotAccount.link.error.invalidState,
+            ),
+          });
+        }
         const { accessToken } = await rso.exchangeCodeForTokens(code);
+        // OAuth subject (userinfo.sub) is not an Account-v1 PUUID or display Riot ID.
+        const account = await rso.getAccount(accessToken, authState.region);
+        await dbActions.upsertRiotAccount({
+          discordId: authState.discordId,
+          puuid: account.puuid,
+          gameName: account.gameName,
+          tagLine: account.tagLine,
+          platform: authState.platform,
+          region: authState.region,
+        });
 
-        // 3. Get user info (Riot ID)
-        const { sub: riotId } = await rso.getUserInfo(accessToken);
-
-        // 4. Update user's Riot ID in DB
-        await dbActions.linkUserWithRiotId(discordId, riotId);
-
-        // 5. Clean up auth state
-        await dbActions.deleteAuthState(state);
-
-        // 6. Return success page
+        // Display success only after canonical persistence succeeds.
         return c.html(`
           <html>
             <head>
@@ -108,6 +101,15 @@ export function authCallbackRoutes(deps: AuthRouteDependencies) {
           </html>
         `);
       } catch (error) {
+        if (error instanceof DomainConflictError) {
+          return apiErrorResponse(c, "CONFLICT");
+        }
+        if (error instanceof RsoProviderError) {
+          return apiErrorResponse(c, "RIOT_API_UNAVAILABLE", {
+            cause: error,
+            errorCategory: "remote_api",
+          });
+        }
         return apiErrorResponse(c, "INTERNAL_ERROR", { cause: error });
       }
     },

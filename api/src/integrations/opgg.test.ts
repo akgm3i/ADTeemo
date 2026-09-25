@@ -14,6 +14,7 @@ function account(overrides: Partial<RiotAccount> = {}): RiotAccount {
   const now = new Date("2026-01-01T00:00:00.000Z");
   return {
     discordId: "target-1",
+    isMain: true,
     puuid: "puuid-1",
     gameName: "Teemo",
     tagLine: "JP1",

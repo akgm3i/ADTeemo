@@ -1,4 +1,6 @@
+import type { CustomGameSettings } from "../contract/custom_game_settings.ts";
 import {
+  index,
   integer,
   primaryKey,
   real,
@@ -6,8 +8,15 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-import { type InferSelectModel, relations } from "drizzle-orm";
+import { type InferSelectModel, relations, sql } from "drizzle-orm";
 import {
+  type NotificationDelivery,
+  notificationFailureReasons,
+} from "../contract/notification_delivery.ts";
+import {
+  customGameEventPhases,
+  customGameEventSyncStates,
+  customGameTeams,
   externalMatchProviders,
   lanes,
   matchWatcherStates,
@@ -18,6 +27,9 @@ import {
 } from "../contract/domain.ts";
 
 export {
+  customGameEventPhases,
+  customGameEventSyncStates,
+  customGameTeams,
   externalMatchProviders,
   lanes,
   matchWatcherStates,
@@ -27,6 +39,9 @@ export {
   riotRegions,
 } from "../contract/domain.ts";
 export type {
+  CustomGameEventPhase,
+  CustomGameEventSyncState,
+  CustomGameTeam,
   ExternalMatchProvider,
   Lane,
   MatchWatcherState,
@@ -58,10 +73,11 @@ export const users = sqliteTable("users", {
 });
 
 export const riotAccounts = sqliteTable("riot_accounts", {
-  discordId: text("discord_id").primaryKey().references(() => users.discordId, {
+  discordId: text("discord_id").notNull().references(() => users.discordId, {
     onDelete: "cascade",
   }),
-  puuid: text("puuid").notNull(),
+  puuid: text("puuid").primaryKey(),
+  isMain: integer("is_main", { mode: "boolean" }).notNull().default(false),
   gameName: text("game_name").notNull(),
   tagLine: text("tag_line").notNull(),
   platform: text("platform", { enum: riotPlatforms }).notNull(),
@@ -72,7 +88,12 @@ export const riotAccounts = sqliteTable("riot_accounts", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).$onUpdate(() =>
     new Date()
   ),
-});
+}, (table) => [
+  index("riot_accounts_owner").on(table.discordId),
+  uniqueIndex("riot_accounts_one_main").on(table.discordId).where(
+    sql`${table.isMain} = 1`,
+  ),
+]);
 
 export const riotStaticDataCache = sqliteTable("riot_static_data_cache", {
   key: text("key").primaryKey(),
@@ -101,12 +122,84 @@ export const userGuildProfiles = sqliteTable("user_guild_profiles", {
   pk: primaryKey({ columns: [table.userId, table.guildId] }),
 }));
 
-export const matches = sqliteTable("matches", {
-  id: text("id").primaryKey(), // Riot Match ID
+export const customGameEvents = sqliteTable("custom_game_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  operationKey: text("operation_key").unique(),
+  name: text("name").notNull(),
+  guildId: text("guild_id").notNull().references(() => guilds.id, {
+    onDelete: "cascade",
+  }),
+  creatorId: text("creator_id").notNull().references(() => users.discordId, {
+    onDelete: "cascade",
+  }),
+  recruitmentChannelId: text("recruitment_channel_id"),
+  voiceChannelId: text("voice_channel_id"),
+  discordScheduledEventId: text("discord_scheduled_event_id").unique(),
+  recruitmentMessageId: text("recruitment_message_id").unique(),
+  phase: text("phase", { enum: customGameEventPhases }).notNull().default(
+    "RECRUITING",
+  ),
+  syncState: text("sync_state", { enum: customGameEventSyncStates }).notNull()
+    .default(
+      "CONSISTENT",
+    ),
+  revision: integer("revision").notNull().default(0),
+  discordEventDeleted: integer("discord_event_deleted", { mode: "boolean" })
+    .notNull().default(false),
+  recruitmentMessageDeleted: integer("recruitment_message_deleted", {
+    mode: "boolean",
+  }).notNull().default(false),
+  lastFailureCode: text("last_failure_code"),
+  scheduledStartAt: integer("scheduled_start_at", { mode: "timestamp" })
+    .notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(
     () => new Date(),
   ),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).$onUpdate(() =>
+    new Date()
+  ),
 });
+
+export const customGameEventParticipants = sqliteTable(
+  "custom_game_event_participants",
+  {
+    eventId: integer("event_id").notNull().references(
+      () => customGameEvents.id,
+      { onDelete: "cascade" },
+    ),
+    userId: text("user_id").notNull().references(() => users.discordId, {
+      onDelete: "cascade",
+    }),
+    team: text("team", { enum: customGameTeams }).notNull(),
+    lane: text("lane", { enum: lanes }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.eventId, table.userId] }),
+    uniqueTeamLane: uniqueIndex(
+      "custom_game_event_participants_unique_team_lane",
+    ).on(table.eventId, table.team, table.lane),
+  }),
+);
+
+export const matches = sqliteTable(
+  "matches",
+  {
+    id: text("id").primaryKey(), // Riot Match ID or custom:<eventId>:<gameSequence>
+    customGameEventId: integer("custom_game_event_id").references(
+      () => customGameEvents.id,
+    ),
+    gameSequence: integer("game_sequence"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => ({
+    uniqueCustomGameSequence: uniqueIndex(
+      "matches_unique_custom_game_sequence",
+    ).on(table.customGameEventId, table.gameSequence),
+  }),
+);
 
 export const matchParticipants = sqliteTable("match_participants", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -116,7 +209,8 @@ export const matchParticipants = sqliteTable("match_participants", {
   userId: text("user_id").notNull().references(() => users.discordId, {
     onDelete: "cascade",
   }),
-  team: text("team").notNull(), // 'BLUE' or 'RED'
+  riotPuuid: text("riot_puuid"),
+  team: text("team", { enum: customGameTeams }).notNull(),
   win: integer("win", { mode: "boolean" }).notNull(),
   lane: text("lane", { enum: lanes }).notNull(),
   kills: integer("kills").notNull(),
@@ -124,7 +218,12 @@ export const matchParticipants = sqliteTable("match_participants", {
   assists: integer("assists").notNull(),
   cs: integer("cs").notNull(),
   gold: integer("gold").notNull(),
-});
+}, (table) => ({
+  uniqueMatchUser: uniqueIndex("match_participants_unique_match_user").on(
+    table.matchId,
+    table.userId,
+  ),
+}));
 
 export const pendingMatchRankSnapshots = sqliteTable(
   "pending_match_rank_snapshots",
@@ -221,29 +320,14 @@ export const externalMatchParticipantDetails = sqliteTable(
   }),
 );
 
-export const customGameEvents = sqliteTable("custom_game_events", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  name: text("name").notNull(),
-  guildId: text("guild_id").notNull().references(() => guilds.id, {
-    onDelete: "cascade",
-  }),
-  creatorId: text("creator_id").notNull().references(() => users.discordId, {
-    onDelete: "cascade",
-  }),
-  discordScheduledEventId: text("discord_scheduled_event_id").notNull()
-    .unique(),
-  recruitmentMessageId: text("recruitment_message_id").notNull(),
-  scheduledStartAt: integer("scheduled_start_at", { mode: "timestamp" })
-    .notNull(),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(
-    () => new Date(),
-  ),
-});
-
 export const matchWatchers = sqliteTable("match_watchers", {
   guildId: text("guild_id").notNull().references(() => guilds.id, {
     onDelete: "cascade",
   }),
+  riotAccountPuuid: text("riot_account_puuid").notNull().references(
+    () => riotAccounts.puuid,
+    { onDelete: "cascade" },
+  ),
   targetDiscordId: text("target_discord_id").notNull().references(
     () => users.discordId,
     { onDelete: "cascade" },
@@ -281,10 +365,14 @@ export const matchWatchers = sqliteTable("match_watchers", {
     new Date()
   ),
 }, (table) => ({
-  pk: primaryKey({ columns: [table.guildId, table.targetDiscordId] }),
+  pk: primaryKey({ columns: [table.guildId, table.riotAccountPuuid] }),
 }));
 
 export type Event = InferSelectModel<typeof customGameEvents>;
+export type CustomGameEventParticipant = InferSelectModel<
+  typeof customGameEventParticipants
+>;
+export type Match = InferSelectModel<typeof matches>;
 export type RiotAccount = InferSelectModel<typeof riotAccounts>;
 export type RiotStaticDataCache = InferSelectModel<typeof riotStaticDataCache>;
 export type MatchWatcher = InferSelectModel<typeof matchWatchers>;
@@ -329,10 +417,28 @@ export const userGuildProfilesRelations = relations(
   }),
 );
 
-export const matchesRelations = relations(matches, ({ many }) => ({
+export const matchesRelations = relations(matches, ({ many, one }) => ({
   participants: many(matchParticipants),
   rankSnapshots: many(matchRankSnapshots),
+  customGameEvent: one(customGameEvents, {
+    fields: [matches.customGameEventId],
+    references: [customGameEvents.id],
+  }),
 }));
+
+export const customGameEventParticipantsRelations = relations(
+  customGameEventParticipants,
+  ({ one }) => ({
+    event: one(customGameEvents, {
+      fields: [customGameEventParticipants.eventId],
+      references: [customGameEvents.id],
+    }),
+    user: one(users, {
+      fields: [customGameEventParticipants.userId],
+      references: [users.discordId],
+    }),
+  }),
+);
 
 export const matchParticipantsRelations = relations(
   matchParticipants,
@@ -361,6 +467,9 @@ export const matchRankSnapshotsRelations = relations(
 export const authStates = sqliteTable("auth_states", {
   state: text("state").primaryKey(),
   discordId: text("discord_id").notNull(),
+  guildId: text("guild_id"),
+  platform: text("platform", { enum: riotPlatforms }).notNull().default("jp1"),
+  region: text("region", { enum: riotRegions }).notNull().default("asia"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(
     () => new Date(),
   ),
@@ -368,7 +477,7 @@ export const authStates = sqliteTable("auth_states", {
 
 export const customGameEventsRelations = relations(
   customGameEvents,
-  ({ one }) => ({
+  ({ many, one }) => ({
     creator: one(users, {
       fields: [customGameEvents.creatorId],
       references: [users.discordId],
@@ -377,6 +486,8 @@ export const customGameEventsRelations = relations(
       fields: [customGameEvents.guildId],
       references: [guilds.id],
     }),
+    participants: many(customGameEventParticipants),
+    matches: many(matches),
   }),
 );
 
@@ -400,3 +511,88 @@ export const matchWatchersRelations = relations(matchWatchers, ({ one }) => ({
     references: [users.discordId],
   }),
 }));
+
+// Notification intents outlive a watcher so a restart cannot lose pending work.
+export const notificationDeliveries = sqliteTable(
+  "notification_deliveries",
+  {
+    key: text("key").primaryKey(),
+    guildId: text("guild_id").notNull(),
+    targetDiscordId: text("target_discord_id").notNull(),
+    riotAccountPuuid: text("riot_account_puuid"),
+    channelId: text("channel_id").notNull(),
+    embed: text("embed", { mode: "json" }).$type<
+      NotificationDelivery["embed"]
+    >().notNull(),
+    messageId: text("message_id"),
+    matchId: text("match_id"),
+    stage: integer("stage"),
+    revision: integer("revision"),
+    status: text("status", { enum: ["pending", "delivered", "failed"] })
+      .notNull()
+      .default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: integer("next_attempt_at").notNull(),
+    leaseId: text("lease_id"),
+    leaseUntil: integer("lease_until"),
+    reason: text("reason", { enum: notificationFailureReasons }),
+    createdAt: integer("created_at").notNull(),
+  },
+  (
+    table,
+  ) => [
+    index("notification_deliveries_due").on(table.status, table.nextAttemptAt),
+    index("notification_deliveries_match").on(
+      table.guildId,
+      table.channelId,
+      table.matchId,
+    ),
+    index("notification_deliveries_message").on(
+      table.guildId,
+      table.channelId,
+      table.messageId,
+    ),
+  ],
+);
+
+export const customGameSettings = sqliteTable("custom_game_settings", {
+  guildId: text("guild_id").primaryKey().references(() => guilds.id, {
+    onDelete: "cascade",
+  }),
+  recruitmentChannelId: text("recruitment_channel_id").notNull(),
+  lobbyChannelId: text("lobby_channel_id").notNull(),
+  redChannelId: text("red_channel_id").notNull(),
+  blueChannelId: text("blue_channel_id").notNull(),
+  roleIds: text("role_ids", { mode: "json" }).$type<
+    CustomGameSettings["roleIds"]
+  >().notNull(),
+});
+
+export const guildMatchWatchSettings = sqliteTable(
+  "guild_match_watch_settings",
+  {
+    guildId: text("guild_id").primaryKey().references(() => guilds.id, {
+      onDelete: "cascade",
+    }),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+    notificationChannelId: text("notification_channel_id"),
+  },
+);
+
+export const guildMembers = sqliteTable("guild_members", {
+  guildId: text("guild_id").notNull().references(() => guilds.id, {
+    onDelete: "cascade",
+  }),
+  discordId: text("discord_id").notNull(),
+}, (table) => [primaryKey({ columns: [table.guildId, table.discordId] })]);
+
+export const matchWatcherOptOuts = sqliteTable(
+  "match_watcher_opt_outs",
+  {
+    guildId: text("guild_id").notNull().references(() => guilds.id, {
+      onDelete: "cascade",
+    }),
+    targetDiscordId: text("target_discord_id").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.guildId, table.targetDiscordId] })],
+);

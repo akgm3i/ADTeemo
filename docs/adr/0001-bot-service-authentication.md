@@ -1,8 +1,16 @@
 # ADR 0001: Bot service routeをBearer credentialで認証する
 
-- Status: Accepted
-- Date: 2026-07-12
-- Related: GitHub Issue #111
+- Type: adr
+- Status: accepted
+- Summary: Bot service認証と外部到達性の判断。
+- Read when: 認証境界を変更するとき。
+- Related: [#111](https://github.com/akgm3i/ADTeemo/issues/111)
+- Code: [middleware](../../api/src/service_auth.ts), [app](../../api/src/app.ts)
+- Tests: [auth tests](../../api/src/service_auth.test.ts)
+- Reviewed: 2026-09-25
+- Verified: local code review, 2026-09-25
+
+- Decided: 2026-07-12
 
 ## Context
 
@@ -57,3 +65,7 @@ credential漏えい時は通常rotationより先に到達経路を制限し、�
 - Discord Bot token、Riot API key、RSO secretの流用: 権限境界とrotation周期が異なり、漏えい時の影響範囲が広がるため採用しない。
 - IP allowlistだけによる認証: container networkやreverse proxyの設定ミスに対する防御にならないため、補助境界としてのみ扱う。
 - JWT: 現時点では単一Botと単一API間の認証であり、issuer、audience、鍵配布を追加する利点が共有credentialの運用コストを上回らないため採用しない。
+
+## Enforcement
+
+上記Code/Testsを判断の実行可能な検証先とする。運用手順は[CONTRIBUTING](../../CONTRIBUTING.md)を参照する。

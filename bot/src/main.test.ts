@@ -6,7 +6,7 @@ import {
 } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCall, assertSpyCalls, spy, stub } from "@std/testing/mock";
-import { Collection, SlashCommandBuilder } from "discord.js";
+import { Collection, type Interaction, SlashCommandBuilder } from "discord.js";
 import { MockInteractionBuilder } from "./test_utils.ts";
 import type { Command } from "./types.ts";
 import { messageHandler, messageKeys } from "./messages.ts";
@@ -17,6 +17,8 @@ import {
   startBot,
 } from "./main.ts";
 import { correlationIdForInteraction } from "./logger.ts";
+import { apiClient } from "./api_client.ts";
+import type { Event } from "@adteemo/api/contract";
 
 describe("Main Bot Logic", () => {
   describe("startBot", () => {
@@ -297,6 +299,76 @@ describe("Main Bot Logic", () => {
   });
 
   describe("handleInteractionCreate", () => {
+    function eventFixture(overrides: Partial<Event> = {}): Event {
+      const createdAt = new Date("2026-08-01T00:00:00.000Z");
+      return {
+        id: 113,
+        operationKey: "interaction-113",
+        name: "週末カスタム",
+        guildId: "guild-1",
+        creatorId: "creator-1",
+        recruitmentChannelId: "channel-1",
+        voiceChannelId: "voice-1",
+        discordScheduledEventId: "discord-event-1",
+        recruitmentMessageId: "message-1",
+        phase: "RECRUITING",
+        syncState: "CONSISTENT",
+        revision: 0,
+        discordEventDeleted: false,
+        recruitmentMessageDeleted: false,
+        lastFailureCode: null,
+        scheduledStartAt: new Date("2026-08-08T12:00:00.000Z"),
+        createdAt,
+        updatedAt: null,
+        ...overrides,
+      };
+    }
+
+    function cancelSelectInteraction(
+      value: string,
+      order: string[],
+    ) {
+      const deferUpdate = spy(() => Promise.resolve());
+      const editReply = spy((_input: unknown) => Promise.resolve({}));
+      const deleteScheduledEvent = spy((_id: string) => {
+        order.push("Discordイベント削除");
+        return Promise.resolve();
+      });
+      const deleteRecruitmentMessage = spy((_id: string) => {
+        order.push("募集メッセージ削除");
+        return Promise.resolve();
+      });
+      const interaction = {
+        isChatInputCommand: () => false,
+        isStringSelectMenu: () => true,
+        inGuild: () => true,
+        customId: "cancel-event-select",
+        values: [value],
+        user: { id: "creator-1" },
+        guild: {
+          id: "guild-1",
+          scheduledEvents: {
+            delete: deleteScheduledEvent,
+          },
+        },
+        channel: {
+          id: "channel-1",
+          messages: {
+            delete: deleteRecruitmentMessage,
+          },
+        },
+        deferUpdate,
+        editReply,
+      } as unknown as Interaction;
+      return {
+        interaction,
+        deferUpdate,
+        editReply,
+        deleteScheduledEvent,
+        deleteRecruitmentMessage,
+      };
+    }
+
     test("登録済みのコマンドが実行されると、対応するexecute関数が呼び出される", async () => {
       // Arrange
       const mockCommand: Command = {
@@ -386,6 +458,107 @@ describe("Main Bot Logic", () => {
 
       // Assert
       assertSpyCalls(executeSpy, 0);
+    });
+
+    test("自分の未中止event IDを選択すると、guildとchannelでscopeしてDiscord削除の進捗確定後に成功を表示する", async () => {
+      const order: string[] = [];
+      let current = eventFixture();
+      using getEventsStub = stub(
+        apiClient,
+        "getCustomGameEventsByCreator",
+        () => Promise.resolve({ success: true, events: [current] }),
+      );
+      using beginStub = stub(
+        apiClient,
+        "beginCustomGameEventCancellation",
+        (_eventId, _scope) => {
+          order.push("中止開始を保存");
+          current = { ...current, syncState: "CANCEL_PENDING" };
+          return Promise.resolve({ success: true, event: current });
+        },
+      );
+      using progressStub = stub(
+        apiClient,
+        "updateCustomGameEventCancellationProgress",
+        (_eventId, input) => {
+          if (input.discordEventDeleted) {
+            order.push("イベント削除を保存");
+            current = { ...current, discordEventDeleted: true };
+          }
+          if (input.recruitmentMessageDeleted) {
+            order.push("メッセージ削除を保存");
+            current = {
+              ...current,
+              recruitmentMessageDeleted: true,
+              phase: "CANCELLED",
+              syncState: "CONSISTENT",
+            };
+          }
+          return Promise.resolve({ success: true, event: current });
+        },
+      );
+      const select = cancelSelectInteraction("113", order);
+
+      await handleInteractionCreate(select.interaction);
+
+      assertSpyCall(getEventsStub, 0, {
+        args: ["guild-1", "channel-1", "creator-1"],
+      });
+      assertSpyCall(beginStub, 0, {
+        args: [113, {
+          guildId: "guild-1",
+          recruitmentChannelId: "channel-1",
+        }],
+      });
+      assertEquals(order, [
+        "中止開始を保存",
+        "Discordイベント削除",
+        "イベント削除を保存",
+        "募集メッセージ削除",
+        "メッセージ削除を保存",
+      ]);
+      assertSpyCall(select.editReply, 0, {
+        args: [{
+          content: messageHandler.formatMessage(
+            messageKeys.customGame.cancel.success,
+          ),
+          components: [],
+        }],
+      });
+      assertSpyCalls(progressStub, 2);
+    });
+
+    test("選択したevent IDが同じguildとchannelでも自分の候補にない場合、中止を開始しない", async () => {
+      const order: string[] = [];
+      using _getEventsStub = stub(
+        apiClient,
+        "getCustomGameEventsByCreator",
+        () =>
+          Promise.resolve({
+            success: true,
+            events: [eventFixture({ id: 114, creatorId: "creator-1" })],
+          }),
+      );
+      using beginStub = stub(
+        apiClient,
+        "beginCustomGameEventCancellation",
+        () => Promise.reject(new Error("must not be called")),
+      );
+      const select = cancelSelectInteraction("113", order);
+
+      await handleInteractionCreate(select.interaction);
+
+      assertSpyCalls(beginStub, 0);
+      assertSpyCalls(select.deleteScheduledEvent, 0);
+      assertSpyCalls(select.deleteRecruitmentMessage, 0);
+      assertSpyCall(select.editReply, 0, {
+        args: [{
+          content: messageHandler.formatMessage(
+            messageKeys.customGame.cancel.error.interaction,
+          ),
+          components: [],
+        }],
+      });
     });
   });
 });

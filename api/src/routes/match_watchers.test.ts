@@ -71,6 +71,7 @@ describe("routes/match_watchers.ts", () => {
       () =>
         Promise.resolve([{
           ...watcher,
+          riotAccountPuuid: "puuid-1",
           enabled: true,
           lastState: "IDLE" as const,
           currentGameId: null,
@@ -103,6 +104,7 @@ describe("routes/match_watchers.ts", () => {
       () =>
         Promise.resolve([{
           ...watcher,
+          riotAccountPuuid: "puuid-1",
           enabled: true,
           lastState: "IDLE" as const,
           currentGameId: null,
@@ -167,6 +169,7 @@ describe("routes/match_watchers.ts", () => {
 
   test("監視処理用Active Game検査を行うと、連携アカウントと進行中試合を返す", async () => {
     const account = {
+      isMain: true,
       discordId: watcher.targetDiscordId,
       puuid: "puuid-1",
       gameName: "Teemo",
@@ -277,6 +280,7 @@ describe("routes/match_watchers.ts", () => {
 
   test("監視処理用Result検査を行うと、試合結果とrank summaryとOP.GG詳細を返す", async () => {
     const account = {
+      isMain: true,
       discordId: watcher.targetDiscordId,
       puuid: "puuid-1",
       gameName: "Teemo",

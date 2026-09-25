@@ -1,15 +1,13 @@
-import { type ApiRpcClient, resultFromRequest } from "./transport.ts";
+import { responseContracts } from "@adteemo/api/contract";
+import { type ApiRpcClient, requestResult } from "./transport.ts";
 
 export function createHealthApiClient(
   { rpcClient }: { rpcClient: ApiRpcClient },
 ) {
   async function checkHealth() {
-    return await resultFromRequest(
+    return await requestResult(
+      responseContracts.health,
       () => rpcClient.health.$get(),
-      async (res) => {
-        const body = await res.json() as { message: string };
-        return { message: body.message };
-      },
     );
   }
 

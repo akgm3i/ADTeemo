@@ -89,7 +89,7 @@ describe("API error contract", () => {
   test("resource未登録、domain競合、認証失敗、route不一致を共通JSON形式へ変換する", async () => {
     const deps = createTestDependencies({
       dbActions: {
-        getEventStartingTodayByCreatorId: () => Promise.resolve(undefined),
+        getEventStartingTodayByCreator: () => Promise.resolve(undefined),
         upsertMatchWatcher: () =>
           Promise.reject(
             new MatchWatcherLimitError("private guild id: guild-1"),
@@ -105,9 +105,12 @@ describe("API error contract", () => {
       {
         name: "resource未登録",
         request: () =>
-          app.request("/events/today/by-creator/user-1", {
-            headers: TEST_BOT_SERVICE_AUTH_HEADERS,
-          }),
+          app.request(
+            "/events/today/guild-1/channel-1/by-creator/user-1",
+            {
+              headers: TEST_BOT_SERVICE_AUTH_HEADERS,
+            },
+          ),
         expected: {
           status: 404,
           code: "EVENT_NOT_FOUND",
@@ -138,7 +141,8 @@ describe("API error contract", () => {
       },
       {
         name: "認証失敗",
-        request: () => app.request("/events/by-creator/user-1"),
+        request: () =>
+          app.request("/events/by-creator/guild-1/channel-1/user-1"),
         expected: {
           status: 401,
           code: "UNAUTHORIZED",
@@ -171,15 +175,16 @@ describe("API error contract", () => {
       "SQL SELECT * FROM users WHERE token=private-credential";
     const deps = createTestDependencies({
       dbActions: {
-        getCustomGameEventsByCreatorId: () =>
+        getCustomGameEventsByCreator: () =>
           Promise.reject(new Error(privateDetail)),
       },
     });
     const app = createApp(deps);
 
-    const response = await app.request("/events/by-creator/user-1", {
-      headers: TEST_BOT_SERVICE_AUTH_HEADERS,
-    });
+    const response = await app.request(
+      "/events/by-creator/guild-1/channel-1/user-1",
+      { headers: TEST_BOT_SERVICE_AUTH_HEADERS },
+    );
     const responseText = await response.clone().text();
 
     await assertApiError(response, {

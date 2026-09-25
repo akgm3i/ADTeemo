@@ -1,281 +1,326 @@
-import { testClient } from "@hono/hono/testing";
-import { assert, assertEquals } from "@std/assert";
+import { assertEquals, assertFalse } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
-import { assertSpyCall, stub } from "@std/testing/mock";
-import { z } from "zod";
+import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
 import { createApp } from "../app.ts";
+import { DomainConflictError, EventNotFoundError } from "../errors.ts";
 import {
   createTestDependencies,
   TEST_BOT_SERVICE_AUTH_HEADERS,
 } from "../test_utils.ts";
 
+const FIXED_DATE = new Date("2026-08-01T10:00:00.000Z");
+
+function event(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    operationKey: "interaction-1",
+    name: "Test Event",
+    guildId: "guild-1",
+    creatorId: "creator-1",
+    recruitmentChannelId: "channel-1",
+    voiceChannelId: "voice-1",
+    discordScheduledEventId: null,
+    recruitmentMessageId: null,
+    phase: "PREPARING" as const,
+    syncState: "CREATE_PENDING" as const,
+    revision: 0,
+    discordEventDeleted: false,
+    recruitmentMessageDeleted: false,
+    lastFailureCode: null,
+    scheduledStartAt: FIXED_DATE,
+    createdAt: FIXED_DATE,
+    updatedAt: null,
+    ...overrides,
+  };
+}
+
+function jsonRequest(method: string, body: unknown) {
+  return {
+    method,
+    headers: {
+      ...TEST_BOT_SERVICE_AUTH_HEADERS,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  };
+}
+
+const preparePayload = {
+  operationKey: "interaction-1",
+  name: "Test Event",
+  guildId: "guild-1",
+  creatorId: "creator-1",
+  recruitmentChannelId: "channel-1",
+  voiceChannelId: "voice-1",
+  scheduledStartAt: FIXED_DATE.toISOString(),
+};
+
+const scope = {
+  guildId: "guild-1",
+  recruitmentChannelId: "channel-1",
+};
+
 describe("routes/events.ts", () => {
-  const deps = createTestDependencies();
-  const app = createApp(deps);
-  const { dbActions } = deps;
-  const client = testClient(app, {}, undefined, {
-    headers: TEST_BOT_SERVICE_AUTH_HEADERS,
-  });
-  const FIXED_DATE = "2025-09-27T10:00:00.000Z";
+  test("DB準備が成功したとき、外部副作用前のイベントを作成して201を返す", async () => {
+    // Arrange
+    const deps = createTestDependencies();
+    using prepareStub = stub(
+      deps.dbActions,
+      "prepareCustomGameEvent",
+      () => Promise.resolve({ created: true as const, event: event() }),
+    );
+    const app = createApp(deps);
 
-  const eventsResponseSchema = z.object({
-    events: z.array(z.object({ name: z.string() })),
-  });
+    // Act
+    const response = await app.request(
+      "/events",
+      jsonRequest("POST", preparePayload),
+    );
+    const body = await response.json();
 
-  const eventResponseSchema = z.object({
-    event: z.object({ name: z.string() }),
-  });
-
-  const errorResponseSchema = z.object({
-    code: z.string(),
-    message: z.string(),
-  });
-
-  describe("POST /events", () => {
-    describe("正常系", () => {
-      test("有効なイベントデータでリクエストを送信するとイベントを作成し、201 Createdと空ボディを返す", async () => {
-        // Arrange
-        using createEventStub = stub(
-          dbActions,
-          "createCustomGameEvent",
-          () => Promise.resolve(),
-        );
-        const eventData = {
-          name: "Test Event",
-          guildId: "test-guild",
-          creatorId: "test-creator",
-          discordScheduledEventId: "test-discord-event-id",
-          recruitmentMessageId: "test-recruitment-message-id",
-          scheduledStartAt: FIXED_DATE,
-        };
-
-        // Act
-        const res = await client.events.$post({ json: eventData });
-
-        // Assert
-        assert(res.status === 201);
-        assertEquals(await res.text(), "");
-        assertSpyCall(createEventStub, 0, {
-          args: [{
-            ...eventData,
-            scheduledStartAt: new Date(FIXED_DATE),
-          }],
-        });
-      });
-    });
-
-    describe("異常系", () => {
-      test("無効なイベントデータ（必須項目不足）でリクエストを送信したとき、422エラーを返す", async () => {
-        // Arrange
-        const invalidData = { name: "Test Event" }; // Missing required fields
-        const req = new Request("http://localhost/events", {
-          method: "POST",
-          headers: {
-            ...TEST_BOT_SERVICE_AUTH_HEADERS,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(invalidData),
-        });
-
-        // Act
-        const res = await app.request(req);
-
-        // Assert
-        assertEquals(res.status, 422);
-      });
-
-      test("DB操作に失敗したとき、500エラーを返す", async () => {
-        // Arrange
-        using _createEventStub = stub(
-          dbActions,
-          "createCustomGameEvent",
-          () => Promise.reject(new Error("DB error")),
-        );
-        const eventData = {
-          name: "Test Event",
-          guildId: "test-guild",
-          creatorId: "test-creator",
-          discordScheduledEventId: "test-discord-event-id",
-          recruitmentMessageId: "test-recruitment-message-id",
-          scheduledStartAt: FIXED_DATE,
-        };
-
-        // Act
-        const res = await client.events.$post({ json: eventData });
-
-        // Assert
-        assertEquals(res.status, 500);
-      });
+    // Assert
+    assertEquals(response.status, 201);
+    assertEquals(body.created, true);
+    assertFalse("success" in body);
+    assertSpyCall(prepareStub, 0, {
+      args: [{ ...preparePayload, scheduledStartAt: FIXED_DATE }],
     });
   });
 
-  describe("GET /events/by-creator/:creatorId", () => {
-    describe("正常系", () => {
-      test("存在するクリエイターIDでリクエストを送信したとき、そのクリエイターのイベント一覧を返す", async () => {
-        // Arrange
-        const mockEvents = [{
-          id: 1,
-          name: "Test Event",
-          guildId: "test-guild",
-          creatorId: "test-creator",
-          discordScheduledEventId: "event-1",
-          recruitmentMessageId: "msg-1",
-          scheduledStartAt: new Date(FIXED_DATE),
-          createdAt: new Date(FIXED_DATE),
-        }];
-        using getEventsStub = stub(
-          dbActions,
-          "getCustomGameEventsByCreatorId",
-          () => Promise.resolve(mockEvents),
-        );
+  test("同じoperation keyの準備が適用済みのとき、同じイベントを200で返す", async () => {
+    // Arrange
+    const deps = createTestDependencies();
+    using _prepareStub = stub(
+      deps.dbActions,
+      "prepareCustomGameEvent",
+      () => Promise.resolve({ created: false as const, event: event() }),
+    );
+    const app = createApp(deps);
 
-        // Act
-        const res = await client.events["by-creator"][":creatorId"].$get({
-          param: { creatorId: "test-creator" },
-        });
+    // Act
+    const response = await app.request(
+      "/events",
+      jsonRequest("POST", preparePayload),
+    );
 
-        // Assert
-        assert(res.status === 200);
-        const { events } = eventsResponseSchema.parse(await res.json());
-        assertEquals(events.length, 1);
-        assertEquals(events[0].name, "Test Event");
-        assertSpyCall(getEventsStub, 0, { args: ["test-creator"] });
-      });
+    // Assert
+    assertEquals(response.status, 200);
+    assertEquals((await response.json()).created, false);
+  });
+
+  test("Discord nonce上限を超えるoperation keyで準備すると、repositoryを呼ばず422を返す", async () => {
+    // Arrange
+    const deps = createTestDependencies();
+    using prepareStub = stub(
+      deps.dbActions,
+      "prepareCustomGameEvent",
+      () => Promise.resolve({ created: true as const, event: event() }),
+    );
+    const app = createApp(deps);
+
+    // Act
+    const response = await app.request(
+      "/events",
+      jsonRequest("POST", {
+        ...preparePayload,
+        operationKey: "x".repeat(26),
+      }),
+    );
+
+    // Assert
+    assertEquals(response.status, 422);
+    assertSpyCalls(prepareStub, 0);
+  });
+
+  test("イベント準備repositoryが例外を投げたとき、repository failureとして500を返す", async () => {
+    // Arrange
+    const failure = new Error("DB unavailable");
+    const deps = createTestDependencies();
+    using _prepareStub = stub(
+      deps.dbActions,
+      "prepareCustomGameEvent",
+      () => Promise.reject(failure),
+    );
+    using errorStub = stub(deps.logger, "error", () => {});
+    const app = createApp(deps);
+
+    // Act
+    const response = await app.request(
+      "/events",
+      jsonRequest("POST", preparePayload),
+    );
+
+    // Assert
+    assertEquals(response.status, 500);
+    assertEquals(await response.json(), {
+      code: "INTERNAL_ERROR",
+      message: "Internal server error",
     });
+    assertEquals(errorStub.calls[0].args[1]?.errorCategory, "repository");
+  });
 
-    describe("異常系", () => {
-      test("DB操作に失敗したとき、500エラーを返す", async () => {
-        // Arrange
-        using _getEventsStub = stub(
-          dbActions,
-          "getCustomGameEventsByCreatorId",
-          () => Promise.reject(new Error("DB error")),
-        );
+  test("別guildまたはchannelのイベントIDで作成進捗を更新したとき、404を返す", async () => {
+    // Arrange
+    const deps = createTestDependencies();
+    using _progressStub = stub(
+      deps.dbActions,
+      "updateCustomGameEventCreationProgress",
+      () => Promise.reject(new EventNotFoundError("not found")),
+    );
+    const app = createApp(deps);
 
-        // Act
-        const res = await client.events["by-creator"][":creatorId"].$get({
-          param: { creatorId: "test-creator" },
-        });
+    // Act
+    const response = await app.request(
+      "/events/1/creation",
+      jsonRequest("PATCH", {
+        guildId: "guild-other",
+        recruitmentChannelId: "channel-other",
+        discordScheduledEventId: "discord-event-1",
+      }),
+    );
 
-        // Assert
-        assertEquals(res.status, 500);
-      });
+    // Assert
+    assertEquals(response.status, 404);
+    assertEquals((await response.json()).code, "EVENT_NOT_FOUND");
+  });
+
+  test("異なる外部IDで作成進捗を再送したとき、409を返す", async () => {
+    // Arrange
+    const deps = createTestDependencies();
+    using _progressStub = stub(
+      deps.dbActions,
+      "updateCustomGameEventCreationProgress",
+      () => Promise.reject(new DomainConflictError("conflict")),
+    );
+    const app = createApp(deps);
+
+    // Act
+    const response = await app.request(
+      "/events/1/creation",
+      jsonRequest("PATCH", {
+        ...scope,
+        discordScheduledEventId: "discord-event-other",
+      }),
+    );
+
+    // Assert
+    assertEquals(response.status, 409);
+    assertEquals((await response.json()).code, "CONFLICT");
+  });
+
+  test("creatorのイベント一覧を取得するとき、guildと募集channelをrepositoryへ渡す", async () => {
+    // Arrange
+    const deps = createTestDependencies();
+    using listStub = stub(
+      deps.dbActions,
+      "getCustomGameEventsByCreator",
+      () => Promise.resolve([event()]),
+    );
+    const app = createApp(deps);
+
+    // Act
+    const response = await app.request(
+      "/events/by-creator/guild-1/channel-1/creator-1",
+      { headers: TEST_BOT_SERVICE_AUTH_HEADERS },
+    );
+
+    // Assert
+    assertEquals(response.status, 200);
+    assertSpyCall(listStub, 0, {
+      args: [{
+        guildId: "guild-1",
+        recruitmentChannelId: "channel-1",
+        creatorId: "creator-1",
+      }],
     });
   });
 
-  describe("DELETE /events/:discordEventId", () => {
-    describe("正常系", () => {
-      test("存在するDiscordイベントIDでリクエストを送信したとき、イベントが削除され成功レスポンスを返す", async () => {
-        // Arrange
-        using deleteEventStub = stub(
-          dbActions,
-          "deleteCustomGameEventByDiscordEventId",
-          () => Promise.resolve(),
-        );
-
-        // Act
-        const res = await client.events[":discordEventId"].$delete({
-          param: { discordEventId: "test-event-id" },
-        });
-
-        // Assert
-        assert(res.status === 204);
-        assertEquals(await res.text(), "");
-        assertSpyCall(deleteEventStub, 0, { args: ["test-event-id"] });
-      });
+  test("cancelを開始するとき、DBへ意図を記録してからevent stateを返す", async () => {
+    // Arrange
+    const deps = createTestDependencies();
+    const cancelPending = event({
+      phase: "RECRUITING" as const,
+      syncState: "CANCEL_PENDING" as const,
     });
+    using beginStub = stub(
+      deps.dbActions,
+      "beginCustomGameEventCancellation",
+      () => Promise.resolve(cancelPending),
+    );
+    const app = createApp(deps);
 
-    describe("異常系", () => {
-      test("DB操作に失敗したとき、500エラーを返す", async () => {
-        // Arrange
-        using _deleteEventStub = stub(
-          dbActions,
-          "deleteCustomGameEventByDiscordEventId",
-          () => Promise.reject(new Error("DB error")),
-        );
+    // Act
+    const response = await app.request(
+      "/events/1/cancel",
+      jsonRequest("POST", scope),
+    );
 
-        // Act
-        const res = await client.events[":discordEventId"].$delete({
-          param: { discordEventId: "test-event-id" },
-        });
+    // Assert
+    assertEquals(response.status, 200);
+    assertEquals((await response.json()).event.syncState, "CANCEL_PENDING");
+    assertSpyCall(beginStub, 0, { args: [{ eventId: 1, ...scope }] });
+  });
 
-        // Assert
-        assertEquals(res.status, 500);
-      });
+  test("回収したDiscord IDと削除進捗を送信すると、再試行可能なevent stateへ保存する", async () => {
+    // Arrange
+    const deps = createTestDependencies();
+    using progressStub = stub(
+      deps.dbActions,
+      "updateCustomGameEventCancellationProgress",
+      () =>
+        Promise.resolve(event({
+          phase: "RECRUITING" as const,
+          syncState: "CANCEL_PENDING" as const,
+          discordEventDeleted: true,
+        })),
+    );
+    const app = createApp(deps);
+
+    // Act
+    const response = await app.request(
+      "/events/1/cancel",
+      jsonRequest("PATCH", {
+        ...scope,
+        discordScheduledEventId: "discord-event-1",
+        recruitmentMessageId: "message-1",
+        discordEventDeleted: true,
+      }),
+    );
+
+    // Assert
+    assertEquals(response.status, 200);
+    assertSpyCall(progressStub, 0, {
+      args: [{
+        eventId: 1,
+        ...scope,
+        discordScheduledEventId: "discord-event-1",
+        recruitmentMessageId: "message-1",
+        discordEventDeleted: true,
+      }],
     });
   });
 
-  describe("GET /events/today/by-creator/:creatorId", () => {
-    describe("正常系", () => {
-      test("指定したクリエイターの今日開始イベントが存在するとき、そのイベントを返す", async () => {
-        // Arrange
-        const mockEvent = {
-          id: 1,
-          name: "Test Event Today",
-          creatorId: "test-creator",
-          guildId: "guild-id",
-          discordScheduledEventId: "discord-id",
-          recruitmentMessageId: "rec-id",
-          scheduledStartAt: new Date(FIXED_DATE),
-          createdAt: new Date(FIXED_DATE),
-        };
-        using getEventStub = stub(
-          dbActions,
-          "getEventStartingTodayByCreatorId",
-          () => Promise.resolve(mockEvent),
-        );
+  test("確定参加者が10人未満のとき、repositoryを呼ばず422を返す", async () => {
+    // Arrange
+    const deps = createTestDependencies();
+    using saveStub = stub(
+      deps.dbActions,
+      "saveCustomGameEventParticipants",
+      () => Promise.resolve([]),
+    );
+    const app = createApp(deps);
 
-        // Act
-        const res = await client.events.today["by-creator"][":creatorId"].$get({
-          param: { creatorId: "test-creator" },
-        });
+    // Act
+    const response = await app.request(
+      "/events/1/participants",
+      jsonRequest("PUT", {
+        ...scope,
+        participants: [{ userId: "user-1", team: "BLUE", lane: "Top" }],
+      }),
+    );
 
-        // Assert
-        assert(res.status === 200);
-        const { event } = eventResponseSchema.parse(await res.json());
-        assertEquals(event.name, "Test Event Today");
-        assertSpyCall(getEventStub, 0, { args: ["test-creator"] });
-      });
-    });
-
-    describe("異常系", () => {
-      test("今日開始のイベントがないとき、404エラーを返す", async () => {
-        // Arrange
-        using getEventStub = stub(
-          dbActions,
-          "getEventStartingTodayByCreatorId",
-          () => Promise.resolve(undefined),
-        );
-
-        // Act
-        const res = await client.events.today["by-creator"][":creatorId"].$get({
-          param: { creatorId: "non-existent" },
-        });
-
-        // Assert
-        assert(res.status === 404);
-        const { code, message } = errorResponseSchema.parse(await res.json());
-        assertEquals(code, "EVENT_NOT_FOUND");
-        assertEquals(message, "Event not found");
-        assertSpyCall(getEventStub, 0, { args: ["non-existent"] });
-      });
-
-      test("DB操作に失敗したとき、500エラーを返す", async () => {
-        // Arrange
-        using _getEventStub = stub(
-          dbActions,
-          "getEventStartingTodayByCreatorId",
-          () => Promise.reject(new Error("DB error")),
-        );
-
-        // Act
-        const res = await client.events.today["by-creator"][":creatorId"].$get({
-          param: { creatorId: "test-creator" },
-        });
-
-        // Assert
-        assertEquals(res.status, 500);
-      });
-    });
+    // Assert
+    assertEquals(response.status, 422);
+    assertSpyCalls(saveStub, 0);
   });
 });

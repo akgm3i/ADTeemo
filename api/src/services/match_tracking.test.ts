@@ -10,6 +10,7 @@ import type {
 import { createMatchTrackingInspectionService } from "./match_tracking.ts";
 
 const account: RiotAccount = {
+  isMain: true,
   discordId: "target-1",
   puuid: "puuid-1",
   gameName: "Teemo",
@@ -420,5 +421,39 @@ describe("services/match_tracking.ts", () => {
       "finalize:JP1_12345:puuid-1",
       "opgg:JP1_12345:puuid-1",
     ]);
+  });
+  test("結果取得期限を過ぎていると、timeout intentを返してMatch-v5とランクとOP.GGへ接続しない", async () => {
+    const unexpected = () => {
+      throw new Error("Timeout must not fetch external data");
+    };
+    const service = createMatchTrackingInspectionService({
+      dbActions: {
+        getRiotAccountByDiscordId: () => Promise.resolve(account),
+        upsertPendingRankSnapshots: unexpected,
+        finalizeMatchRankSnapshots: unexpected,
+      },
+      riotApi: {
+        getActiveGameByPuuid: unexpected,
+        getLeagueEntriesByPuuid: unexpected,
+        getMatchById: unexpected,
+      },
+      opggMatchDetailService: { resolveAndSave: unexpected },
+      logger: { warn() {} },
+      clock: { now: () => new Date("2026-01-01T04:00:00Z") },
+    });
+    const result = await service.inspectResult({
+      guildId: "guild-1",
+      targetDiscordId: "target-1",
+      matchId: "JP1_12345",
+      startedAt: new Date("2026-01-01T00:00:00Z"),
+      resultFetchTimeoutMs: 3 * 60 * 60 * 1000,
+    });
+    assertEquals(result.status, "ok");
+    if (result.status !== "ok") throw new Error("Expected timeout intent");
+    assertEquals(result.notificationIntent, {
+      kind: "timeout",
+      matchId: "JP1_12345",
+    });
+    assertEquals(result.stateTransition?.state.pendingResultMatchId, null);
   });
 });

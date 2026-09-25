@@ -1,0 +1,1784 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "0b6a8b17-46bc-4ed9-b318-1a6743d2eefd",
+  "prevId": "4b2eb09e-34cd-413c-a51f-a67e8376954f",
+  "tables": {
+    "auth_states": {
+      "name": "auth_states",
+      "columns": {
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "discord_id": {
+          "name": "discord_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "platform": {
+          "name": "platform",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'jp1'"
+        },
+        "region": {
+          "name": "region",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'asia'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "custom_game_event_participants": {
+      "name": "custom_game_event_participants",
+      "columns": {
+        "event_id": {
+          "name": "event_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "team": {
+          "name": "team",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lane": {
+          "name": "lane",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "custom_game_event_participants_unique_team_lane": {
+          "name": "custom_game_event_participants_unique_team_lane",
+          "columns": [
+            "event_id",
+            "team",
+            "lane"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "custom_game_event_participants_event_id_custom_game_events_id_fk": {
+          "name": "custom_game_event_participants_event_id_custom_game_events_id_fk",
+          "tableFrom": "custom_game_event_participants",
+          "tableTo": "custom_game_events",
+          "columnsFrom": [
+            "event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "custom_game_event_participants_user_id_users_discord_id_fk": {
+          "name": "custom_game_event_participants_user_id_users_discord_id_fk",
+          "tableFrom": "custom_game_event_participants",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "discord_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "custom_game_event_participants_event_id_user_id_pk": {
+          "columns": [
+            "event_id",
+            "user_id"
+          ],
+          "name": "custom_game_event_participants_event_id_user_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "custom_game_events": {
+      "name": "custom_game_events",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "operation_key": {
+          "name": "operation_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "creator_id": {
+          "name": "creator_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "recruitment_channel_id": {
+          "name": "recruitment_channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "voice_channel_id": {
+          "name": "voice_channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "discord_scheduled_event_id": {
+          "name": "discord_scheduled_event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "recruitment_message_id": {
+          "name": "recruitment_message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "phase": {
+          "name": "phase",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'RECRUITING'"
+        },
+        "sync_state": {
+          "name": "sync_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'CONSISTENT'"
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "discord_event_deleted": {
+          "name": "discord_event_deleted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "recruitment_message_deleted": {
+          "name": "recruitment_message_deleted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "last_failure_code": {
+          "name": "last_failure_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "scheduled_start_at": {
+          "name": "scheduled_start_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "custom_game_events_operation_key_unique": {
+          "name": "custom_game_events_operation_key_unique",
+          "columns": [
+            "operation_key"
+          ],
+          "isUnique": true
+        },
+        "custom_game_events_discord_scheduled_event_id_unique": {
+          "name": "custom_game_events_discord_scheduled_event_id_unique",
+          "columns": [
+            "discord_scheduled_event_id"
+          ],
+          "isUnique": true
+        },
+        "custom_game_events_recruitment_message_id_unique": {
+          "name": "custom_game_events_recruitment_message_id_unique",
+          "columns": [
+            "recruitment_message_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "custom_game_events_guild_id_guilds_id_fk": {
+          "name": "custom_game_events_guild_id_guilds_id_fk",
+          "tableFrom": "custom_game_events",
+          "tableTo": "guilds",
+          "columnsFrom": [
+            "guild_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "custom_game_events_creator_id_users_discord_id_fk": {
+          "name": "custom_game_events_creator_id_users_discord_id_fk",
+          "tableFrom": "custom_game_events",
+          "tableTo": "users",
+          "columnsFrom": [
+            "creator_id"
+          ],
+          "columnsTo": [
+            "discord_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "custom_game_settings": {
+      "name": "custom_game_settings",
+      "columns": {
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "recruitment_channel_id": {
+          "name": "recruitment_channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lobby_channel_id": {
+          "name": "lobby_channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "red_channel_id": {
+          "name": "red_channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "blue_channel_id": {
+          "name": "blue_channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "role_ids": {
+          "name": "role_ids",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "custom_game_settings_guild_id_guilds_id_fk": {
+          "name": "custom_game_settings_guild_id_guilds_id_fk",
+          "tableFrom": "custom_game_settings",
+          "tableTo": "guilds",
+          "columnsFrom": [
+            "guild_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "external_match_details": {
+      "name": "external_match_details",
+      "columns": {
+        "match_id": {
+          "name": "match_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_region": {
+          "name": "provider_region",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_match_id": {
+          "name": "provider_match_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "detail_url": {
+          "name": "detail_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_created_at": {
+          "name": "provider_created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "average_tier": {
+          "name": "average_tier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "external_match_details_unique_provider_match": {
+          "name": "external_match_details_unique_provider_match",
+          "columns": [
+            "provider",
+            "provider_region",
+            "provider_match_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "external_match_details_match_id_matches_id_fk": {
+          "name": "external_match_details_match_id_matches_id_fk",
+          "tableFrom": "external_match_details",
+          "tableTo": "matches",
+          "columnsFrom": [
+            "match_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "external_match_details_match_id_provider_pk": {
+          "columns": [
+            "match_id",
+            "provider"
+          ],
+          "name": "external_match_details_match_id_provider_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "external_match_participant_details": {
+      "name": "external_match_participant_details",
+      "columns": {
+        "match_id": {
+          "name": "match_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "puuid": {
+          "name": "puuid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "participant_id": {
+          "name": "participant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lane_score": {
+          "name": "lane_score",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "external_match_participant_details_match_id_matches_id_fk": {
+          "name": "external_match_participant_details_match_id_matches_id_fk",
+          "tableFrom": "external_match_participant_details",
+          "tableTo": "matches",
+          "columnsFrom": [
+            "match_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "external_match_participant_details_match_id_provider_puuid_pk": {
+          "columns": [
+            "match_id",
+            "provider",
+            "puuid"
+          ],
+          "name": "external_match_participant_details_match_id_provider_puuid_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "guild_match_watch_settings": {
+      "name": "guild_match_watch_settings",
+      "columns": {
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "notification_channel_id": {
+          "name": "notification_channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "guild_match_watch_settings_guild_id_guilds_id_fk": {
+          "name": "guild_match_watch_settings_guild_id_guilds_id_fk",
+          "tableFrom": "guild_match_watch_settings",
+          "tableTo": "guilds",
+          "columnsFrom": [
+            "guild_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "guild_members": {
+      "name": "guild_members",
+      "columns": {
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "discord_id": {
+          "name": "discord_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "guild_members_guild_id_guilds_id_fk": {
+          "name": "guild_members_guild_id_guilds_id_fk",
+          "tableFrom": "guild_members",
+          "tableTo": "guilds",
+          "columnsFrom": [
+            "guild_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "guild_members_guild_id_discord_id_pk": {
+          "columns": [
+            "guild_id",
+            "discord_id"
+          ],
+          "name": "guild_members_guild_id_discord_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "guilds": {
+      "name": "guilds",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "match_participants": {
+      "name": "match_participants",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "match_id": {
+          "name": "match_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "riot_puuid": {
+          "name": "riot_puuid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "team": {
+          "name": "team",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "win": {
+          "name": "win",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lane": {
+          "name": "lane",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kills": {
+          "name": "kills",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "deaths": {
+          "name": "deaths",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "assists": {
+          "name": "assists",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cs": {
+          "name": "cs",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "gold": {
+          "name": "gold",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "match_participants_unique_match_user": {
+          "name": "match_participants_unique_match_user",
+          "columns": [
+            "match_id",
+            "user_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "match_participants_match_id_matches_id_fk": {
+          "name": "match_participants_match_id_matches_id_fk",
+          "tableFrom": "match_participants",
+          "tableTo": "matches",
+          "columnsFrom": [
+            "match_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "match_participants_user_id_users_discord_id_fk": {
+          "name": "match_participants_user_id_users_discord_id_fk",
+          "tableFrom": "match_participants",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "discord_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "match_rank_snapshots": {
+      "name": "match_rank_snapshots",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "match_id": {
+          "name": "match_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "puuid": {
+          "name": "puuid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "platform": {
+          "name": "platform",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "queue_type": {
+          "name": "queue_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "phase": {
+          "name": "phase",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tier": {
+          "name": "tier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rank": {
+          "name": "rank",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "league_points": {
+          "name": "league_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "wins": {
+          "name": "wins",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "losses": {
+          "name": "losses",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "match_rank_snapshots_unique_snapshot": {
+          "name": "match_rank_snapshots_unique_snapshot",
+          "columns": [
+            "match_id",
+            "puuid",
+            "queue_type",
+            "phase"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "match_rank_snapshots_match_id_matches_id_fk": {
+          "name": "match_rank_snapshots_match_id_matches_id_fk",
+          "tableFrom": "match_rank_snapshots",
+          "tableTo": "matches",
+          "columnsFrom": [
+            "match_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "match_watcher_opt_outs": {
+      "name": "match_watcher_opt_outs",
+      "columns": {
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_discord_id": {
+          "name": "target_discord_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "match_watcher_opt_outs_guild_id_guilds_id_fk": {
+          "name": "match_watcher_opt_outs_guild_id_guilds_id_fk",
+          "tableFrom": "match_watcher_opt_outs",
+          "tableTo": "guilds",
+          "columnsFrom": [
+            "guild_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "match_watcher_opt_outs_guild_id_target_discord_id_pk": {
+          "columns": [
+            "guild_id",
+            "target_discord_id"
+          ],
+          "name": "match_watcher_opt_outs_guild_id_target_discord_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "match_watchers": {
+      "name": "match_watchers",
+      "columns": {
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "riot_account_puuid": {
+          "name": "riot_account_puuid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_discord_id": {
+          "name": "target_discord_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "requester_id": {
+          "name": "requester_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "channel_id": {
+          "name": "channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "last_state": {
+          "name": "last_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'IDLE'"
+        },
+        "current_game_id": {
+          "name": "current_game_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "current_match_id": {
+          "name": "current_match_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "current_notification_message_id": {
+          "name": "current_notification_message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pending_result_match_id": {
+          "name": "pending_result_match_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pending_result_notification_message_id": {
+          "name": "pending_result_notification_message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pending_result_started_at": {
+          "name": "pending_result_started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "game_started_at": {
+          "name": "game_started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_checked_at": {
+          "name": "last_checked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_in_game_notified_at": {
+          "name": "last_in_game_notified_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "match_watchers_guild_id_guilds_id_fk": {
+          "name": "match_watchers_guild_id_guilds_id_fk",
+          "tableFrom": "match_watchers",
+          "tableTo": "guilds",
+          "columnsFrom": [
+            "guild_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "match_watchers_riot_account_puuid_riot_accounts_puuid_fk": {
+          "name": "match_watchers_riot_account_puuid_riot_accounts_puuid_fk",
+          "tableFrom": "match_watchers",
+          "tableTo": "riot_accounts",
+          "columnsFrom": [
+            "riot_account_puuid"
+          ],
+          "columnsTo": [
+            "puuid"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "match_watchers_target_discord_id_users_discord_id_fk": {
+          "name": "match_watchers_target_discord_id_users_discord_id_fk",
+          "tableFrom": "match_watchers",
+          "tableTo": "users",
+          "columnsFrom": [
+            "target_discord_id"
+          ],
+          "columnsTo": [
+            "discord_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "match_watchers_requester_id_users_discord_id_fk": {
+          "name": "match_watchers_requester_id_users_discord_id_fk",
+          "tableFrom": "match_watchers",
+          "tableTo": "users",
+          "columnsFrom": [
+            "requester_id"
+          ],
+          "columnsTo": [
+            "discord_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "match_watchers_guild_id_riot_account_puuid_pk": {
+          "columns": [
+            "guild_id",
+            "riot_account_puuid"
+          ],
+          "name": "match_watchers_guild_id_riot_account_puuid_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "matches": {
+      "name": "matches",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "custom_game_event_id": {
+          "name": "custom_game_event_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "game_sequence": {
+          "name": "game_sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "matches_unique_custom_game_sequence": {
+          "name": "matches_unique_custom_game_sequence",
+          "columns": [
+            "custom_game_event_id",
+            "game_sequence"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "matches_custom_game_event_id_custom_game_events_id_fk": {
+          "name": "matches_custom_game_event_id_custom_game_events_id_fk",
+          "tableFrom": "matches",
+          "tableTo": "custom_game_events",
+          "columnsFrom": [
+            "custom_game_event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "notification_deliveries": {
+      "name": "notification_deliveries",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_discord_id": {
+          "name": "target_discord_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "riot_account_puuid": {
+          "name": "riot_account_puuid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "channel_id": {
+          "name": "channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "embed": {
+          "name": "embed",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "match_id": {
+          "name": "match_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "stage": {
+          "name": "stage",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lease_id": {
+          "name": "lease_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "notification_deliveries_due": {
+          "name": "notification_deliveries_due",
+          "columns": [
+            "status",
+            "next_attempt_at"
+          ],
+          "isUnique": false
+        },
+        "notification_deliveries_match": {
+          "name": "notification_deliveries_match",
+          "columns": [
+            "guild_id",
+            "channel_id",
+            "match_id"
+          ],
+          "isUnique": false
+        },
+        "notification_deliveries_message": {
+          "name": "notification_deliveries_message",
+          "columns": [
+            "guild_id",
+            "channel_id",
+            "message_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "pending_match_rank_snapshots": {
+      "name": "pending_match_rank_snapshots",
+      "columns": {
+        "platform": {
+          "name": "platform",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "game_id": {
+          "name": "game_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "puuid": {
+          "name": "puuid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "queue_type": {
+          "name": "queue_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tier": {
+          "name": "tier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rank": {
+          "name": "rank",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "league_points": {
+          "name": "league_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "wins": {
+          "name": "wins",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "losses": {
+          "name": "losses",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "pending_match_rank_snapshots_platform_game_id_puuid_queue_type_pk": {
+          "columns": [
+            "platform",
+            "game_id",
+            "puuid",
+            "queue_type"
+          ],
+          "name": "pending_match_rank_snapshots_platform_game_id_puuid_queue_type_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "riot_accounts": {
+      "name": "riot_accounts",
+      "columns": {
+        "discord_id": {
+          "name": "discord_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "puuid": {
+          "name": "puuid",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "is_main": {
+          "name": "is_main",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "game_name": {
+          "name": "game_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tag_line": {
+          "name": "tag_line",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "platform": {
+          "name": "platform",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "region": {
+          "name": "region",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "riot_accounts_owner": {
+          "name": "riot_accounts_owner",
+          "columns": [
+            "discord_id"
+          ],
+          "isUnique": false
+        },
+        "riot_accounts_one_main": {
+          "name": "riot_accounts_one_main",
+          "columns": [
+            "discord_id"
+          ],
+          "isUnique": true,
+          "where": "\"riot_accounts\".\"is_main\" = 1"
+        }
+      },
+      "foreignKeys": {
+        "riot_accounts_discord_id_users_discord_id_fk": {
+          "name": "riot_accounts_discord_id_users_discord_id_fk",
+          "tableFrom": "riot_accounts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "discord_id"
+          ],
+          "columnsTo": [
+            "discord_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "riot_static_data_cache": {
+      "name": "riot_static_data_cache",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "user_guild_profiles": {
+      "name": "user_guild_profiles",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "guild_id": {
+          "name": "guild_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "main_role": {
+          "name": "main_role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "user_guild_profiles_user_id_users_discord_id_fk": {
+          "name": "user_guild_profiles_user_id_users_discord_id_fk",
+          "tableFrom": "user_guild_profiles",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "discord_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "user_guild_profiles_guild_id_guilds_id_fk": {
+          "name": "user_guild_profiles_guild_id_guilds_id_fk",
+          "tableFrom": "user_guild_profiles",
+          "tableTo": "guilds",
+          "columnsFrom": [
+            "guild_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "user_guild_profiles_user_id_guild_id_pk": {
+          "columns": [
+            "user_id",
+            "guild_id"
+          ],
+          "name": "user_guild_profiles_user_id_guild_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "users": {
+      "name": "users",
+      "columns": {
+        "discord_id": {
+          "name": "discord_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "riot_id": {
+          "name": "riot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

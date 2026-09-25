@@ -1,4 +1,8 @@
-import type { Lane } from "@adteemo/api/contract";
+import { selectOwnedCustomGameEvent } from "./custom_game_selection.ts";
+import type { Event, Lane } from "@adteemo/api/contract";
+import type { Guild } from "discord.js";
+import { apiClient } from "../api_client.ts";
+import type { FailureResult } from "../api_clients/transport.ts";
 
 export type RecordMatchParticipant = {
   user: {
@@ -9,39 +13,80 @@ export type RecordMatchParticipant = {
   team: "BLUE" | "RED";
 };
 
-function getActiveParticipants(): Promise<RecordMatchParticipant[]> {
-  return Promise.resolve([
-    { user: { id: "user1", username: "Player1" }, lane: "Top", team: "BLUE" },
+export type ActiveRecordMatch = {
+  event: Event;
+  participants: RecordMatchParticipant[];
+};
+
+type ActiveParticipantInput = {
+  guild: Guild;
+  guildId: string;
+  recruitmentChannelId: string;
+  creatorId: string;
+  eventId?: number;
+};
+
+export class RecordMatchParticipantProviderError extends Error {
+  constructor(readonly failure: FailureResult) {
+    super(failure.error);
+    this.name = "RecordMatchParticipantProviderError";
+  }
+}
+
+async function getTodayEvent(input: ActiveParticipantInput) {
+  const eventResult = await apiClient.getEventStartingTodayByCreator(
+    input.guildId,
+    input.recruitmentChannelId,
+    input.creatorId,
+  );
+  if (!eventResult.success) {
+    throw new RecordMatchParticipantProviderError(eventResult);
+  }
+
+  return eventResult.event;
+}
+
+async function getActiveParticipants(
+  input: ActiveParticipantInput,
+): Promise<ActiveRecordMatch> {
+  const event = input.eventId !== undefined
+    ? await selectOwnedCustomGameEvent({ ...input, eventId: input.eventId })
+    : await getTodayEvent(input);
+
+  const rosterResult = await apiClient.getCustomGameEventParticipants(
+    event.id,
     {
-      user: { id: "user2", username: "Player2" },
-      lane: "Jungle",
-      team: "BLUE",
+      guildId: input.guildId,
+      recruitmentChannelId: input.recruitmentChannelId,
     },
-    {
-      user: { id: "user3", username: "Player3" },
-      lane: "Middle",
-      team: "BLUE",
-    },
-    {
-      user: { id: "user4", username: "Player4" },
-      lane: "Bottom",
-      team: "BLUE",
-    },
-    {
-      user: { id: "user5", username: "Player5" },
-      lane: "Support",
-      team: "BLUE",
-    },
-    { user: { id: "user6", username: "Player6" }, lane: "Top", team: "RED" },
-    { user: { id: "user7", username: "Player7" }, lane: "Jungle", team: "RED" },
-    { user: { id: "user8", username: "Player8" }, lane: "Middle", team: "RED" },
-    { user: { id: "user9", username: "Player9" }, lane: "Bottom", team: "RED" },
-    {
-      user: { id: "user10", username: "Player10" },
-      lane: "Support",
-      team: "RED",
-    },
-  ]);
+  );
+  if (!rosterResult.success) {
+    throw new RecordMatchParticipantProviderError(rosterResult);
+  }
+  if (rosterResult.participants.length !== 10) {
+    throw new Error("A custom match requires exactly 10 participants");
+  }
+
+  const participants = await Promise.all(
+    rosterResult.participants.map(async (participant) => {
+      const member = await input.guild.members.fetch(participant.userId);
+      if (!member) {
+        throw new Error(
+          `Discord member ${participant.userId} is not in the guild`,
+        );
+      }
+      return {
+        user: {
+          id: participant.userId,
+          username: member.user.username,
+        },
+        lane: participant.lane,
+        team: participant.team,
+      };
+    }),
+  );
+
+  return { event, participants };
 }
 
 export const recordMatchParticipantProvider = {

@@ -1,7 +1,9 @@
 import { hc } from "@hono/hono/client";
-import type { AppType } from "./app.ts";
+import type { AppType } from "../app.ts";
 
-export type Client = ReturnType<typeof hc<AppType>>;
+const createTypedClient = (...args: Parameters<typeof hc>) =>
+  hc<AppType>(...args);
+export type Client = ReturnType<typeof createTypedClient>;
 
 export const hcWithType = (...args: Parameters<typeof hc>): Client =>
-  hc<AppType>(...args);
+  createTypedClient(...args);

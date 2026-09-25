@@ -59,6 +59,7 @@ const matchSchema = z.object({
         goldEarned: z.number(),
         totalDamageDealtToChampions: z.number().optional(),
         visionScore: z.number().optional(),
+        totalAllyJungleMinionsKilled: z.number().optional(),
         totalEnemyJungleMinionsKilled: z.number().optional(),
         teamPosition: z.string().optional(),
         individualPosition: z.string().optional(),
@@ -654,22 +655,6 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
       method,
       methodKeyValue,
     );
-    let settled = false;
-    void operation.then(
-      () => {
-        settled = true;
-      },
-      () => {
-        settled = true;
-      },
-    );
-    // Immediate fake responses may require several promise jobs to read JSON.
-    // Let them settle before arming an injected sleeper that advances fake time.
-    for (let index = 0; index < 10 && !settled; index++) {
-      await Promise.resolve();
-    }
-    if (settled) return await operation;
-
     const sleepController = new AbortController();
     const timeoutPromise = dependencies.sleeper(
       Math.max(attemptDeadline - dependencies.clock.now(), 0),
@@ -699,31 +684,22 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
     });
     riotQueue = previous.then(() => queueSlot);
     try {
-      let previousSettled = false;
-      void previous.then(() => {
-        previousSettled = true;
-      });
-      for (let index = 0; index < 10 && !previousSettled; index++) {
-        await Promise.resolve();
-      }
-      if (!previousSettled) {
-        const sleepController = new AbortController();
-        const deadlineWait = dependencies.sleeper(
-          Math.max(deadline - dependencies.clock.now(), 0),
-          sleepController.signal,
-        ).then(
-          () => {
-            throw deadlineError(methodKey);
-          },
-          () => {
-            throw deadlineError(methodKey);
-          },
-        );
-        try {
-          await Promise.race([previous, deadlineWait]);
-        } finally {
-          sleepController.abort();
-        }
+      const sleepController = new AbortController();
+      const deadlineWait = dependencies.sleeper(
+        Math.max(deadline - dependencies.clock.now(), 0),
+        sleepController.signal,
+      ).then(
+        () => {
+          throw deadlineError(methodKey);
+        },
+        () => {
+          throw deadlineError(methodKey);
+        },
+      );
+      try {
+        await Promise.race([previous, deadlineWait]);
+      } finally {
+        sleepController.abort();
       }
       assertBeforeDeadline(deadline, methodKey);
       return await task();

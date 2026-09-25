@@ -1,164 +1,196 @@
 import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
-import { assertSpyCall, assertSpyCalls, spy } from "@std/testing/mock";
 import { EmbedBuilder } from "discord.js";
-import type { MatchWatcher } from "@adteemo/api/contract";
 import { createMatchTrackingNotifier } from "./match_tracking_notifier.ts";
 
-function watcher(overrides: Partial<MatchWatcher> = {}): MatchWatcher {
-  const now = new Date("2026-01-01T00:00:00.000Z");
-  return {
-    guildId: "guild-1",
-    targetDiscordId: "target-1",
-    requesterId: "requester-1",
-    channelId: "channel-1",
-    enabled: true,
-    lastState: "IDLE",
-    currentGameId: null,
-    currentMatchId: null,
-    currentNotificationMessageId: null,
-    pendingResultMatchId: null,
-    pendingResultNotificationMessageId: null,
-    pendingResultStartedAt: null,
-    gameStartedAt: null,
-    lastCheckedAt: null,
-    lastInGameNotifiedAt: null,
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  };
-}
+const target = { guildId: "guild", channelId: "channel" };
+const embed = new EmbedBuilder().setTitle("result");
+const logger = { warn() {}, error() {} };
 
-function logger() {
-  return {
-    warn: (
-      _message: string,
-      _metadata?: Record<string, unknown>,
-      _error?: unknown,
-    ) => {},
-    error: (
-      _message: string,
-      _metadata?: Record<string, unknown>,
-      _error?: unknown,
-    ) => {},
-  };
-}
-
-describe("match_tracking_notifier.ts", () => {
-  test("既存Discord投稿のeditに失敗するとき、新規sendへfallbackして送信後IDを返す", async () => {
-    const editError = new Error("missing access");
-    const message = {
-      id: "message-old",
-      edit: () => Promise.reject(editError),
-    };
-    const channel = {
-      send: (_options: { embeds: EmbedBuilder[] }) =>
-        Promise.resolve({ id: "message-new" }),
-      messages: {
-        fetch: (_messageId: string) => Promise.resolve(message),
-      },
-    };
-    const client = {
-      channels: {
-        fetch: (_channelId: string) => Promise.resolve(channel),
-      },
-    };
-    const log = logger();
-    const warnSpy = spy(log, "warn");
-    const editSpy = spy(message, "edit");
-    const sendSpy = spy(channel, "send");
+describe("match tracking Discord配送", () => {
+  test("既存投稿のeditが一時失敗した場合、配送を再試行可能として返し新規投稿しない", async () => {
+    let sends = 0;
     const notifier = createMatchTrackingNotifier({
-      client,
-      logger: log,
-    });
-
-    const result = await notifier.sendOrEditWatcherMessage(
-      watcher(),
-      "message-old",
-      new EmbedBuilder().setTitle("test"),
-    );
-
-    assertEquals(result, "message-new");
-    assertSpyCalls(editSpy, 1);
-    assertSpyCalls(sendSpy, 1);
-    assertSpyCall(warnSpy, 0, {
-      args: [
-        "match_tracking.edit_message_failed",
-        {
-          guildId: "guild-1",
-          channelId: "channel-1",
-          messageId: "message-old",
+      logger,
+      client: {
+        channels: {
+          fetch: () =>
+            Promise.resolve({
+              send: () => {
+                sends++;
+                return Promise.resolve({ id: "new" });
+              },
+              messages: {
+                fetch: () =>
+                  Promise.resolve({
+                    id: "old",
+                    edit: () => Promise.reject(new Error("network")),
+                  }),
+              },
+            }),
         },
-        editError,
-      ],
-    });
-  });
-
-  test("既存Discord投稿にeditメソッドがないとき、新規sendへfallbackして送信後IDを返す", async () => {
-    const message = {
-      id: "message-old",
-    };
-    const channel = {
-      send: (_options: { embeds: EmbedBuilder[] }) =>
-        Promise.resolve({ id: "message-new" }),
-      messages: {
-        fetch: (_messageId: string) => Promise.resolve(message),
       },
-    };
-    const client = {
-      channels: {
-        fetch: (_channelId: string) => Promise.resolve(channel),
-      },
-    };
-    const log = logger();
-    const warnSpy = spy(log, "warn");
-    const sendSpy = spy(channel, "send");
-    const notifier = createMatchTrackingNotifier({
-      client,
-      logger: log,
     });
-
     const result = await notifier.sendOrEditWatcherMessage(
-      watcher(),
-      "message-old",
-      new EmbedBuilder().setTitle("test"),
+      target,
+      "old",
+      embed,
     );
-
-    assertEquals(result, "message-new");
-    assertSpyCalls(sendSpy, 1);
-    assertEquals(warnSpy.calls[0].args.slice(0, 2), [
-      "match_tracking.edit_message_failed",
-      {
-        guildId: "guild-1",
-        channelId: "channel-1",
-        messageId: "message-old",
-      },
-    ]);
-    const editError = warnSpy.calls[0].args[2];
-    assertEquals(editError instanceof Error, true);
-    assertEquals((editError as Error).message, "message.edit is not available");
+    assertEquals(result.status, "retryable_failure");
+    assertEquals(sends, 0);
   });
 
-  test("Discordチャンネルが見つからないとき、状態更新をせず既存messageIdを返す", async () => {
-    const client = {
-      channels: {
-        fetch: (_channelId: string) => Promise.resolve(null),
-      },
-    };
-    const log = logger();
-    const warnSpy = spy(log, "warn");
+  test("既存投稿の消失が確認できた場合、配送すると新規投稿のIDを返す", async () => {
     const notifier = createMatchTrackingNotifier({
-      client,
-      logger: log,
+      logger,
+      client: {
+        channels: {
+          fetch: () =>
+            Promise.resolve({
+              send: () => Promise.resolve({ id: "new" }),
+              messages: { fetch: () => Promise.reject({ code: 10008 }) },
+            }),
+        },
+      },
     });
-
-    const result = await notifier.sendOrEditWatcherMessage(
-      watcher(),
-      "message-old",
-      new EmbedBuilder().setTitle("test"),
+    assertEquals(
+      await notifier.sendOrEditWatcherMessage(target, "old", embed),
+      { status: "sent", messageId: "new" },
     );
-
-    assertEquals(result, "message-old");
-    assertSpyCalls(warnSpy, 1);
   });
+
+  test("チャンネル取得が失敗した場合、配送すると既存IDを成功として返さない", async () => {
+    const notifier = createMatchTrackingNotifier({
+      logger,
+      client: {
+        channels: {
+          fetch: () => Promise.reject(new Error("network")),
+        },
+      },
+    });
+    assertEquals(
+      await notifier.sendOrEditWatcherMessage(target, "old", embed),
+      { status: "retryable_failure", reason: "channel_fetch" },
+    );
+  });
+
+  test("チャンネルが存在しない場合、配送すると恒久失敗を返す", async () => {
+    const notifier = createMatchTrackingNotifier({
+      logger,
+      client: {
+        channels: {
+          fetch: () => Promise.resolve(null),
+        },
+      },
+    });
+    assertEquals(
+      await notifier.sendOrEditWatcherMessage(target, "old", embed),
+      { status: "permanent_failure", reason: "channel_missing" },
+    );
+  });
+
+  test("sendが権限不足の場合、配送すると恒久失敗を返す", async () => {
+    const notifier = createMatchTrackingNotifier({
+      logger,
+      client: {
+        channels: {
+          fetch: () =>
+            Promise.resolve({ send: () => Promise.reject({ code: 50013 }) }),
+        },
+      },
+    });
+    assertEquals(await notifier.sendOrEditWatcherMessage(target, null, embed), {
+      status: "permanent_failure",
+      reason: "send",
+    });
+  });
+});
+
+test("履歴が複数ページありnonceがnullの場合、他人の識別子コピーを除外してBot自身の投稿を回収する", async () => {
+  // Arrange
+  const marker = "ADTeemo delivery:receipt-key";
+  const message = (id: string, author: string, footer: string) => ({
+    id,
+    author: { id: author },
+    client: { user: { id: "bot" } },
+    nonce: null,
+    embeds: [{ footer: { text: footer } }],
+    createdTimestamp: 2000,
+  });
+  let pages = 0;
+  let sends = 0;
+  const notifier = createMatchTrackingNotifier({
+    logger,
+    client: {
+      channels: {
+        fetch: () =>
+          Promise.resolve({
+            send: () => {
+              sends++;
+              return Promise.resolve({ id: "unexpected" });
+            },
+            history: ({ before }) => {
+              pages++;
+              if (!before) {
+                return Promise.resolve(Array.from({ length: 100 }, (_, index) =>
+                  message(`new-${index}`, "other", marker)));
+              }
+              assertEquals(before, "new-99");
+              return Promise.resolve([
+                message("recovered", "bot", `Teemo#JP1\n${marker}`),
+              ]);
+            },
+          }),
+      },
+    },
+  });
+  // Act
+  const result = await notifier.sendOrEditWatcherMessage(target, null, embed, {
+    nonce: "receipt-key",
+    createdAt: 1000,
+    uncertain: true,
+  });
+  // Assert
+  assertEquals(result, { status: "sent", messageId: "recovered" });
+  assertEquals(pages, 2);
+  assertEquals(sends, 0);
+});
+
+test("同じ永続識別子のBot投稿が複数ある場合、自動選択や再投稿をせず照合失敗を返す", async () => {
+  // Arrange
+  let sends = 0;
+  const notifier = createMatchTrackingNotifier({
+    logger,
+    client: {
+      channels: {
+        fetch: () =>
+          Promise.resolve({
+            send: () => {
+              sends++;
+              return Promise.resolve({ id: "unexpected" });
+            },
+            history: () =>
+              Promise.resolve(["one", "two"].map((id) => ({
+                id,
+                author: { id: "bot" },
+                client: { user: { id: "bot" } },
+                nonce: null,
+                embeds: [{ footer: { text: "ADTeemo delivery:receipt-key" } }],
+              }))),
+          }),
+      },
+    },
+  });
+  // Act
+  const result = await notifier.sendOrEditWatcherMessage(target, null, embed, {
+    nonce: "receipt-key",
+    createdAt: 1000,
+    uncertain: true,
+  });
+  // Assert
+  assertEquals(result, {
+    status: "retryable_failure",
+    reason: "reconciliation",
+  });
+  assertEquals(sends, 0);
 });

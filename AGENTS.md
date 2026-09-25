@@ -1,51 +1,31 @@
 # ADTeemo Project
 
-## Project Overview
-
-ADTeemoはLeague of Legendsのカスタムゲーム運営を支援するDiscord Botです。Discord BotとBackend APIの2コンポーネントで構成し、Deno workspaceとDockerで開発・実行します。
-
-- **Runtime:** Deno 2.5 以上, TypeScript
-- **API:** Hono RPC
-- **Database:** SQLite + Drizzle ORM
-- **Discord Bot:** discord.js
-- **Workspaces:** `api`, `bot`, `messages`
+ADTeemoはLeague of Legendsのカスタムゲーム運営を支援するDiscord Botです。技術構成・setupは[CONTRIBUTING](./CONTRIBUTING.md)、現在利用できる機能は[README](./README.md)を参照してください。
 
 ## 正本と文書ルーティング
 
 作業前に必要な文書だけを読み、実装・設定・Issueの状態を推測で補完しないこと。
 
-| 確認したい内容                   | 正本・参照先                            |
-| -------------------------------- | --------------------------------------- |
-| 実行task、workspace、依存定義    | rootまたは対象workspaceの `deno.json`   |
-| 現在の実装とテスト               | 対象コード、`*.test.ts`                 |
-| 要求仕様と設計上の不変条件       | [SPEC.md](./SPEC.md)                    |
-| 環境変数、起動、Docker、task一覧 | [CONTRIBUTING.md](./CONTRIBUTING.md)    |
-| テスト分類、mock境界、テスト方針 | [TESTING_STYLE.md](./TESTING_STYLE.md)  |
-| 現在の優先度と完了状態           | GitHub Issues。`TASKS.md` は要約Roadmap |
+| 読む場面                                          | 正本・参照先                                              |
+| ------------------------------------------------- | --------------------------------------------------------- |
+| 実行task、workspace、依存定義を変更する           | rootまたは対象workspaceの `deno.json`                     |
+| topic・変更pathから採用判断や調査を探す           | [docs/README.md](./docs/README.md)の逆引き                |
+| 現在の挙動・契約を確認する                        | 対象code/schema/tests。Proposalを現行仕様として扱わない   |
+| setup、環境変数、Docker、migration、Git/Issue運用 | [CONTRIBUTING.md](./CONTRIBUTING.md)                      |
+| テストを追加・再編する                            | [TESTING_STYLE.md](./TESTING_STYLE.md)                    |
+| message keyや文体を変更する                       | [messages/README.md](./messages/README.md)                |
+| 優先度、受け入れ条件、完了状態を確認する          | [GitHub Issues](https://github.com/akgm3i/ADTeemo/issues) |
 
-## Deno / Dependency Rules
+外部サービスを扱う文書はVerified/Observedと再確認条件を読み、文書再編日を外部検証日とみなさないこと。
+
+## 依存・検証の制約
 
 - Deno v2の仕様に従い、Deno v1前提の書き方を持ち込まないこと。
-- 新規依存は共有依存ならroot、workspace固有なら対象workspaceの `deno.json` の `imports` に登録する。
-- `imports` の依存元は JSR (`jsr:`) を優先し、JSRに適切なpackageがない場合のみ npm (`npm:`) を使うこと。
-- TypeScriptコードでは `@std/testing/bdd` のようなimport map上のbare specifierを使い、version付き `jsr:` や `npm:` を直書きしないこと。
-- `https:` のmodule importと `deno.land/x` は、ソースコードとimport mapのどちらにも新規追加しないこと。通常のHTTP API URL文字列は対象外とする。
+- 依存追加時は[CONTRIBUTINGの依存管理規則](./CONTRIBUTING.md)に従い、共有かworkspace固有かを確認する。
 - Honoの詳細確認が必要な場合は公式ドキュメントを参照すること。
-
-## Commands and Verification
-
-完全なtask定義とqualityの構成は `deno.json` を正とし、この文書に重複して列挙しない。
-
-| Command                                   | Purpose                                           |
-| ----------------------------------------- | ------------------------------------------------- |
-| `deno task dev:all`                       | APIとBotを開発モードで起動                        |
-| `deno task dev:api` / `deno task dev:bot` | APIまたはBotだけを開発モードで起動                |
-| `deno task test:all`                      | `.env.example` を使う外部サービス非接続の全テスト |
-| `deno task quality`                       | root `deno.json` に定義された品質確認を一括実行   |
-
-コード変更後は原則 `deno task quality` を実行する。ドキュメントだけを変更した場合は、変更対象のformat、相対リンク、`git diff --check` など変更に比例した検証を行う。検証結果は完了報告に記載する。
-
-`deno task test:riot-live` は実Riot APIへ接続するため、依頼上必要な場合だけ実行する。本番Docker、slash command登録、共有または本番DBへの `db:push` / `db:migrate` も同様に対象環境を確認してから実行する。Dockerの詳細手順は `CONTRIBUTING.md` を参照する。
+- コード変更後は原則 `deno task quality` を実行する。正確な構成はroot `deno.json` が正本。
+- 文書だけの変更は対象format、[文書リンク・metadata検証](./docs/README.md)、`git diff --check`など変更に比例して確認する。
+- テストの追加・修正では[TESTING_STYLE](./TESTING_STYLE.md)を読み、通常テストでは`.env.example`を使う。
 
 ## Safety and Scope
 
@@ -59,18 +39,15 @@ ADTeemoはLeague of Legendsのカスタムゲーム運営を支援するDiscord 
 ## Development Conventions
 
 - 会話は日本語で行う。
-- 新機能・バグ修正はTDDを基本とし、期待する振る舞いを日本語のテスト名で先に固定する。
-- テスト名は「状況、操作、期待結果」が分かる形にする。stub / spyは `using` で自動復元する。
-- テストでは `@std/testing/bdd`、`@std/assert`、`@std/testing/mock` を使う。
-- APIレスポンスの成否はHTTPステータスを唯一のソースとし、HTTP APIレスポンスボディに `success` を含めない。
-- Bot内部の `apiClient` やUI層で `Result` 型として `success` を使うことは許可する。ただしHTTP API契約とは区別する。
+- 新機能・バグ修正はTDDを基本とする。期待する振る舞いの固定方法、命名、ライブラリ、mock境界はTESTING_STYLEに従う。
+- API変更時は[APIエラー契約](./docs/api-error-contract.md)を読み、HTTP statusを成否の正本とする。HTTP bodyに`success`を含めない。Bot内部Resultの`success`と混同しない。
 - DB設計は、Riot ID・内部レート・戦績をグローバル、Discordギルド設定・募集イベント・ロールID・VC設定をギルド別として扱う。
 - 既存の実装パターンを優先し、依頼外のリファクタリングや新機能を混在させない。
 
 ## GitHub / Issue Rules
 
 - GitHub関連情報は、利用可能ならGitHub connector / appを優先する。取得できない情報、Actions log、ローカルブランチとPRの対応確認などの不足分だけ `gh` CLIを使う。
-- 詳細なタスク追跡と完了状態はGitHub Issuesを正とし、`TASKS.md` は要約Roadmapとして扱う。
+- タスク追跡と完了状態はGitHub Issuesだけを正とする。Issueタイトル・Labels・Parent/Depends on/Relatedの規則はCONTRIBUTINGを参照する。
 - Issueの更新やIssue化は、ユーザーの明示依頼または合意がある場合だけ行う。
 - PRにレビュー指摘がある場合、指摘内容の妥当性と実際のコードを調査してから対応を判断する。
 

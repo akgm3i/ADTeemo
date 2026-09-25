@@ -18,3 +18,24 @@ export class OpggMatchParticipantMismatchError extends Error {
     this.name = "OpggMatchParticipantMismatchError";
   }
 }
+
+export class EventNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EventNotFoundError";
+  }
+}
+
+export class DomainConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DomainConflictError";
+  }
+}
+
+export class RiotAccountNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RiotAccountNotFoundError";
+  }
+}

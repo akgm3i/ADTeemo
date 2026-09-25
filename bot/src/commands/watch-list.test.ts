@@ -19,6 +19,7 @@ function watcher(
   return {
     guildId: "mock-guild-id",
     targetDiscordId: "target-1",
+    riotAccountPuuid: "puuid-1",
     requesterId: "requester-1",
     channelId: "channel-1",
     enabled: true,
@@ -83,6 +84,11 @@ describe("Command: watch-list", () => {
 
   test("監視対象が多い場合でも、Discordのcontent制限内に収める", async () => {
     const interaction = new MockInteractionBuilder("watch-list").build();
+    using _accountStub = stub(
+      apiClient,
+      "getRiotAccounts",
+      () => Promise.resolve({ success: true, accounts: [] }),
+    );
     const watchers = Array.from({ length: 120 }, (_, index) =>
       watcher({
         targetDiscordId: `target-${index + 1}`,

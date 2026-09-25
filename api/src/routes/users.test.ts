@@ -154,6 +154,7 @@ describe("routes/users.ts", () => {
   describe("GET /users/:userId/riot-account", () => {
     test("Riotアカウントが存在するとき、アカウント情報を返す", async () => {
       const account = {
+        isMain: true,
         discordId,
         puuid,
         gameName,
@@ -170,6 +171,7 @@ describe("routes/users.ts", () => {
       );
 
       const res = await client.users[":userId"]["riot-account"].$get({
+        query: {},
         param: { userId: discordId },
       });
 
@@ -187,6 +189,7 @@ describe("routes/users.ts", () => {
       );
 
       const res = await client.users[":userId"]["riot-account"].$get({
+        query: {},
         param: { userId: discordId },
       });
 

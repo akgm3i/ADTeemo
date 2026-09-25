@@ -61,20 +61,20 @@ function matchResponse(): Response {
 }
 
 function createFakeRiotApi(
+  time: FakeTime,
   fakeFetch: typeof fetch,
-  options: { now?: number; sleeper?: RiotApiSleeper } = {},
+  options: { sleeper?: RiotApiSleeper } = {},
 ) {
-  let now = options.now ?? 0;
   const sleeps: number[] = [];
-  const sleeper = options.sleeper ?? ((ms: number) => {
-    sleeps.push(ms);
-    now += ms;
-    return Promise.resolve();
-  });
+  const sleeper = options.sleeper ??
+    (async (ms: number, signal?: AbortSignal) => {
+      await defaultSleeper(ms, signal);
+      sleeps.push(ms);
+    });
   const warnings: Array<Record<string, unknown> | undefined> = [];
   const api = createRiotApi({
     fetch: fakeFetch,
-    clock: { now: () => now },
+    clock: { now: () => time.now },
     sleeper,
     env: {
       get: (key: string) => key === "RIOT_API_KEY" ? "test-key" : undefined,
@@ -90,16 +90,29 @@ function createFakeRiotApi(
     api,
     sleeps,
     warnings,
-    now: () => now,
+    now: () => time.now,
     advance: (ms: number) => {
-      now += ms;
+      time.tick(ms);
+    },
+    async run<T>(request: Promise<T>): Promise<T> {
+      if (options.sleeper) return await request;
+      // Handle rejection before advancing timers, including request deadlines.
+      const result = request.then(
+        (value) => ({ ok: true as const, value }),
+        (error: unknown) => ({ ok: false as const, error }),
+      );
+      await time.tickAsync(0);
+      await time.runAllAsync();
+      const outcome = await result;
+      if (!outcome.ok) throw outcome.error;
+      return outcome.value;
     },
   };
 }
 
 describe("createRiotApi", () => {
   test("既定sleeperが完了したとき、abort listenerを解除する", async () => {
-    using time = new FakeTime();
+    using time = new FakeTime(0);
     let listener: EventListenerOrEventListenerObject | undefined;
     let removed = 0;
     const signal = {
@@ -127,9 +140,11 @@ describe("createRiotApi", () => {
   });
 
   test("同時に要求するとき、process内の共有queueからFIFO順に1件ずつ実行する", async () => {
+    using time = new FakeTime(0);
     const firstResponse = Promise.withResolvers<Response>();
     const fetchNames: string[] = [];
     const fake = createFakeRiotApi(
+      time,
       ((input: RequestInfo | URL) => {
         const url = new URL(String(input));
         const name = decodeURIComponent(url.pathname.split("/").at(-2) ?? "");
@@ -143,10 +158,11 @@ describe("createRiotApi", () => {
       },
     );
 
-    const first = fake.api.getAccountByRiotId("asia", "First", "JP1");
-    const second = fake.api.getAccountByRiotId("asia", "Second", "JP1");
-    await Promise.resolve();
-    await Promise.resolve();
+    const first = fake.run(fake.api.getAccountByRiotId("asia", "First", "JP1"));
+    const second = fake.run(
+      fake.api.getAccountByRiotId("asia", "Second", "JP1"),
+    );
+    await time.tickAsync(0);
 
     assertEquals(fetchNames, ["First"]);
 
@@ -157,8 +173,10 @@ describe("createRiotApi", () => {
   });
 
   test("fetchが応答しないとき、各attemptを5秒で打ち切って通常は最大3回試す", async () => {
+    using time = new FakeTime(0);
     let calls = 0;
     const fake = createFakeRiotApi(
+      time,
       (() => {
         calls += 1;
         return new Promise<Response>(() => {});
@@ -166,7 +184,7 @@ describe("createRiotApi", () => {
     );
 
     const error = await assertRejects(
-      () => fake.api.getAccountByRiotId("asia", "Teemo", "JP1"),
+      () => fake.run(fake.api.getAccountByRiotId("asia", "Teemo", "JP1")),
       RiotApiRequestError,
       "Riot API request timed out",
     );
@@ -178,9 +196,11 @@ describe("createRiotApi", () => {
   });
 
   test("attempt処理がrejectしたとき、timeout sleeperを必ずabortする", async () => {
+    using time = new FakeTime(0);
     const response = Promise.withResolvers<Response>();
     let timeoutSignal: AbortSignal | undefined;
     const fake = createFakeRiotApi(
+      time,
       (() => response.promise) as typeof fetch,
       {
         sleeper: (_ms, signal) => {
@@ -204,8 +224,10 @@ describe("createRiotApi", () => {
       },
     });
 
-    const request = fake.api.getAccountByRiotId("asia", "Teemo", "JP1");
-    for (let index = 0; index < 12; index++) await Promise.resolve();
+    const request = fake.run(
+      fake.api.getAccountByRiotId("asia", "Teemo", "JP1"),
+    );
+    await time.tickAsync(0);
     response.resolve(brokenResponse);
 
     await assertRejects(() => request, Error, rootCause.message);
@@ -213,8 +235,10 @@ describe("createRiotApi", () => {
   });
 
   test("network errorのあと成功するとき、500ms刻みの線形backoffで再試行する", async () => {
+    using time = new FakeTime(0);
     let calls = 0;
     const fake = createFakeRiotApi(
+      time,
       (() => {
         calls += 1;
         if (calls < 3) return Promise.reject(new TypeError("secret network"));
@@ -222,11 +246,11 @@ describe("createRiotApi", () => {
       }) as typeof fetch,
     );
 
-    const account = await fake.api.getAccountByRiotId(
+    const account = await fake.run(fake.api.getAccountByRiotId(
       "asia",
       "Teemo",
       "JP1",
-    );
+    ));
 
     assertEquals(account?.gameName, "Teemo");
     assertEquals(calls, 3);
@@ -234,7 +258,9 @@ describe("createRiotApi", () => {
   });
 
   test("network errorが最終attemptまで続くとき、原因の詳細を公開しない型付きerrorを返す", async () => {
+    using time = new FakeTime(0);
     const fake = createFakeRiotApi(
+      time,
       (() =>
         Promise.reject(
           new TypeError("https://secret.example/puuid-raw?api_key=secret"),
@@ -242,7 +268,8 @@ describe("createRiotApi", () => {
     );
 
     const error = await assertRejects(
-      () => fake.api.getAccountByRiotId("asia", "RawRiotId", "RawTag"),
+      () =>
+        fake.run(fake.api.getAccountByRiotId("asia", "RawRiotId", "RawTag")),
       RiotApiRequestError,
       "Riot API network request failed",
     );
@@ -255,14 +282,17 @@ describe("createRiotApi", () => {
   });
 
   test("Riot IDがURL正規化される値でも、型付きerrorへ生値を含めない", async () => {
+    using time = new FakeTime(0);
     const fake = createFakeRiotApi(
+      time,
       (() =>
         Promise.resolve(new Response(null, { status: 400 }))) as typeof fetch,
     );
 
     for (const gameName of ["", ".", ".."]) {
       const error = await assertRejects(
-        () => fake.api.getAccountByRiotId("asia", gameName, "SecretTag"),
+        () =>
+          fake.run(fake.api.getAccountByRiotId("asia", gameName, "SecretTag")),
         RiotApiRequestError,
         "Riot API request failed: 400",
       );
@@ -277,9 +307,11 @@ describe("createRiotApi", () => {
   });
 
   test("429と5xxが続くとき、残attempt内だけ再試行する", async () => {
+    using time = new FakeTime(0);
     const statuses = [429, 503, 200];
     let calls = 0;
     const fake = createFakeRiotApi(
+      time,
       (() => {
         const status = statuses[calls++];
         return Promise.resolve(
@@ -291,11 +323,11 @@ describe("createRiotApi", () => {
       }) as typeof fetch,
     );
 
-    const account = await fake.api.getAccountByRiotId(
+    const account = await fake.run(fake.api.getAccountByRiotId(
       "asia",
       "Teemo",
       "JP1",
-    );
+    ));
 
     assertEquals(account?.gameName, "Teemo");
     assertEquals(calls, 3);
@@ -303,8 +335,10 @@ describe("createRiotApi", () => {
   });
 
   test("5xxがRetry-Afterを返すとき、指定時間を待ってから再試行する", async () => {
+    using time = new FakeTime(0);
     let calls = 0;
     const fake = createFakeRiotApi(
+      time,
       (() => {
         calls += 1;
         return Promise.resolve(
@@ -318,11 +352,11 @@ describe("createRiotApi", () => {
       }) as typeof fetch,
     );
 
-    const account = await fake.api.getAccountByRiotId(
+    const account = await fake.run(fake.api.getAccountByRiotId(
       "asia",
       "Teemo",
       "JP1",
-    );
+    ));
 
     assertEquals(account?.gameName, "Teemo");
     assertEquals(calls, 2);
@@ -330,10 +364,12 @@ describe("createRiotApi", () => {
   });
 
   test("5xxのRetry-Afterを同一hostname/methodへ共有し、別scopeは遮断しない", async () => {
+    using time = new FakeTime(0);
     const pendingSleeps: Array<{ ms: number; resolve(): void }> = [];
     const fetched: string[] = [];
     let leaderCalls = 0;
     const fake = createFakeRiotApi(
+      time,
       ((input: RequestInfo | URL) => {
         const url = new URL(String(input));
         fetched.push(`${url.hostname}|${url.pathname}`);
@@ -378,31 +414,22 @@ describe("createRiotApi", () => {
       },
     );
 
-    const leader = fake.api.getAccountByRiotId("asia", "Leader", "JP1");
-    for (let index = 0; index < 20 && pendingSleeps.length === 0; index++) {
-      await Promise.resolve();
-    }
-    const follower = fake.api.getAccountByRiotId(
+    const leader = fake.run(
+      fake.api.getAccountByRiotId("asia", "Leader", "JP1"),
+    );
+    await time.tickAsync(0);
+    const follower = fake.run(fake.api.getAccountByRiotId(
       "asia",
       "Follower",
       "JP1",
-    );
-    const europe = fake.api.getAccountByRiotId(
+    ));
+    const europe = fake.run(fake.api.getAccountByRiotId(
       "europe",
       "Europe",
       "EUW",
-    );
-    const match = fake.api.getMatchById("asia", "JP1_12345");
-    for (let index = 0; index < 100; index++) {
-      const europeFetched = fetched.some((value) =>
-        value.startsWith("europe.api.riotgames.com|")
-      );
-      const matchFetched = fetched.some((value) =>
-        value.includes("|/lol/match/v5/matches/")
-      );
-      if (pendingSleeps.length >= 2 && europeFetched && matchFetched) break;
-      await Promise.resolve();
-    }
+    ));
+    const match = fake.run(fake.api.getMatchById("asia", "JP1_12345"));
+    await time.tickAsync(0);
 
     const followerFetchedBeforeCooldown = fetched.some((value) =>
       value.includes("/Follower/")
@@ -438,8 +465,10 @@ describe("createRiotApi", () => {
   });
 
   test("Match要求で5xxが続くとき、最大5attemptまで試す", async () => {
+    using time = new FakeTime(0);
     let calls = 0;
     const fake = createFakeRiotApi(
+      time,
       (() => {
         calls += 1;
         return Promise.resolve(
@@ -448,7 +477,7 @@ describe("createRiotApi", () => {
       }) as typeof fetch,
     );
 
-    const match = await fake.api.getMatchById("asia", "JP1_12345");
+    const match = await fake.run(fake.api.getMatchById("asia", "JP1_12345"));
 
     assertEquals(match?.metadata.matchId, "JP1_12345");
     assertEquals(calls, 5);
@@ -456,8 +485,10 @@ describe("createRiotApi", () => {
   });
 
   test("retry対象外の4xxまたはschema不正では再試行しない", async () => {
+    using time = new FakeTime(0);
     let httpCalls = 0;
     const httpFake = createFakeRiotApi(
+      time,
       (() => {
         httpCalls += 1;
         return Promise.resolve(new Response(null, { status: 400 }));
@@ -465,7 +496,8 @@ describe("createRiotApi", () => {
     );
 
     const httpError = await assertRejects(
-      () => httpFake.api.getAccountByRiotId("asia", "Teemo", "JP1"),
+      () =>
+        httpFake.run(httpFake.api.getAccountByRiotId("asia", "Teemo", "JP1")),
       RiotApiRequestError,
       "Riot API request failed: 400",
     );
@@ -477,6 +509,7 @@ describe("createRiotApi", () => {
 
     let schemaCalls = 0;
     const schemaFake = createFakeRiotApi(
+      time,
       (() => {
         schemaCalls += 1;
         return Promise.resolve(
@@ -486,7 +519,10 @@ describe("createRiotApi", () => {
     );
 
     const schemaError = await assertRejects(
-      () => schemaFake.api.getAccountByRiotId("asia", "Teemo", "JP1"),
+      () =>
+        schemaFake.run(
+          schemaFake.api.getAccountByRiotId("asia", "Teemo", "JP1"),
+        ),
       RiotApiRequestError,
       "Riot API response validation failed",
     );
@@ -496,6 +532,7 @@ describe("createRiotApi", () => {
 
     let parseCalls = 0;
     const parseFake = createFakeRiotApi(
+      time,
       (() => {
         parseCalls += 1;
         return Promise.resolve(new Response("not-json", { status: 200 }));
@@ -503,7 +540,8 @@ describe("createRiotApi", () => {
     );
 
     const parseError = await assertRejects(
-      () => parseFake.api.getAccountByRiotId("asia", "Teemo", "JP1"),
+      () =>
+        parseFake.run(parseFake.api.getAccountByRiotId("asia", "Teemo", "JP1")),
       RiotApiRequestError,
       "Riot API response parsing failed",
     );
@@ -513,8 +551,10 @@ describe("createRiotApi", () => {
   });
 
   test("最終attemptの429でもRetry-Afterを後続要求のcooldownへ反映する", async () => {
+    using time = new FakeTime(0);
     let calls = 0;
     const fake = createFakeRiotApi(
+      time,
       ((input: RequestInfo | URL) => {
         calls += 1;
         const hostname = new URL(String(input)).hostname;
@@ -537,7 +577,7 @@ describe("createRiotApi", () => {
     );
 
     await assertRejects(
-      () => fake.api.getAccountByRiotId("asia", "Teemo", "JP1"),
+      () => fake.run(fake.api.getAccountByRiotId("asia", "Teemo", "JP1")),
       RiotApiRequestError,
       "Riot API request failed: 429",
     );
@@ -550,28 +590,30 @@ describe("createRiotApi", () => {
       true,
     );
 
-    const europe = await fake.api.getAccountByRiotId(
+    const europe = await fake.run(fake.api.getAccountByRiotId(
       "europe",
       "Europe",
       "EUW",
-    );
+    ));
     assertEquals(europe?.gameName, "Europe");
 
     const beforeAsia = fake.now();
-    const asia = await fake.api.getAccountByRiotId(
+    const asia = await fake.run(fake.api.getAccountByRiotId(
       "asia",
       "Asia",
       "JP1",
-    );
+    ));
     assertEquals(asia?.gameName, "Asia");
     assertEquals(fake.now() - beforeAsia, 10_000);
   });
 
   test("先頭requestがscope固有cooldownを待つとき、別hostnameのrequestをqueueで遮断しない", async () => {
+    using time = new FakeTime(0);
     const pendingSleeps: Array<{ ms: number; resolve(): void }> = [];
     const fetchedHostnames: string[] = [];
     let asiaCalls = 0;
     const fake = createFakeRiotApi(
+      time,
       ((input: RequestInfo | URL) => {
         const hostname = new URL(String(input)).hostname;
         fetchedHostnames.push(hostname);
@@ -593,7 +635,8 @@ describe("createRiotApi", () => {
         );
       }) as typeof fetch,
       {
-        sleeper: (ms) => {
+        sleeper: (ms, signal) => {
+          if (signal) return defaultSleeper(ms, signal);
           if (ms < 30_000) return Promise.resolve();
           return new Promise<void>((resolve) => {
             pendingSleeps.push({ ms, resolve });
@@ -603,26 +646,24 @@ describe("createRiotApi", () => {
     );
 
     await assertRejects(
-      () => fake.api.getAccountByRiotId("asia", "Limited", "JP1"),
+      () => fake.run(fake.api.getAccountByRiotId("asia", "Limited", "JP1")),
       RiotApiRequestError,
       "Riot API request failed: 429",
     );
 
-    const blockedAsia = fake.api.getAccountByRiotId(
+    const blockedAsia = fake.run(fake.api.getAccountByRiotId(
       "asia",
       "Blocked",
       "JP1",
-    );
-    for (let index = 0; index < 20 && pendingSleeps.length === 0; index++) {
-      await Promise.resolve();
-    }
-    const europe = fake.api.getAccountByRiotId(
+    ));
+    await time.tickAsync(0);
+    const europe = fake.run(fake.api.getAccountByRiotId(
       "europe",
       "Europe",
       "EUW",
-    );
-    const match = fake.api.getMatchById("asia", "JP1_12345");
-    for (let index = 0; index < 20; index++) await Promise.resolve();
+    ));
+    const match = fake.run(fake.api.getMatchById("asia", "JP1_12345"));
+    await time.tickAsync(0);
 
     const europeFetchedBeforeDeadline = fetchedHostnames.includes(
       "europe.api.riotgames.com",
@@ -645,10 +686,12 @@ describe("createRiotApi", () => {
   });
 
   test("retry backoffを待つとき、後続のready requestをqueueで遮断しない", async () => {
+    using time = new FakeTime(0);
     const pendingSleeps: Array<{ ms: number; resolve(): void }> = [];
     const fetchedNames: string[] = [];
     let retryingCalls = 0;
     const fake = createFakeRiotApi(
+      time,
       ((input: RequestInfo | URL) => {
         const url = new URL(String(input));
         const name = decodeURIComponent(url.pathname.split("/").at(-2) ?? "");
@@ -669,20 +712,14 @@ describe("createRiotApi", () => {
       },
     );
 
-    const retrying = fake.api.getAccountByRiotId(
+    const retrying = fake.run(fake.api.getAccountByRiotId(
       "asia",
       "Retrying",
       "JP1",
-    );
-    for (
-      let index = 0;
-      index < 20 && !pendingSleeps.some(({ ms }) => ms === 500);
-      index++
-    ) {
-      await Promise.resolve();
-    }
-    const ready = fake.api.getAccountByRiotId("asia", "Ready", "JP1");
-    for (let index = 0; index < 20; index++) await Promise.resolve();
+    ));
+    await time.tickAsync(0);
+    const ready = fake.run(fake.api.getAccountByRiotId("asia", "Ready", "JP1"));
+    await time.tickAsync(0);
 
     const readyFetchedBeforeBackoff = fetchedNames.includes("Ready");
     fake.advance(500);
@@ -694,8 +731,10 @@ describe("createRiotApi", () => {
   });
 
   test("method headerなしの429 cooldownが終わると、後続の成功要求を恒久的に1件制限しない", async () => {
+    using time = new FakeTime(0);
     let calls = 0;
     const fake = createFakeRiotApi(
+      time,
       (() => {
         calls += 1;
         if (calls <= 3) {
@@ -716,20 +755,20 @@ describe("createRiotApi", () => {
     );
 
     await assertRejects(
-      () => fake.api.getAccountByRiotId("asia", "Limited", "JP1"),
+      () => fake.run(fake.api.getAccountByRiotId("asia", "Limited", "JP1")),
       RiotApiRequestError,
       "Riot API request failed: 429",
     );
-    const first = await fake.api.getAccountByRiotId(
+    const first = await fake.run(fake.api.getAccountByRiotId(
       "asia",
       "FirstSuccess",
       "JP1",
-    );
-    const second = await fake.api.getAccountByRiotId(
+    ));
+    const second = await fake.run(fake.api.getAccountByRiotId(
       "asia",
       "SecondSuccess",
       "JP1",
-    );
+    ));
 
     assertEquals(first?.gameName, "FirstSuccess");
     assertEquals(second?.gameName, "SecondSuccess");
@@ -739,8 +778,10 @@ describe("createRiotApi", () => {
   });
 
   test("limit headerだけが返るとき、現在requestをcountして次要求をwindowまで待機する", async () => {
+    using time = new FakeTime(0);
     let calls = 0;
     const fake = createFakeRiotApi(
+      time,
       (() => {
         calls += 1;
         return Promise.resolve(accountResponse(
@@ -750,12 +791,12 @@ describe("createRiotApi", () => {
       }) as typeof fetch,
     );
 
-    await fake.api.getAccountByRiotId("asia", "First", "JP1");
-    const second = await fake.api.getAccountByRiotId(
+    await fake.run(fake.api.getAccountByRiotId("asia", "First", "JP1"));
+    const second = await fake.run(fake.api.getAccountByRiotId(
       "asia",
       "Second",
       "JP1",
-    );
+    ));
 
     assertEquals(second?.gameName, "Second");
     assertEquals(calls, 2);
@@ -763,9 +804,11 @@ describe("createRiotApi", () => {
   });
 
   test("timeout済みattemptの遅延responseは、queue解放後の共有bucketを変更しない", async () => {
+    using time = new FakeTime(0);
     const delayedResponses: Array<PromiseWithResolvers<Response>> = [];
     let calls = 0;
     const fake = createFakeRiotApi(
+      time,
       (() => {
         calls += 1;
         if (calls <= 3) {
@@ -778,12 +821,12 @@ describe("createRiotApi", () => {
     );
 
     await assertRejects(
-      () => fake.api.getAccountByRiotId("asia", "First", "JP1"),
+      () => fake.run(fake.api.getAccountByRiotId("asia", "First", "JP1")),
       RiotApiRequestError,
       "timed out",
     );
     assertEquals(
-      (await fake.api.getAccountByRiotId("asia", "Second", "JP1"))
+      (await fake.run(fake.api.getAccountByRiotId("asia", "Second", "JP1")))
         ?.gameName,
       "Second",
     );
@@ -797,8 +840,7 @@ describe("createRiotApi", () => {
         },
       }),
     );
-    await Promise.resolve();
-    await Promise.resolve();
+    await time.tickAsync(0);
 
     assertEquals(fake.api.__testing.rateLimiterSnapshot().methodBuckets, []);
     assertEquals(fake.warnings, []);
@@ -806,9 +848,11 @@ describe("createRiotApi", () => {
   });
 
   test("queue待機中に30秒deadlineを過ぎた要求は後からfetchしない", async () => {
+    using time = new FakeTime(0);
     const firstResponse = Promise.withResolvers<Response>();
     let calls = 0;
     const fake = createFakeRiotApi(
+      time,
       (() => {
         calls += 1;
         return firstResponse.promise;
@@ -818,10 +862,11 @@ describe("createRiotApi", () => {
       },
     );
 
-    const first = fake.api.getAccountByRiotId("asia", "First", "JP1");
-    const expired = fake.api.getAccountByRiotId("asia", "Expired", "JP1");
-    await Promise.resolve();
-    await Promise.resolve();
+    const first = fake.run(fake.api.getAccountByRiotId("asia", "First", "JP1"));
+    const expired = fake.run(
+      fake.api.getAccountByRiotId("asia", "Expired", "JP1"),
+    );
+    await time.tickAsync(0);
     fake.advance(30_001);
     firstResponse.resolve(accountResponse("First"));
 
@@ -836,13 +881,16 @@ describe("createRiotApi", () => {
   });
 
   test("先行要求が応答しないままでも、queue待機中の要求は30秒で失敗する", async () => {
+    using time = new FakeTime(0);
     const sleeps: Array<{
       ms: number;
+      signal?: AbortSignal;
       resolve(): void;
     }> = [];
     const firstResponse = Promise.withResolvers<Response>();
     let calls = 0;
     const fake = createFakeRiotApi(
+      time,
       (() => {
         calls += 1;
         return firstResponse.promise;
@@ -860,6 +908,7 @@ describe("createRiotApi", () => {
             signal?.addEventListener("abort", abort, { once: true });
             sleeps.push({
               ms,
+              signal,
               resolve() {
                 signal?.removeEventListener("abort", abort);
                 resolve();
@@ -869,18 +918,21 @@ describe("createRiotApi", () => {
       },
     );
 
-    const first = fake.api.getAccountByRiotId("asia", "First", "JP1");
-    const expired = fake.api.getAccountByRiotId("asia", "Expired", "JP1");
-    for (let index = 0; index < 20 && sleeps.length < 2; index++) {
-      await Promise.resolve();
-    }
-    assertEquals(sleeps.map(({ ms }) => ms).sort((a, b) => a - b), [
-      5_000,
-      30_000,
-    ]);
+    const first = fake.run(fake.api.getAccountByRiotId("asia", "First", "JP1"));
+    const expired = fake.run(
+      fake.api.getAccountByRiotId("asia", "Expired", "JP1"),
+    );
+    await time.tickAsync(0);
+    assertEquals(
+      sleeps.filter((sleep) => !sleep.signal?.aborted).map(({ ms }) => ms).sort(
+        (a, b) => a - b,
+      ),
+      [5_000, 30_000],
+    );
 
     fake.advance(30_000);
-    sleeps.find(({ ms }) => ms === 30_000)?.resolve();
+    sleeps.find(({ ms, signal }) => ms === 30_000 && !signal?.aborted)
+      ?.resolve();
     const error = await assertRejects(
       () => expired,
       RiotApiRequestError,
@@ -893,8 +945,10 @@ describe("createRiotApi", () => {
   });
 
   test("先行要求が失敗してもqueue tailを解放して後続要求を実行する", async () => {
+    using time = new FakeTime(0);
     let calls = 0;
     const fake = createFakeRiotApi(
+      time,
       (() => {
         calls += 1;
         return Promise.resolve(
@@ -905,8 +959,10 @@ describe("createRiotApi", () => {
       }) as typeof fetch,
     );
 
-    const first = fake.api.getAccountByRiotId("asia", "First", "JP1");
-    const second = fake.api.getAccountByRiotId("asia", "Second", "JP1");
+    const first = fake.run(fake.api.getAccountByRiotId("asia", "First", "JP1"));
+    const second = fake.run(
+      fake.api.getAccountByRiotId("asia", "Second", "JP1"),
+    );
 
     await assertRejects(() => first, RiotApiRequestError);
     assertEquals((await second)?.gameName, "Second");

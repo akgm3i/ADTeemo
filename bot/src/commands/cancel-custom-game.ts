@@ -1,7 +1,6 @@
 import {
   ActionRowBuilder,
   CommandInteraction,
-  GuildScheduledEventStatus,
   MessageFlags,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
@@ -11,17 +10,34 @@ import { messageHandler, messageKeys } from "../messages.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("cancel-custom-game")
-  .setDescription("自分が作成したカスタムゲームイベントをキャンセルします。");
+  .setDescription("自分が作成したカスタムゲームイベントをキャンセルします。")
+  .addIntegerOption((option) =>
+    option.setName("event").setDescription(
+      "キャンセルするイベントID（候補が多い場合に指定）",
+    ).setMinValue(1)
+  );
 
 export async function execute(interaction: CommandInteraction) {
   if (!interaction.isChatInputCommand() || !interaction.inGuild()) {
     return;
   }
 
+  if (!interaction.guild || !interaction.channel) {
+    await interaction.reply({
+      content: messageHandler.formatMessage(
+        messageKeys.common.info.guildOnlyCommand,
+      ),
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const creatorId = interaction.user.id;
-  const dbEventsResult = await apiClient.getCustomGameEventsByCreatorId(
+  const dbEventsResult = await apiClient.getCustomGameEventsByCreator(
+    interaction.guild.id,
+    interaction.channel.id,
     creatorId,
   );
 
@@ -34,24 +50,12 @@ export async function execute(interaction: CommandInteraction) {
     return;
   }
 
-  if (!interaction.guild) {
-    await interaction.editReply(
-      messageHandler.formatMessage(messageKeys.common.info.guildOnlyCommand),
-    );
-    return;
-  }
+  const eventId = interaction.options.getInteger("event");
+  const events = eventId === null
+    ? dbEventsResult.events
+    : dbEventsResult.events.filter((event) => event.id === eventId);
 
-  const discordEvents = await interaction.guild.scheduledEvents.fetch();
-  const activeEvents = dbEventsResult.events.filter(
-    (dbEvent) => {
-      const discordEvent = discordEvents.get(dbEvent.discordScheduledEventId);
-      return discordEvent &&
-        discordEvent.status !== GuildScheduledEventStatus.Completed &&
-        discordEvent.status !== GuildScheduledEventStatus.Canceled;
-    },
-  );
-
-  if (activeEvents.length === 0) {
+  if (events.length === 0) {
     await interaction.editReply(
       messageHandler.formatMessage(
         messageKeys.customGame.cancel.info.noActiveEvents,
@@ -60,9 +64,9 @@ export async function execute(interaction: CommandInteraction) {
     return;
   }
 
-  const options = activeEvents.map((event) => ({
+  const options = events.slice(0, 25).map((event) => ({
     label: event.name,
-    value: `${event.discordScheduledEventId}:${event.recruitmentMessageId}`,
+    value: String(event.id),
   }));
 
   const selectMenu = new StringSelectMenuBuilder()

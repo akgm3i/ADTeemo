@@ -8,7 +8,7 @@
   },
   "customGame": {
     "create": {
-      "success": "Created a custom game event. Posting a recruitment message.",
+      "success": "Created a custom game event and posted the recruitment message.",
       "recruitmentMessage": "### ⚔️ Custom Game Recruitment ⚔️\n\n@Custom\n\nStarting a custom game **{eventName}** at **{startTime}**!\nIf you want to participate, please react with your desired role.\n\nMultiple roles are welcome.\n\nOrganizer: {organizer}",
       "error": {
         "invalidDateTimeFormat": "Invalid date or time format. Please use MM/DD HH:mm format."
@@ -40,6 +40,24 @@
         "invalidRoleCount": "There must be exactly 2 players for the {role} role.",
         "noVoiceChannels": "Could not find the 'Red Team' or 'Blue Team' voice channels."
       }
+    },
+    "flow": {
+      "permission": "Manage Server permission is required.",
+      "roles": "Create one role per lane with /setup-roles. Ask an administrator to resolve duplicate role names.",
+      "distinctVc": "Choose separate voice channels for the lobby, Red and Blue teams.",
+      "saved": "Recruitment channel, voice channels and roles saved.",
+      "saveFailed": "Could not save the settings. Please try again later.",
+      "noOwnedEvent": "No recruiting event owned by you was found in this channel.",
+      "noEvents": "You have no recruiting events in this channel.",
+      "fetchFailed": "Could not retrieve events.",
+      "selectPlaceholder": "Choose an event to match teams",
+      "selectPrompt": "Choose an event to confirm its participants. For more than 25 events, specify its ID with /split-teams event.",
+      "matchingFailed": "Could not finish matching teams.",
+      "setupRequired": "Ask an administrator to configure lobby, Red and Blue voice channels with /setup-custom-game.",
+      "nextFetchFailed": "Could not retrieve the next game details.",
+      "missingParticipants": "Some participants are no longer in this server. Check the roster.",
+      "nextFailed": "Could not prepare the next game.",
+      "nextReady": "Participants are back in the lobby for game {game}. Use /split-teams event:{eventId} to return to team channels, then /record-match event:{eventId} game:{game} to record the result."
     }
   },
   "guild": {
@@ -96,6 +114,14 @@
       "cancelButton": "Cancel",
       "success": "Match stats registered.",
       "failure": "Failed to register match stats. {error}",
+      "failureReason": {
+        "api": "The API rejected the record. Check the input and Riot ID links.",
+        "database": "The database could not save the record. Retry later with the same game number.",
+        "communication": "Could not reach the API. Retry later with the same game number.",
+        "contract": "The API returned an unexpected response. Contact an administrator.",
+        "input": "Could not receive the stats through Discord. Run the command again.",
+        "unknown": "An unexpected error occurred."
+      },
       "cancelled": "Match stats registration was cancelled.",
       "timeout": "Timed out. Match stats registration was cancelled."
     }
@@ -161,7 +187,10 @@
         "visionScore": "Vision Score",
         "visionScorePerMinute": "Vision Score/min",
         "rank": "Rank",
-        "opgg": "OP.GG"
+        "opgg": "OP.GG",
+        "matchDetails": "Match details",
+        "duration": "Duration",
+        "role": "Role"
       },
       "opgg": {
         "detail": "[Match Detail]({url})",
@@ -181,6 +210,21 @@
         "gameOnly": "{platform} Game {gameId}",
         "match": "Match {matchId}",
         "matchWithRiotId": "Match {matchId} / {riotId}"
+      },
+      "role": {
+        "TOP": "Top",
+        "JUNGLE": "Jungle",
+        "MIDDLE": "Mid",
+        "BOTTOM": "Bot",
+        "SUPPORT": "Support",
+        "UNKNOWN": "Unknown"
+      },
+      "metric": {
+        "totalWithRate": "{total} ({rate}/min)",
+        "minionCs": "Minions: {value}",
+        "jungleCs": "Jungle etc. total: {value}",
+        "allyJungleCs": "Ally jungle: {value}",
+        "enemyJungleCs": "Enemy jungle: {value}"
       }
     }
   },
@@ -203,5 +247,23 @@
         "invalidState": "The authentication session is invalid or expired. Please run the command again."
       }
     }
+  },
+  "riotAccounts": {
+    "empty": "No Riot accounts are registered. Use /set-riot-id to add one.",
+    "header": "Registered accounts (page {page}/{pages}). The main account is used for custom games.",
+    "main": "Main",
+    "choose": "Choose an account",
+    "saved": "Main account updated.",
+    "removed": "Selected account removed.",
+    "error": "Could not update the account. Open the list again.",
+    "ownerOnly": "Only the person who opened this list can change it."
+  },
+  "watchPolicy": {
+    "permission": "Manage Server permission and a notification channel in this server are required.",
+    "saved": "Monitoring settings saved. Accounts excluded by the server limit: {count}.",
+    "error": "Could not save monitoring settings. Try again later.",
+    "optOut": "Monitoring and pending notifications for all your accounts have stopped in this server.",
+    "optIn": "Monitoring of all your accounts is allowed again in this server when server monitoring and its channel are configured.",
+    "registration": "Servers with monitoring configured monitor every registered account. Use /watch-preference to opt out and /riot-accounts to select your main account or remove one."
   }
 }

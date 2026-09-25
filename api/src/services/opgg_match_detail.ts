@@ -64,6 +64,7 @@ async function resolveAndSave(
 
   const account = await deps.dbActions.getRiotAccountByDiscordId(
     input.targetDiscordId,
+    input.match.participant.puuid,
   );
   if (!account) {
     throw new RecordNotFoundError(

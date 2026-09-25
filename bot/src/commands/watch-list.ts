@@ -1,5 +1,6 @@
 import {
   CommandInteraction,
+  escapeMarkdown,
   MessageFlags,
   SlashCommandBuilder,
 } from "discord.js";
@@ -13,7 +14,10 @@ export const data = new SlashCommandBuilder()
   .setName("watch-list")
   .setDescription("現在のLoL試合監視対象一覧を表示します。");
 
-function buildWatchListContent(watchers: MatchWatcher[]) {
+function buildWatchListContent(
+  watchers: MatchWatcher[],
+  accountNames: Map<string, string>,
+) {
   if (watchers.length === 0) {
     return messageHandler.formatMessage(
       messageKeys.matchTracking.watchList.empty,
@@ -32,7 +36,13 @@ function buildWatchListContent(watchers: MatchWatcher[]) {
         targetId: watcher.targetDiscordId,
         channelId: watcher.channelId,
       },
-    );
+    ) +
+      ` · ${
+        escapeMarkdown(
+          accountNames.get(watcher.riotAccountPuuid) ??
+            watcher.riotAccountPuuid,
+        )
+      }`;
   });
   const selected = [header];
 
@@ -95,7 +105,23 @@ export async function execute(interaction: CommandInteraction) {
     return;
   }
 
+  const accountNames = new Map<string, string>();
+  for (
+    const owner of new Set(
+      result.watchers.map((watcher) => watcher.targetDiscordId),
+    )
+  ) {
+    const accounts = await apiClient.getRiotAccounts(owner);
+    if (accounts.success) {
+      for (const account of accounts.accounts) {
+        accountNames.set(
+          account.puuid,
+          `${account.gameName}#${account.tagLine}`,
+        );
+      }
+    }
+  }
   await interaction.editReply({
-    content: buildWatchListContent(result.watchers),
+    content: buildWatchListContent(result.watchers, accountNames),
   });
 }

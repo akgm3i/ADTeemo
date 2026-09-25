@@ -42,3 +42,22 @@ export type RankSnapshotPhase = (typeof rankSnapshotPhases)[number];
 
 export const externalMatchProviders = ["opgg"] as const;
 export type ExternalMatchProvider = (typeof externalMatchProviders)[number];
+
+export const customGameTeams = ["BLUE", "RED"] as const;
+export type CustomGameTeam = (typeof customGameTeams)[number];
+
+export const customGameEventPhases = [
+  "PREPARING",
+  "RECRUITING",
+  "CANCELLED",
+] as const;
+export type CustomGameEventPhase = (typeof customGameEventPhases)[number];
+
+export const customGameEventSyncStates = [
+  "CREATE_PENDING",
+  "CONSISTENT",
+  "CREATE_COMPENSATION_PENDING",
+  "CANCEL_PENDING",
+] as const;
+export type CustomGameEventSyncState =
+  (typeof customGameEventSyncStates)[number];

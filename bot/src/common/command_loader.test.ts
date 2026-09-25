@@ -1,4 +1,4 @@
-import { assertEquals, assertFalse, assertStringIncludes } from "@std/assert";
+import { assertEquals, assertFalse } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import {
   ApplicationIntegrationType,
@@ -84,7 +84,7 @@ describe("command loader", () => {
         enabledNames.map((name) => [
           name,
           {
-            contexts: name === "health" || name === "set-riot-id"
+            contexts: ["health", "set-riot-id", "riot-accounts"].includes(name)
               ? [
                 InteractionContextType.Guild,
                 InteractionContextType.BotDM,
@@ -103,14 +103,6 @@ describe("command loader", () => {
       .map((match) => match[1])
       .sort();
     assertEquals(documentedNames, enabledNames);
-
-    const spec = await Deno.readTextFile(
-      new URL("../../../SPEC.md", import.meta.url),
-    );
-    assertStringIncludes(
-      spec,
-      "`/link-riot-account` は #117 でcanonical Riot account modelへ接続するまで未提供",
-    );
   });
 
   test("全commandが有効なとき、name順の完全な一覧を返す", async () => {

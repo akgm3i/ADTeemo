@@ -1,3 +1,4 @@
+import systemMessages from "../ja_JP/system.json" with { type: "json" };
 import { assertEquals } from "@std/assert";
 import { afterEach, beforeEach, describe, test } from "@std/testing/bdd";
 import { assertSpyCalls, stub } from "@std/testing/mock";
@@ -128,4 +129,12 @@ describe("formatMessage (Message Translation)", () => {
       assertEquals(result, "キャンセル");
     });
   });
+});
+
+test("未提供の言語を指定した場合、実在する日本語systemカタログへfallbackする", () => {
+  const messages = initializeMessages({ lang: "not-supported" });
+  assertEquals(
+    messages.formatMessage("common.info.guildOnlyCommand"),
+    systemMessages.common.info.guildOnlyCommand,
+  );
 });

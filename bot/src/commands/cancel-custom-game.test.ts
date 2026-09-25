@@ -5,14 +5,14 @@ import { data, execute } from "./cancel-custom-game.ts";
 import { MockGuildBuilder, MockInteractionBuilder } from "../test_utils.ts";
 import {
   ActionRowBuilder,
-  GuildScheduledEventStatus,
+  Channel,
   InteractionEditReplyOptions,
   MessageFlags,
   StringSelectMenuBuilder,
 } from "discord.js";
 import { messageHandler, messageKeys } from "../messages.ts";
-import { CustomGameEvent } from "../types.ts";
 import { apiClient } from "../api_client.ts";
+import type { Event } from "@adteemo/api/contract";
 
 describe("Command: cancel-custom-game", () => {
   describe("定義", () => {
@@ -28,48 +28,53 @@ describe("Command: cancel-custom-game", () => {
 
   const FIXED_DATE = new Date("2025-09-28T00:00:00.000Z");
 
-  test("アクティブなイベントが存在する場合、イベント選択用のセレクトメニューを表示する", async () => {
+  function eventFixture(overrides: Partial<Event> = {}): Event {
+    return {
+      id: 1,
+      operationKey: "interaction-1",
+      name: "Active Event",
+      guildId: "guild-456",
+      creatorId: "user-123",
+      recruitmentChannelId: "channel-1",
+      voiceChannelId: "voice-1",
+      discordScheduledEventId: "active-event-id",
+      recruitmentMessageId: "msg-1",
+      phase: "RECRUITING",
+      syncState: "CONSISTENT",
+      revision: 0,
+      discordEventDeleted: false,
+      recruitmentMessageDeleted: false,
+      lastFailureCode: null,
+      scheduledStartAt: FIXED_DATE,
+      createdAt: FIXED_DATE,
+      updatedAt: null,
+      ...overrides,
+    };
+  }
+
+  test("募集チャンネル内に未中止イベントが存在する場合、作成途中も含めて内部event IDの選択肢を表示する", async () => {
     // Arrange
-    const mockDbEvents: CustomGameEvent[] = [
-      {
-        id: 1,
-        name: "Active Event",
-        discordScheduledEventId: "active-event-id",
-        recruitmentMessageId: "msg-1",
-        creatorId: "user-123",
-        guildId: "guild-456",
-        scheduledStartAt: FIXED_DATE,
-        createdAt: FIXED_DATE,
-      },
-      {
+    const mockDbEvents: Event[] = [
+      eventFixture(),
+      eventFixture({
         id: 2,
-        name: "Finished Event",
-        discordScheduledEventId: "finished-event-id",
-        recruitmentMessageId: "msg-2",
-        creatorId: "user-123",
-        guildId: "guild-456",
-        scheduledStartAt: FIXED_DATE,
-        createdAt: FIXED_DATE,
-      },
+        name: "Preparing Event",
+        discordScheduledEventId: null,
+        recruitmentMessageId: null,
+        phase: "PREPARING",
+        syncState: "CREATE_PENDING",
+      }),
     ];
     using getEventsStub = stub(
       apiClient,
-      "getCustomGameEventsByCreatorId",
+      "getCustomGameEventsByCreator",
       () => Promise.resolve({ success: true, events: mockDbEvents }),
     );
-    const mockGuild = new MockGuildBuilder("guild-456")
-      .withScheduledEvent({
-        id: "active-event-id",
-        status: GuildScheduledEventStatus.Scheduled,
-      })
-      .withScheduledEvent({
-        id: "finished-event-id",
-        status: GuildScheduledEventStatus.Completed,
-      })
-      .build();
+    const mockGuild = new MockGuildBuilder("guild-456").build();
     const interaction = new MockInteractionBuilder("cancel-custom-game")
       .withUser({ id: "user-123" })
       .withGuild(mockGuild)
+      .withChannel({ id: "channel-1" } as Channel)
       .build();
     (interaction as { inGuild: () => true }).inGuild = () => true;
     using deferSpy = spy(interaction, "deferReply");
@@ -79,7 +84,9 @@ describe("Command: cancel-custom-game", () => {
     await execute(interaction);
 
     // Assert
-    assertSpyCall(getEventsStub, 0, { args: ["user-123"] });
+    assertSpyCall(getEventsStub, 0, {
+      args: ["guild-456", "channel-1", "user-123"],
+    });
     assertSpyCall(deferSpy, 0, {
       args: [{ flags: MessageFlags.Ephemeral }],
     });
@@ -92,16 +99,50 @@ describe("Command: cancel-custom-game", () => {
     const selectMenu = row.components[0];
     assertExists(selectMenu);
     const menuJSON = selectMenu.toJSON();
-    assertEquals(menuJSON.options?.length, 1);
+    assertEquals(menuJSON.options?.length, 2);
     assertEquals(menuJSON.options?.[0].label, "Active Event");
-    assertEquals(menuJSON.options?.[0].value, "active-event-id:msg-1");
+    assertEquals(menuJSON.options?.[0].value, "1");
+    assertEquals(menuJSON.options?.[1].label, "Preparing Event");
+    assertEquals(menuJSON.options?.[1].value, "2");
+  });
+
+  test("候補が26件ある場合、event指定で26件目を選択できる", async () => {
+    // Arrange
+    using _getEvents = stub(
+      apiClient,
+      "getCustomGameEventsByCreator",
+      () =>
+        Promise.resolve({
+          success: true,
+          events: Array.from({ length: 26 }, (_, i) =>
+            eventFixture({ id: i + 1 })),
+        }),
+    );
+    const interaction = new MockInteractionBuilder("cancel-custom-game")
+      .withUser({ id: "user-123" })
+      .withGuild(new MockGuildBuilder("guild-456").build())
+      .withChannel({ id: "channel-1" } as Channel)
+      .withIntegerOption("event", 26)
+      .build();
+    using edit = spy(interaction, "editReply");
+    // Act
+    await execute(interaction);
+    // Assert
+    const reply = edit.calls[0].args[0] as InteractionEditReplyOptions;
+    const row = reply.components![0] as ActionRowBuilder<
+      StringSelectMenuBuilder
+    >;
+    assertEquals(
+      row.components[0].toJSON().options.map((option) => option.value),
+      ["26"],
+    );
   });
 
   test("アクティブなイベントが存在しない場合、その旨をメッセージで表示する", async () => {
     // Arrange
     using _getEventsStub = stub(
       apiClient,
-      "getCustomGameEventsByCreatorId",
+      "getCustomGameEventsByCreator",
       () => Promise.resolve({ success: true, events: [] }),
     );
     using formatMessageSpy = spy(messageHandler, "formatMessage");
@@ -109,6 +150,7 @@ describe("Command: cancel-custom-game", () => {
     const interaction = new MockInteractionBuilder("cancel-custom-game")
       .withUser({ id: "user-123" })
       .withGuild(mockGuild)
+      .withChannel({ id: "channel-1" } as Channel)
       .build();
     (interaction as { inGuild: () => true }).inGuild = () => true;
     using deferSpy = spy(interaction, "deferReply");
@@ -129,7 +171,7 @@ describe("Command: cancel-custom-game", () => {
     // Arrange
     using _getEventsStub = stub(
       apiClient,
-      "getCustomGameEventsByCreatorId",
+      "getCustomGameEventsByCreator",
       () => Promise.resolve({ success: false, error: "DB Error" }),
     );
     using formatMessageSpy = spy(messageHandler, "formatMessage");

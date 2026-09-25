@@ -5,3 +5,6 @@ export * from "./schemas.ts";
 export * from "./service_auth.ts";
 export { hcWithType } from "./hc.ts";
 export type { Client } from "./hc.ts";
+export * from "./responses.ts";
+export * from "./notification_delivery.ts";
+export * from "./custom_game_settings.ts";

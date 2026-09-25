@@ -14,6 +14,7 @@ function account(overrides: Partial<RiotAccount> = {}): RiotAccount {
   return {
     discordId: "target-1",
     puuid: "puuid-1",
+    isMain: true,
     gameName: "Teemo",
     tagLine: "JP1",
     platform: "jp1",

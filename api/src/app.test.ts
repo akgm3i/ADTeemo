@@ -300,9 +300,9 @@ describe("app.ts", () => {
     test("credentialなしでbrowser callbackへアクセスしたとき、認証middlewareを通さずcallback handlerを実行する", async () => {
       // Arrange
       const callbackDeps = createTestDependencies();
-      using getAuthStateStub = stub(
+      using consumeAuthStateStub = stub(
         callbackDeps.dbActions,
-        "getAuthState",
+        "consumeAuthState",
         () => Promise.resolve(undefined),
       );
       const callbackApp = createApp(callbackDeps);
@@ -314,7 +314,7 @@ describe("app.ts", () => {
 
       // Assert
       assertEquals(res.status, 400);
-      assertSpyCalls(getAuthStateStub, 1);
+      assertSpyCalls(consumeAuthStateStub, 1);
     });
 
     test("Bot serviceサブアプリへ新規endpointを追加したとき、path別設定なしで認証middlewareを適用する", async () => {
@@ -456,6 +456,7 @@ describe("app.ts", () => {
       const account = {
         discordId: "user-1",
         puuid: "puuid-1",
+        isMain: true,
         gameName: "Teemo",
         tagLine: "JP1",
         platform: "jp1" as const,

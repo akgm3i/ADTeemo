@@ -27,6 +27,7 @@ type DeepPartial<T> = T extends object ? {
 // --- Internal State for Builders ---
 
 interface MockInteractionState {
+  id: Snowflake;
   type: InteractionType;
   commandName: string;
   user: DeepPartial<User>;
@@ -36,6 +37,7 @@ interface MockInteractionState {
   channelId: Snowflake;
   guildId: Snowflake | null;
   stringOptions: Map<string, string | null>;
+  integerOptions: Map<string, number | null>;
   channelOptions: Map<string, DeepPartial<Channel> | null>;
   userOptions: Map<string, DeepPartial<User> | null>;
   isChatInputCommand: () => boolean;
@@ -51,15 +53,17 @@ export class MockInteractionBuilder {
 
   constructor(commandName = "test-command") {
     this.state = {
+      id: "mock-interaction-id",
       type: InteractionType.ApplicationCommand,
       commandName,
       user: { id: "mock-user-id", username: "MockUser" },
       guild: { id: "mock-guild-id", name: "Mock Guild" },
-      channel: { id: "mock-channel-id" },
+      channel: { id: "mock-channel-id", isTextBased: () => true },
       client: { commands: new Collection<string, Command>() },
       channelId: "mock-channel-id",
       guildId: "mock-guild-id",
       stringOptions: new Map(),
+      integerOptions: new Map(),
       channelOptions: new Map(),
       userOptions: new Map(),
       isChatInputCommand: () => true,
@@ -68,6 +72,11 @@ export class MockInteractionBuilder {
 
   withUser(user: DeepPartial<User>) {
     this.state.user = user;
+    return this;
+  }
+
+  withId(id: Snowflake) {
+    this.state.id = id;
     return this;
   }
 
@@ -90,6 +99,11 @@ export class MockInteractionBuilder {
 
   withStringOption(name: string, value: string | null) {
     this.state.stringOptions.set(name, value);
+    return this;
+  }
+
+  withIntegerOption(name: string, value: number | null) {
+    this.state.integerOptions.set(name, value);
     return this;
   }
 
@@ -121,6 +135,8 @@ export class MockInteractionBuilder {
       followUp: () => Promise.resolve({} as Message),
       options: {
         getString: (name: string) => this.state.stringOptions.get(name) ?? null,
+        getInteger: (name: string) =>
+          this.state.integerOptions.get(name) ?? null,
         getChannel: (name: string) =>
           this.state.channelOptions.get(name) ?? null,
         getUser: (name: string) => this.state.userOptions.get(name) ?? null,
