@@ -5,14 +5,21 @@ import {
   CommandInteraction,
   ComponentType,
   EmbedBuilder,
+  MessageFlags,
   SlashCommandBuilder,
 } from "discord.js";
-import { messageHandler, messageKeys } from "../messages.ts";
+import { apiClient, type CustomMatchStat } from "../api_client.ts";
+import { failureKind, type FailureResult } from "../api_clients/transport.ts";
+import {
+  recordMatchParticipantProvider,
+  RecordMatchParticipantProviderError,
+} from "../features/record_match_participants.ts";
+import {
+  type StatCollectionResult,
+  statCollector,
+} from "../features/stat_collector.ts";
 import { botLogger, correlationIdForInteraction } from "../logger.ts";
-import { apiClient, type MatchParticipant } from "../api_client.ts";
-import { recordMatchParticipantProvider } from "../features/record_match_participants.ts";
-import { statCollector } from "../features/stat_collector.ts";
-import { MessageFlags } from "discord.js";
+import { messageHandler, messageKeys } from "../messages.ts";
 
 export const data = new SlashCommandBuilder()
   .setName("record-match")
@@ -25,6 +32,15 @@ export const data = new SlashCommandBuilder()
         { name: "ブルーチーム", value: "BLUE" },
         { name: "レッドチーム", value: "RED" },
       )
+  )
+  .addIntegerOption((option) =>
+    option.setName("game")
+      .setDescription("イベント内の試合番号（省略時は1）")
+      .setRequired(false)
+      .setMinValue(1)
+  )
+  .addIntegerOption((option) =>
+    option.setName("event").setDescription("記録するイベントID").setMinValue(1)
   );
 
 type Team = "BLUE" | "RED";
@@ -37,65 +53,162 @@ type Stats = {
   gold: number;
 };
 
+type CollectedValue<T> =
+  | { complete: true; value: T }
+  | { complete: false };
+
+function recordMatchFailureMessage(reason: string) {
+  return messageHandler.formatMessage(
+    messageKeys.matchManagement.recordMatch.failure,
+    { error: reason },
+  );
+}
+
+function isInteractionCollectorTimeout(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  return candidate.code === "InteractionCollectorError" &&
+    typeof candidate.message === "string" &&
+    candidate.message.endsWith("reason: time");
+}
+
+export function recordMatchFailureReason(failure: FailureResult): string {
+  switch (failureKind(failure)) {
+    case "http":
+      if (failure.code === "INTERNAL_ERROR") {
+        return messageHandler.formatMessage(
+          messageKeys.matchManagement.recordMatch.failureReason.database,
+        );
+      }
+      return messageHandler.formatMessage(
+        messageKeys.matchManagement.recordMatch.failureReason.api,
+      );
+    case "communication":
+      return messageHandler.formatMessage(
+        messageKeys.matchManagement.recordMatch.failureReason.communication,
+      );
+    case "contract":
+      return messageHandler.formatMessage(
+        messageKeys.matchManagement.recordMatch.failureReason.contract,
+      );
+    case "unknown":
+      return messageHandler.formatMessage(
+        messageKeys.matchManagement.recordMatch.failureReason.unknown,
+      );
+  }
+}
+
+async function collectedValue<T>(
+  interaction: CommandInteraction,
+  result: StatCollectionResult<T>,
+): Promise<CollectedValue<T>> {
+  if (result.status === "value") {
+    return { complete: true, value: result.value };
+  }
+
+  if (result.status === "failure") {
+    botLogger.error("command.record_match.stat_collection_failed", {
+      correlationId: correlationIdForInteraction(interaction),
+      errorCategory: "remote_api",
+      guildId: interaction.guildId,
+      userId: interaction.user.id,
+    }, result.error);
+  }
+  const content = result.status === "timeout"
+    ? messageHandler.formatMessage(
+      messageKeys.matchManagement.recordMatch.timeout,
+    )
+    : result.status === "cancelled"
+    ? messageHandler.formatMessage(
+      messageKeys.matchManagement.recordMatch.cancelled,
+    )
+    : recordMatchFailureMessage(
+      messageHandler.formatMessage(
+        messageKeys.matchManagement.recordMatch.failureReason.input,
+      ),
+    );
+  await interaction.editReply(content).catch(() => {});
+  return { complete: false };
+}
+
 export async function execute(interaction: CommandInteraction) {
+  if (!interaction.isChatInputCommand()) return;
   if (
-    !interaction.isChatInputCommand() ||
+    !interaction.inGuild() || !interaction.guild || !interaction.guildId ||
     !interaction.channel?.isTextBased()
   ) {
+    await interaction.reply({
+      content: messageHandler.formatMessage(
+        messageKeys.common.info.guildOnlyCommand,
+      ),
+      flags: MessageFlags.Ephemeral,
+    }).catch(() => {});
     return;
   }
 
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   try {
-    const winningTeam = interaction.options.getString(
-      "winner",
-      true,
-    ) as Team;
-
-    const reply = await interaction.deferReply({
-      flags: MessageFlags.Ephemeral,
-    });
-
-    const participants = await recordMatchParticipantProvider
-      .getActiveParticipants();
-    const allStats: Map<string, Stats> = new Map();
+    const winningTeam = interaction.options.getString("winner", true) as Team;
+    const gameSequence = interaction.options.getInteger("game") ?? 1;
+    const activeMatch = await recordMatchParticipantProvider
+      .getActiveParticipants({
+        guild: interaction.guild,
+        guildId: interaction.guildId,
+        recruitmentChannelId: interaction.channelId,
+        creatorId: interaction.user.id,
+        ...(interaction.options.getInteger("event") !== null
+          ? { eventId: interaction.options.getInteger("event")! }
+          : {}),
+      });
+    const { event, participants } = activeMatch;
+    const allStats = new Map<string, Stats>();
 
     for (const participant of participants) {
-      const stats: Partial<Stats> = {};
-
-      const kdaString = await statCollector.askForStat<string>(
+      const kdaResult = await collectedValue(
         interaction,
-        participant.user.username,
-        /^\d+\/\d+\/\d+$/,
-        messageKeys.matchManagement.recordMatch.promptKDA,
-        messageKeys.matchManagement.recordMatch.invalidFormatKDA,
+        await statCollector.askForStat<string>(
+          interaction,
+          participant.user.username,
+          /^\d+\/\d+\/\d+$/,
+          messageKeys.matchManagement.recordMatch.promptKDA,
+          messageKeys.matchManagement.recordMatch.invalidFormatKDA,
+        ),
       );
-      if (kdaString === null) return; // Timeout
-      const [k, d, a] = kdaString.split("/").map(Number);
-      stats.kills = k;
-      stats.deaths = d;
-      stats.assists = a;
+      if (!kdaResult.complete) return;
+      const [kills, deaths, assists] = kdaResult.value.split("/").map(Number);
 
-      const cs = await statCollector.askForStat<number>(
+      const csResult = await collectedValue(
         interaction,
-        participant.user.username,
-        /^\d+$/,
-        messageKeys.matchManagement.recordMatch.promptCS,
-        messageKeys.matchManagement.recordMatch.invalidFormatNumber,
+        await statCollector.askForStat<number>(
+          interaction,
+          participant.user.username,
+          /^\d+$/,
+          messageKeys.matchManagement.recordMatch.promptCS,
+          messageKeys.matchManagement.recordMatch.invalidFormatNumber,
+        ),
       );
-      if (cs === null) return;
-      stats.cs = cs;
+      if (!csResult.complete) return;
 
-      const gold = await statCollector.askForStat<number>(
+      const goldResult = await collectedValue(
         interaction,
-        participant.user.username,
-        /^\d+$/,
-        messageKeys.matchManagement.recordMatch.promptGold,
-        messageKeys.matchManagement.recordMatch.invalidFormatNumber,
+        await statCollector.askForStat<number>(
+          interaction,
+          participant.user.username,
+          /^\d+$/,
+          messageKeys.matchManagement.recordMatch.promptGold,
+          messageKeys.matchManagement.recordMatch.invalidFormatNumber,
+        ),
       );
-      if (gold === null) return;
-      stats.gold = gold;
+      if (!goldResult.complete) return;
 
-      allStats.set(participant.user.id, stats as Stats);
+      allStats.set(participant.user.id, {
+        kills,
+        deaths,
+        assists,
+        cs: csResult.value,
+        gold: goldResult.value,
+      });
     }
 
     const summaryEmbed = new EmbedBuilder()
@@ -111,15 +224,13 @@ export async function execute(interaction: CommandInteraction) {
       );
 
     for (const participant of participants) {
-      const stats = allStats.get(participant.user.id);
-      if (stats) {
-        summaryEmbed.addFields({
-          name: `${participant.user.username} (${participant.lane})`,
-          value:
-            `${stats.kills}/${stats.deaths}/${stats.assists} - ${stats.cs}cs - ${stats.gold}g`,
-          inline: false,
-        });
-      }
+      const stats = allStats.get(participant.user.id)!;
+      summaryEmbed.addFields({
+        name: `${participant.user.username} (${participant.lane})`,
+        value:
+          `${stats.kills}/${stats.deaths}/${stats.assists} - ${stats.cs}cs - ${stats.gold}g`,
+        inline: false,
+      });
     }
 
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -141,14 +252,22 @@ export async function execute(interaction: CommandInteraction) {
         .setStyle(ButtonStyle.Danger),
     );
 
-    await interaction.editReply({ embeds: [summaryEmbed], components: [row] });
-
-    const confirmation = await reply.awaitMessageComponent({
+    const reply = await interaction.editReply({
+      embeds: [summaryEmbed],
+      components: [row],
+    });
+    const confirmationResult = await reply.awaitMessageComponent({
       componentType: ComponentType.Button,
       time: 60000,
-    }).catch(() => null);
+    }).then(
+      (confirmation) => ({ status: "value" as const, confirmation }),
+      (error: unknown) =>
+        isInteractionCollectorTimeout(error)
+          ? { status: "timeout" as const }
+          : { status: "failure" as const, error },
+    );
 
-    if (!confirmation) {
+    if (confirmationResult.status === "timeout") {
       await interaction.editReply({
         content: messageHandler.formatMessage(
           messageKeys.matchManagement.recordMatch.timeout,
@@ -159,37 +278,28 @@ export async function execute(interaction: CommandInteraction) {
       return;
     }
 
-    if (confirmation.customId === "confirm_record_match") {
-      await confirmation.update({
-        content: "Submitting results...",
+    if (confirmationResult.status === "failure") {
+      botLogger.error("command.record_match.confirmation_failed", {
+        correlationId: correlationIdForInteraction(interaction),
+        errorCategory: "remote_api",
+        guildId: interaction.guildId,
+        userId: interaction.user.id,
+      }, confirmationResult.error);
+      await interaction.editReply({
+        content: recordMatchFailureMessage(
+          messageHandler.formatMessage(
+            messageKeys.matchManagement.recordMatch.failureReason.input,
+          ),
+        ),
         embeds: [],
         components: [],
-      });
+      }).catch(() => {});
+      return;
+    }
 
-      const matchId = crypto.randomUUID();
-      for (const participant of participants) {
-        const stats = allStats.get(participant.user.id);
-        if (stats) {
-          const participantData: MatchParticipant = {
-            userId: participant.user.id,
-            team: participant.team,
-            win: participant.team === winningTeam,
-            lane: participant.lane,
-            ...stats,
-          };
-          await apiClient.createMatchParticipant(
-            matchId,
-            participantData,
-          );
-        }
-      }
-      await interaction.followUp({
-        content: messageHandler.formatMessage(
-          messageKeys.matchManagement.recordMatch.success,
-        ),
-        ephemeral: true,
-      });
-    } else {
+    const { confirmation } = confirmationResult;
+
+    if (confirmation.customId !== "confirm_record_match") {
       await confirmation.update({
         content: messageHandler.formatMessage(
           messageKeys.matchManagement.recordMatch.cancelled,
@@ -197,20 +307,64 @@ export async function execute(interaction: CommandInteraction) {
         embeds: [],
         components: [],
       });
+      return;
     }
-  } catch (e) {
+
+    await confirmation.update({
+      content: messageHandler.formatMessage(
+        messageKeys.matchManagement.recordMatch.start,
+      ),
+      embeds: [],
+      components: [],
+    });
+    const stats: CustomMatchStat[] = participants.map((participant) => ({
+      userId: participant.user.id,
+      ...allStats.get(participant.user.id)!,
+    }));
+    const result = await apiClient.recordCustomMatch({
+      eventId: event.id,
+      guildId: interaction.guildId,
+      recruitmentChannelId: interaction.channelId,
+      gameSequence,
+      winner: winningTeam,
+      stats,
+    });
+    if (!result.success) {
+      await interaction.followUp({
+        content: recordMatchFailureMessage(recordMatchFailureReason(result)),
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.followUp({
+      content: messageHandler.formatMessage(
+        messageKeys.matchManagement.recordMatch.success,
+      ),
+      ephemeral: true,
+    });
+  } catch (error) {
     botLogger.error("command.record_match.failed", {
       correlationId: correlationIdForInteraction(interaction),
       errorCategory: "unexpected",
-      guildId: interaction.guild?.id ?? null,
+      guildId: interaction.guildId,
       userId: interaction.user.id,
-    }, e);
+    }, error);
+    const reason = error instanceof RecordMatchParticipantProviderError
+      ? recordMatchFailureReason(error.failure)
+      : messageHandler.formatMessage(
+        messageKeys.matchManagement.recordMatch.failureReason.unknown,
+      );
+    const content = recordMatchFailureMessage(reason);
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply({
-        content: messageHandler.formatMessage(messageKeys.common.error.command),
+        content,
         embeds: [],
         components: [],
-      }).catch(() => {}); // Ignore error if interaction is no longer valid
+      }).catch(() => {});
+    } else {
+      await interaction.reply({ content, flags: MessageFlags.Ephemeral })
+        .catch(() => {});
     }
   }
 }

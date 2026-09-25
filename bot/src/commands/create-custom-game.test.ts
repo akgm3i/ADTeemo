@@ -11,6 +11,7 @@ import { data, execute } from "./create-custom-game.ts";
 import {
   Channel,
   ChannelType,
+  Collection,
   GuildScheduledEventCreateOptions,
   Message,
   MessageFlags,
@@ -20,6 +21,8 @@ import { MockGuildBuilder, MockInteractionBuilder } from "../test_utils.ts";
 import { assertEquals } from "@std/assert";
 import { parse } from "@std/datetime";
 import { apiClient } from "../api_client.ts";
+import type { Event } from "@adteemo/api/contract";
+import { customGameEventOperationMarker } from "../features/custom_game_event_discord.ts";
 
 describe("Create Custom Game Command", () => {
   describe("定義", () => {
@@ -58,6 +61,88 @@ describe("Create Custom Game Command", () => {
   let time: FakeTime;
   const mockNow = new Date("2025-09-03T10:00:00Z"); // It's a Wednesday
 
+  function eventFixture(overrides: Partial<Event> = {}): Event {
+    return {
+      id: 113,
+      operationKey: "mock-interaction-id",
+      name: "週末カスタム",
+      guildId: "mock-guild-id",
+      creatorId: "mock-user-id",
+      recruitmentChannelId: "c-id",
+      voiceChannelId: "vc-id",
+      discordScheduledEventId: null,
+      recruitmentMessageId: null,
+      phase: "PREPARING",
+      syncState: "CREATE_PENDING",
+      revision: 0,
+      discordEventDeleted: false,
+      recruitmentMessageDeleted: false,
+      lastFailureCode: null,
+      scheduledStartAt: mockNow,
+      createdAt: mockNow,
+      updatedAt: null,
+      ...overrides,
+    };
+  }
+
+  function stubSuccessfulCreateSagaApi() {
+    const resources = new DisposableStack();
+    let current = eventFixture();
+    resources.use(stub(
+      apiClient,
+      "prepareCustomGameEvent",
+      (input) => {
+        current = eventFixture({
+          operationKey: input.operationKey,
+          name: input.name,
+          guildId: input.guildId,
+          creatorId: input.creatorId,
+          recruitmentChannelId: input.recruitmentChannelId,
+          voiceChannelId: input.voiceChannelId,
+          scheduledStartAt: input.scheduledStartAt,
+        });
+        return Promise.resolve({
+          success: true as const,
+          created: true,
+          event: current,
+        });
+      },
+    ));
+    resources.use(stub(
+      apiClient,
+      "updateCustomGameEventCreationProgress",
+      (_eventId, input) => {
+        current = {
+          ...current,
+          discordScheduledEventId: input.discordScheduledEventId ??
+            current.discordScheduledEventId,
+          recruitmentMessageId: input.recruitmentMessageId ??
+            current.recruitmentMessageId,
+        };
+        return Promise.resolve({ success: true as const, event: current });
+      },
+    ));
+    resources.use(stub(
+      apiClient,
+      "activateCustomGameEvent",
+      () => {
+        current = {
+          ...current,
+          phase: "RECRUITING",
+          syncState: "CONSISTENT",
+        };
+        return Promise.resolve({ success: true as const, event: current });
+      },
+    ));
+    return resources;
+  }
+
+  function emptyMessageManager() {
+    return {
+      fetch: () => Promise.resolve(new Collection()),
+    };
+  }
+
   beforeEach(() => {
     time = new FakeTime(mockNow);
   });
@@ -70,11 +155,7 @@ describe("Create Custom Game Command", () => {
     describe("正常系", () => {
       test("有効なイベント名、未来の日付と時刻が指定された場合、Discordイベントを作成し、参加者募集メッセージを投稿する", async () => {
         // Arrange
-        using _apiStub = stub(
-          apiClient,
-          "createCustomGameEvent",
-          () => Promise.resolve({ success: true }),
-        );
+        using _apiStubs = stubSuccessfulCreateSagaApi();
         using _formatSpy = spy(messageHandler, "formatMessage");
         const mockGuild = new MockGuildBuilder().build();
         const createScheduledEventSpy = spy(
@@ -82,12 +163,16 @@ describe("Create Custom Game Command", () => {
           "create",
         );
         const reactSpy = spy(() => Promise.resolve({} as Message));
-        const sendSpy = spy(() =>
+        const sendSpy = spy((_input: unknown) =>
           Promise.resolve(
             { id: "mock-message-id", react: reactSpy } as unknown as Message,
           )
         );
-        const mockChannel = { id: "c-id", send: sendSpy } as unknown as Channel;
+        const mockChannel = {
+          id: "c-id",
+          send: sendSpy,
+          messages: emptyMessageManager(),
+        } as unknown as Channel;
         const mockVoiceChannel = {
           id: "vc-id",
           type: ChannelType.GuildVoice,
@@ -114,22 +199,30 @@ describe("Create Custom Game Command", () => {
           .args[0] as GuildScheduledEventCreateOptions;
         assertEquals(createEventArgs.name, "週末カスタム");
         assertEquals(createEventArgs.scheduledStartTime, expectedDate);
+        assertEquals(
+          createEventArgs.description,
+          customGameEventOperationMarker("mock-interaction-id"),
+        );
         assertSpyCall(sendSpy, 0);
+        const messageOptions = sendSpy.calls[0].args[0] as {
+          nonce: string;
+          enforceNonce: boolean;
+        };
+        assertEquals(messageOptions.nonce, "mock-interaction-id");
+        assertEquals(messageOptions.enforceNonce, true);
         assertSpyCalls(reactSpy, 5);
         assertSpyCall(deferSpy, 0);
         assertSpyCall(editSpy, 0);
-        const createApiCall = (apiClient.createCustomGameEvent as Spy).calls[0];
+        const createApiCall = (apiClient.prepareCustomGameEvent as Spy)
+          .calls[0];
         assertEquals(createApiCall.args[0].name, "週末カスタム");
         assertEquals(createApiCall.args[0].scheduledStartAt, expectedDate);
+        assertEquals(createApiCall.args[0].recruitmentChannelId, "c-id");
       });
 
       test("過去の日付が指定された場合、翌年の日付として扱いイベントを作成する", async () => {
         // Arrange
-        using _ = stub(
-          apiClient,
-          "createCustomGameEvent",
-          () => Promise.resolve({ success: true }),
-        );
+        using _apiStubs = stubSuccessfulCreateSagaApi();
         const mockGuild = new MockGuildBuilder().build();
         const createScheduledEventSpy = spy(
           mockGuild.scheduledEvents,
@@ -139,8 +232,13 @@ describe("Create Custom Game Command", () => {
           .withGuild(mockGuild)
           .withChannel(
             {
+              id: "c-id",
               send: () =>
-                Promise.resolve({ react: spy() } as unknown as Message),
+                Promise.resolve({
+                  id: "mock-message-id",
+                  react: spy(),
+                } as unknown as Message),
+              messages: emptyMessageManager(),
             } as unknown as Channel,
           )
           .withStringOption("title", "新年カスタム")
@@ -170,18 +268,19 @@ describe("Create Custom Game Command", () => {
 
       test("開始日時が1ヶ月以上先の場合、警告メッセージ付きで成功応答を返す", async () => {
         // Arrange
-        using _ = stub(
-          apiClient,
-          "createCustomGameEvent",
-          () => Promise.resolve({ success: true }),
-        );
+        using _apiStubs = stubSuccessfulCreateSagaApi();
         using formatSpy = spy(messageHandler, "formatMessage");
         const interaction = new MockInteractionBuilder("create-custom-game")
           .withGuild(new MockGuildBuilder().build())
           .withChannel(
             {
+              id: "c-id",
               send: () =>
-                Promise.resolve({ react: spy() } as unknown as Message),
+                Promise.resolve({
+                  id: "mock-message-id",
+                  react: spy(),
+                } as unknown as Message),
+              messages: emptyMessageManager(),
             } as unknown as Channel,
           )
           .withStringOption("title", "未来のカスタム")
@@ -200,10 +299,10 @@ describe("Create Custom Game Command", () => {
 
         // Assert
         assertSpyCall(editSpy, 0);
-        assertSpyCall(formatSpy, 0, {
+        assertSpyCall(formatSpy, 1, {
           args: [messageKeys.customGame.create.success],
         });
-        assertSpyCall(formatSpy, 1, {
+        assertSpyCall(formatSpy, 2, {
           args: [messageKeys.customGame.create.info.dateTooFarWarning],
         });
       });
