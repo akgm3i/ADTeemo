@@ -1,186 +1,35 @@
+import { responseContracts } from "@adteemo/api/contract";
 import type {
   ActiveGame,
-  MatchRankSnapshot,
   MatchTrackingNotificationIntent,
   MatchTrackingRankSummary,
   MatchTrackingStateTransition,
-  MatchWatcher,
   MatchWatcherState,
-  MatchWatcherStatePatch,
   OpggMatchDetail,
   RiotAccount,
   RiotMatch,
 } from "@adteemo/api/contract";
+export type InspectMatchWatcherActiveGameResult = {
+  success: true;
+  account: RiotAccount;
+  activeGame: ActiveGame | null;
+  notificationIntent: MatchTrackingNotificationIntent | null;
+  stateTransition: MatchTrackingStateTransition | null;
+} | FailureResult;
+export type InspectMatchWatcherResultResult = {
+  success: true;
+  account: RiotAccount;
+  match: RiotMatch | null;
+  rankSummary: MatchTrackingRankSummary | null;
+  opggDetail: OpggMatchDetail | null;
+  notificationIntent: MatchTrackingNotificationIntent | null;
+  stateTransition: MatchTrackingStateTransition | null;
+} | FailureResult;
 import {
   type ApiRpcClient,
-  dateOrNull,
-  failureFromResponse,
   type FailureResult,
-  resultFromRequest,
-  successOnly,
+  requestResult,
 } from "./transport.ts";
-
-function parseMatchWatcher(
-  watcher:
-    & {
-      createdAt: string | Date;
-      updatedAt: string | Date | null;
-      gameStartedAt: string | Date | null;
-      lastCheckedAt: string | Date | null;
-      lastInGameNotifiedAt: string | Date | null;
-      pendingResultStartedAt: string | Date | null;
-    }
-    & Omit<
-      MatchWatcher,
-      | "createdAt"
-      | "updatedAt"
-      | "gameStartedAt"
-      | "lastCheckedAt"
-      | "lastInGameNotifiedAt"
-      | "pendingResultStartedAt"
-    >,
-): MatchWatcher {
-  return {
-    ...watcher,
-    createdAt: new Date(watcher.createdAt),
-    updatedAt: dateOrNull(watcher.updatedAt),
-    gameStartedAt: dateOrNull(watcher.gameStartedAt),
-    lastCheckedAt: dateOrNull(watcher.lastCheckedAt),
-    lastInGameNotifiedAt: dateOrNull(watcher.lastInGameNotifiedAt),
-    pendingResultStartedAt: dateOrNull(watcher.pendingResultStartedAt),
-  };
-}
-
-function parseRiotAccount(
-  account:
-    & {
-      createdAt: string | Date;
-      updatedAt: string | Date | null;
-    }
-    & Omit<RiotAccount, "createdAt" | "updatedAt">,
-): RiotAccount {
-  return {
-    ...account,
-    createdAt: new Date(account.createdAt),
-    updatedAt: dateOrNull(account.updatedAt),
-  };
-}
-
-export type InspectMatchWatcherActiveGameResult =
-  | {
-    success: true;
-    account: RiotAccount;
-    activeGame: ActiveGame | null;
-    notificationIntent: MatchTrackingNotificationIntent | null;
-    stateTransition: MatchTrackingStateTransition | null;
-  }
-  | FailureResult;
-export type InspectMatchWatcherResultResult =
-  | {
-    success: true;
-    account: RiotAccount;
-    match: RiotMatch | null;
-    rankSummary: MatchTrackingRankSummary | null;
-    opggDetail: OpggMatchDetail | null;
-    notificationIntent: MatchTrackingNotificationIntent | null;
-    stateTransition: MatchTrackingStateTransition | null;
-  }
-  | FailureResult;
-
-function parseMatchRankSnapshot(
-  snapshot: Omit<MatchRankSnapshot, "fetchedAt"> & {
-    fetchedAt: string | Date;
-  },
-): MatchRankSnapshot {
-  return {
-    ...snapshot,
-    fetchedAt: new Date(snapshot.fetchedAt),
-  };
-}
-
-function parseMatchTrackingRankSummary(
-  rankSummary:
-    | (Omit<MatchTrackingRankSummary, "before" | "after"> & {
-      before: Parameters<typeof parseMatchRankSnapshot>[0] | null;
-      after: Parameters<typeof parseMatchRankSnapshot>[0] | null;
-    })
-    | null,
-): MatchTrackingRankSummary | null {
-  if (!rankSummary) return null;
-  return {
-    ...rankSummary,
-    before: rankSummary.before
-      ? parseMatchRankSnapshot(rankSummary.before)
-      : null,
-    after: rankSummary.after ? parseMatchRankSnapshot(rankSummary.after) : null,
-  };
-}
-
-function parseOpggMatchDetail(
-  detail:
-    | (Omit<OpggMatchDetail, "providerCreatedAt"> & {
-      providerCreatedAt: string | Date;
-    })
-    | null,
-): OpggMatchDetail | null {
-  if (!detail) return null;
-  return {
-    ...detail,
-    providerCreatedAt: new Date(detail.providerCreatedAt),
-  };
-}
-
-function parseMatchWatcherStatePatch(
-  state: MatchWatcherStatePatch,
-): MatchWatcherStatePatch {
-  const parsed: MatchWatcherStatePatch = { ...state };
-  if ("pendingResultStartedAt" in state) {
-    parsed.pendingResultStartedAt = dateOrNull(state.pendingResultStartedAt);
-  }
-  if ("gameStartedAt" in state) {
-    parsed.gameStartedAt = dateOrNull(state.gameStartedAt);
-  }
-  if ("lastCheckedAt" in state) {
-    parsed.lastCheckedAt = dateOrNull(state.lastCheckedAt);
-  }
-  if ("lastInGameNotifiedAt" in state) {
-    parsed.lastInGameNotifiedAt = dateOrNull(state.lastInGameNotifiedAt);
-  }
-  return parsed;
-}
-
-function parseMatchTrackingStateTransition(
-  transition:
-    | (Omit<MatchTrackingStateTransition, "state"> & {
-      state: MatchWatcherStatePatch;
-    })
-    | null,
-): MatchTrackingStateTransition | null {
-  if (!transition) return null;
-  return {
-    ...transition,
-    state: parseMatchWatcherStatePatch(transition.state),
-  };
-}
-
-function parseMatchTrackingNotificationIntent(
-  intent: MatchTrackingNotificationIntent | null,
-  parsed: {
-    match?: RiotMatch | null;
-    rankSummary?: MatchTrackingRankSummary | null;
-    opggDetail?: OpggMatchDetail | null;
-  } = {},
-): MatchTrackingNotificationIntent | null {
-  if (!intent) return null;
-  if (intent.kind !== "result") return intent;
-  if (!parsed.match) return intent;
-  return {
-    kind: "result",
-    match: parsed.match,
-    rankSummary: parsed.rankSummary ?? null,
-    opggDetail: parsed.opggDetail ?? null,
-  };
-}
 
 export function createMatchWatchersApiClient(
   { rpcClient }: { rpcClient: ApiRpcClient },
@@ -191,51 +40,36 @@ export function createMatchWatchersApiClient(
     requesterId: string;
     channelId: string;
   }) {
-    return await resultFromRequest(
+    return await requestResult(
+      responseContracts.watchMatch,
       () => rpcClient["match-watchers"].$post({ json: watcher }),
-      successOnly,
-      failureFromResponse,
     );
   }
 
   async function unwatchMatch(guildId: string, targetDiscordId: string) {
-    return await resultFromRequest(
+    return await requestResult(
+      responseContracts.unwatchMatch,
       () =>
         rpcClient["match-watchers"][":guildId"][":targetDiscordId"].$delete({
           param: { guildId, targetDiscordId },
         }),
-      successOnly,
     );
   }
 
   async function getEnabledMatchWatchers() {
-    return await resultFromRequest(
+    return await requestResult(
+      responseContracts.watchers,
       () => rpcClient["match-watchers"].enabled.$get(),
-      async (res) => {
-        const body = await res.json() as {
-          watchers: Parameters<typeof parseMatchWatcher>[0][];
-        };
-        return {
-          watchers: body.watchers.map(parseMatchWatcher),
-        };
-      },
     );
   }
 
   async function getEnabledMatchWatchersByGuild(guildId: string) {
-    return await resultFromRequest(
+    return await requestResult(
+      responseContracts.guildWatchers,
       () =>
         rpcClient["match-watchers"].enabled[":guildId"].$get({
           param: { guildId },
         }),
-      async (res) => {
-        const body = await res.json() as {
-          watchers: Parameters<typeof parseMatchWatcher>[0][];
-        };
-        return {
-          watchers: body.watchers.map(parseMatchWatcher),
-        };
-      },
     );
   }
 
@@ -243,6 +77,7 @@ export function createMatchWatchersApiClient(
     guildId: string,
     targetDiscordId: string,
     state: {
+      riotAccountPuuid?: string;
       lastState: MatchWatcherState;
       currentGameId?: string | null;
       currentMatchId?: string | null;
@@ -255,14 +90,14 @@ export function createMatchWatchersApiClient(
       lastInGameNotifiedAt?: Date | null;
     },
   ) {
-    return await resultFromRequest(
+    return await requestResult(
+      responseContracts.watcherState,
       () =>
         rpcClient["match-watchers"][":guildId"][":targetDiscordId"].state
           .$patch({
             param: { guildId, targetDiscordId },
             json: state,
           }),
-      successOnly,
     );
   }
 
@@ -270,6 +105,8 @@ export function createMatchWatchersApiClient(
     guildId: string,
     targetDiscordId: string,
     state: {
+      inspectionBatchId?: string;
+      riotAccountPuuid?: string;
       lastState: MatchWatcherState;
       currentGameId: string | null;
       currentNotificationMessageId?: string | null;
@@ -279,7 +116,8 @@ export function createMatchWatchersApiClient(
       inGameNotifyIntervalMs?: number;
     },
   ): Promise<InspectMatchWatcherActiveGameResult> {
-    return await resultFromRequest(
+    return await requestResult(
+      responseContracts.inspectActiveGame,
       () =>
         rpcClient["match-watchers"][":guildId"][":targetDiscordId"].tracking[
           "active-game"
@@ -287,27 +125,6 @@ export function createMatchWatchersApiClient(
           param: { guildId, targetDiscordId },
           json: state,
         }),
-      async (res) => {
-        const body = await res.json() as {
-          account: Parameters<typeof parseRiotAccount>[0];
-          activeGame: ActiveGame | null;
-          notificationIntent: MatchTrackingNotificationIntent | null;
-          stateTransition: Parameters<
-            typeof parseMatchTrackingStateTransition
-          >[0];
-        };
-        return {
-          account: parseRiotAccount(body.account),
-          activeGame: body.activeGame,
-          notificationIntent: parseMatchTrackingNotificationIntent(
-            body.notificationIntent,
-          ),
-          stateTransition: parseMatchTrackingStateTransition(
-            body.stateTransition,
-          ),
-        };
-      },
-      failureFromResponse,
     );
   }
 
@@ -315,47 +132,22 @@ export function createMatchWatchersApiClient(
     guildId: string,
     targetDiscordId: string,
     payload: {
+      inspectionBatchId?: string;
+      riotAccountPuuid?: string;
       matchId: string;
       messageId?: string | null;
       startedAt?: Date | null;
       resultFetchTimeoutMs?: number;
     },
   ): Promise<InspectMatchWatcherResultResult> {
-    return await resultFromRequest(
+    return await requestResult(
+      responseContracts.inspectResult,
       () =>
         rpcClient["match-watchers"][":guildId"][":targetDiscordId"].tracking
           .result.$post({
             param: { guildId, targetDiscordId },
             json: payload,
           }),
-      async (res) => {
-        const body = await res.json() as {
-          account: Parameters<typeof parseRiotAccount>[0];
-          match: RiotMatch | null;
-          rankSummary: Parameters<typeof parseMatchTrackingRankSummary>[0];
-          opggDetail: Parameters<typeof parseOpggMatchDetail>[0];
-          notificationIntent: MatchTrackingNotificationIntent | null;
-          stateTransition: Parameters<
-            typeof parseMatchTrackingStateTransition
-          >[0];
-        };
-        const rankSummary = parseMatchTrackingRankSummary(body.rankSummary);
-        const opggDetail = parseOpggMatchDetail(body.opggDetail);
-        return {
-          account: parseRiotAccount(body.account),
-          match: body.match,
-          rankSummary,
-          opggDetail,
-          notificationIntent: parseMatchTrackingNotificationIntent(
-            body.notificationIntent,
-            { match: body.match, rankSummary, opggDetail },
-          ),
-          stateTransition: parseMatchTrackingStateTransition(
-            body.stateTransition,
-          ),
-        };
-      },
-      failureFromResponse,
     );
   }
 

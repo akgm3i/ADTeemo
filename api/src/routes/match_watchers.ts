@@ -141,10 +141,7 @@ export function matchWatchersRoutes(
           const result = await matchTrackingInspection.inspectResult({
             guildId,
             targetDiscordId,
-            matchId: payload.matchId,
-            messageId: payload.messageId,
-            startedAt: payload.startedAt,
-            resultFetchTimeoutMs: payload.resultFetchTimeoutMs,
+            ...payload,
           });
           if (result.status === "riot_account_not_found") {
             return apiErrorResponse(c, "RIOT_ACCOUNT_NOT_FOUND");

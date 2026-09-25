@@ -59,6 +59,7 @@ const matchSchema = z.object({
         goldEarned: z.number(),
         totalDamageDealtToChampions: z.number().optional(),
         visionScore: z.number().optional(),
+        totalAllyJungleMinionsKilled: z.number().optional(),
         totalEnemyJungleMinionsKilled: z.number().optional(),
         teamPosition: z.string().optional(),
         individualPosition: z.string().optional(),

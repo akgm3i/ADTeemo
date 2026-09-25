@@ -45,8 +45,10 @@ type MatchTrackingInspectionClock = {
 };
 
 export type InspectMatchWatcherActiveGameInput = {
+  inspectionBatchId?: string;
   guildId: string;
   targetDiscordId: string;
+  riotAccountPuuid?: string;
   lastState: MatchWatcherState;
   currentGameId: string | null;
   currentNotificationMessageId?: string | null;
@@ -68,8 +70,10 @@ export type InspectMatchWatcherActiveGameResult =
     error: string;
   };
 export type InspectMatchWatcherResultInput = {
+  inspectionBatchId?: string;
   guildId: string;
   targetDiscordId: string;
+  riotAccountPuuid?: string;
   matchId: string;
   messageId?: string | null;
   startedAt?: Date | null;
@@ -231,6 +235,30 @@ function activeGameStateTransition(
   return { notificationIntent: null, stateTransition: null };
 }
 
+// Reuse source data only within an explicit Bot tick. Never cache watcher-specific
+// decisions. Bounds reclaim batches abandoned by a stopped or restarted worker.
+function batchSource<T>(now: () => number) {
+  const entries = new Map<string, { expiresAt: number; value: Promise<T> }>();
+  return (
+    batchId: string | undefined,
+    scope: string[],
+    fetch: () => Promise<T>,
+  ) => {
+    if (!batchId) return fetch();
+    const at = now();
+    for (const [key, entry] of entries) {
+      if (entry.expiresAt <= at) entries.delete(key);
+    }
+    const key = JSON.stringify([batchId, ...scope]);
+    const cached = entries.get(key);
+    if (cached) return cached.value;
+    if (entries.size >= 1000) entries.delete(entries.keys().next().value!);
+    const value = fetch();
+    entries.set(key, { expiresAt: at + 300_000, value });
+    return value;
+  };
+}
+
 export function createMatchTrackingInspectionService(
   dependencies: {
     dbActions: MatchTrackingInspectionDbActions;
@@ -241,6 +269,10 @@ export function createMatchTrackingInspectionService(
   },
 ) {
   const clock = dependencies.clock ?? { now: () => new Date() };
+  const nowMs = () => clock.now().getTime();
+  const activeSource = batchSource<ActiveGame | null>(nowMs);
+  const matchSource = batchSource<RiotMatch | null>(nowMs);
+  const leagueSource = batchSource<LeagueEntry[]>(nowMs);
 
   async function capturePendingRankSnapshots(
     input: InspectMatchWatcherActiveGameInput,
@@ -251,9 +283,14 @@ export function createMatchTrackingInspectionService(
     if (!shouldCapturePendingRankSnapshots(input, activeGame)) return;
 
     try {
-      const entries = await dependencies.riotApi.getLeagueEntriesByPuuid(
-        account.platform,
-        account.puuid,
+      const entries = await leagueSource(
+        input.inspectionBatchId,
+        [account.platform, account.puuid, "before", String(activeGame.gameId)],
+        () =>
+          dependencies.riotApi.getLeagueEntriesByPuuid(
+            account.platform,
+            account.puuid,
+          ),
       );
       await dependencies.dbActions.upsertPendingRankSnapshots({
         platform: account.platform,
@@ -279,9 +316,14 @@ export function createMatchTrackingInspectionService(
     const now = clock.now();
     let account;
     try {
-      account = await dependencies.dbActions.getRiotAccountByDiscordId(
-        input.targetDiscordId,
-      );
+      account = input.riotAccountPuuid === undefined
+        ? await dependencies.dbActions.getRiotAccountByDiscordId(
+          input.targetDiscordId,
+        )
+        : await dependencies.dbActions.getRiotAccountByDiscordId(
+          input.targetDiscordId,
+          input.riotAccountPuuid,
+        );
     } catch (error) {
       throw new MatchTrackingInspectionError("repository", error);
     }
@@ -294,9 +336,14 @@ export function createMatchTrackingInspectionService(
 
     let activeGame;
     try {
-      activeGame = await dependencies.riotApi.getActiveGameByPuuid(
-        account.platform,
-        account.puuid,
+      activeGame = await activeSource(
+        input.inspectionBatchId,
+        [account.platform, account.puuid],
+        () =>
+          dependencies.riotApi.getActiveGameByPuuid(
+            account.platform,
+            account.puuid,
+          ),
       );
     } catch (error) {
       throw new MatchTrackingInspectionError("riot_api", error);
@@ -352,9 +399,14 @@ export function createMatchTrackingInspectionService(
     if (!queueType) return null;
 
     try {
-      const entries = await dependencies.riotApi.getLeagueEntriesByPuuid(
-        account.platform,
-        account.puuid,
+      const entries = await leagueSource(
+        input.inspectionBatchId,
+        [account.platform, account.puuid, "after", input.matchId],
+        () =>
+          dependencies.riotApi.getLeagueEntriesByPuuid(
+            account.platform,
+            account.puuid,
+          ),
       );
       const snapshots = await dependencies.dbActions.finalizeMatchRankSnapshots(
         {
@@ -430,9 +482,14 @@ export function createMatchTrackingInspectionService(
     const now = clock.now();
     let account;
     try {
-      account = await dependencies.dbActions.getRiotAccountByDiscordId(
-        input.targetDiscordId,
-      );
+      account = input.riotAccountPuuid === undefined
+        ? await dependencies.dbActions.getRiotAccountByDiscordId(
+          input.targetDiscordId,
+        )
+        : await dependencies.dbActions.getRiotAccountByDiscordId(
+          input.targetDiscordId,
+          input.riotAccountPuuid,
+        );
     } catch (error) {
       throw new MatchTrackingInspectionError("repository", error);
     }
@@ -471,9 +528,10 @@ export function createMatchTrackingInspectionService(
 
     let match;
     try {
-      match = await dependencies.riotApi.getMatchById(
-        account.region,
-        input.matchId,
+      match = await matchSource(
+        input.inspectionBatchId,
+        [account.region, input.matchId],
+        () => dependencies.riotApi.getMatchById(account.region, input.matchId),
       );
     } catch (error) {
       throw new MatchTrackingInspectionError("riot_api", error);

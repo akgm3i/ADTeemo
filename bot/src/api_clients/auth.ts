@@ -1,18 +1,25 @@
-import { type ApiRpcClient, resultFromRequest } from "./transport.ts";
+import {
+  responseContracts,
+  type RiotPlatform,
+  type RiotRegion,
+} from "@adteemo/api/contract";
+import { type ApiRpcClient, requestResult } from "./transport.ts";
 
 export function createAuthApiClient(
   { rpcClient }: { rpcClient: ApiRpcClient },
 ) {
-  async function getLoginUrl(discordId: string) {
-    return await resultFromRequest(
+  async function getLoginUrl(
+    discordId: string,
+    guildId: string,
+    platform: RiotPlatform = "jp1",
+    region: RiotRegion = "asia",
+  ) {
+    return await requestResult(
+      responseContracts.loginUrl,
       () =>
         rpcClient.auth.rso["login-url"].$get({
-          query: { discordId },
+          query: { discordId, guildId, platform, region },
         }),
-      async (res) => {
-        const body = await res.json() as { url: string };
-        return { url: body.url };
-      },
     );
   }
 

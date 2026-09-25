@@ -1,87 +1,202 @@
-import type { Event } from "@adteemo/api/contract";
+import type { z } from "zod";
 import {
-  type ApiRpcClient,
-  failureFromResponse,
-  resultFromRequest,
-  successOnly,
-} from "./transport.ts";
-
-function parseEvent(
-  event: {
-    scheduledStartAt: string | Date;
-    createdAt: string | Date;
-  } & Omit<Event, "scheduledStartAt" | "createdAt">,
-): Event {
-  return {
-    ...event,
-    scheduledStartAt: new Date(event.scheduledStartAt),
-    createdAt: new Date(event.createdAt),
-  };
-}
+  eventCancellationProgressSchema,
+  eventCreationFailureSchema,
+  eventCreationProgressSchema,
+  eventScopeSchema,
+  prepareEventSchema,
+  responseContracts,
+  saveEventParticipantsSchema,
+} from "@adteemo/api/contract";
+import { type ApiRpcClient, requestResult } from "./transport.ts";
 
 export function createEventsApiClient(
   { rpcClient }: { rpcClient: ApiRpcClient },
 ) {
-  async function createCustomGameEvent(event: {
-    name: string;
-    guildId: string;
-    creatorId: string;
-    discordScheduledEventId: string;
-    recruitmentMessageId: string;
-    scheduledStartAt: Date;
-  }) {
-    return await resultFromRequest(
-      () => rpcClient.events.$post({ json: event }),
-      successOnly,
+  async function prepareCustomGameEvent(
+    input: z.infer<typeof prepareEventSchema>,
+  ) {
+    return await requestResult(
+      responseContracts.prepareEvent,
+      () => rpcClient.events.$post({ json: input }),
     );
   }
 
-  async function getCustomGameEventsByCreatorId(creatorId: string) {
-    return await resultFromRequest(
+  async function updateCustomGameEventCreationProgress(
+    eventId: number,
+    input: z.infer<typeof eventCreationProgressSchema>,
+  ) {
+    return await requestResult(
+      responseContracts.eventCreation,
       () =>
-        rpcClient.events["by-creator"][":creatorId"].$get({
-          param: { creatorId },
+        rpcClient.events[":eventId"].creation.$patch({
+          param: { eventId: String(eventId) },
+          json: input,
         }),
-      async (res) => {
-        const body = await res.json() as {
-          events: Parameters<typeof parseEvent>[0][];
-        };
-        return { events: body.events.map(parseEvent) };
-      },
     );
   }
 
-  async function deleteCustomGameEvent(discordEventId: string) {
-    return await resultFromRequest(
+  async function activateCustomGameEvent(
+    eventId: number,
+    input: z.infer<typeof eventScopeSchema>,
+  ) {
+    return await requestResult(
+      responseContracts.activateEvent,
       () =>
-        rpcClient.events[":discordEventId"].$delete({
-          param: { discordEventId },
+        rpcClient.events[":eventId"].activate.$post({
+          param: { eventId: String(eventId) },
+          json: input,
         }),
-      successOnly,
     );
   }
 
-  async function getEventStartingTodayByCreatorId(creatorId: string) {
-    return await resultFromRequest(
+  async function markCustomGameEventCreationFailed(
+    eventId: number,
+    input: z.infer<typeof eventCreationFailureSchema>,
+  ) {
+    return await requestResult(
+      responseContracts.eventCreationFailure,
       () =>
-        rpcClient.events.today["by-creator"][":creatorId"].$get({
-          param: { creatorId },
+        rpcClient.events[":eventId"]["creation-failure"].$post({
+          param: { eventId: String(eventId) },
+          json: input,
         }),
-      async (res) => {
-        const data = await res.json() as {
-          event: Parameters<typeof parseEvent>[0];
-        };
-        return { event: parseEvent(data.event) };
-      },
-      failureFromResponse,
+    );
+  }
+
+  async function getCustomGameEventsByCreator(
+    guildId: string,
+    recruitmentChannelId: string,
+    creatorId: string,
+  ) {
+    return await requestResult(
+      responseContracts.eventsByCreator,
+      () =>
+        rpcClient.events["by-creator"][":guildId"][":channelId"][":creatorId"]
+          .$get({
+            param: {
+              guildId,
+              channelId: recruitmentChannelId,
+              creatorId,
+            },
+          }),
+    );
+  }
+
+  async function getEventStartingTodayByCreator(
+    guildId: string,
+    recruitmentChannelId: string,
+    creatorId: string,
+  ) {
+    return await requestResult(
+      responseContracts.eventToday,
+      () =>
+        rpcClient.events.today[":guildId"][":channelId"]["by-creator"][
+          ":creatorId"
+        ].$get({
+          param: {
+            guildId,
+            channelId: recruitmentChannelId,
+            creatorId,
+          },
+        }),
+    );
+  }
+
+  async function beginCustomGameEventCancellation(
+    eventId: number,
+    input: z.infer<typeof eventScopeSchema>,
+  ) {
+    return await requestResult(
+      responseContracts.cancelEvent,
+      () =>
+        rpcClient.events[":eventId"].cancel.$post({
+          param: { eventId: String(eventId) },
+          json: input,
+        }),
+    );
+  }
+
+  async function updateCustomGameEventCancellationProgress(
+    eventId: number,
+    input: z.infer<typeof eventCancellationProgressSchema>,
+  ) {
+    return await requestResult(
+      responseContracts.eventCancellation,
+      () =>
+        rpcClient.events[":eventId"].cancel.$patch({
+          param: { eventId: String(eventId) },
+          json: input,
+        }),
+    );
+  }
+
+  async function confirmCustomGameEventParticipants(
+    eventId: number,
+    input: z.infer<typeof saveEventParticipantsSchema>,
+  ) {
+    return await requestResult(
+      responseContracts.confirmParticipants,
+      () =>
+        rpcClient.events[":eventId"].participants.confirm.$post({
+          param: { eventId: String(eventId) },
+          json: input,
+        }),
+    );
+  }
+
+  async function saveCustomGameEventParticipants(
+    eventId: number,
+    input: z.infer<typeof saveEventParticipantsSchema>,
+  ) {
+    return await requestResult(
+      responseContracts.saveParticipants,
+      () =>
+        rpcClient.events[":eventId"].participants.$put({
+          param: { eventId: String(eventId) },
+          json: input,
+        }),
+    );
+  }
+
+  async function getCustomGameEventParticipants(
+    eventId: number,
+    input: z.infer<typeof eventScopeSchema>,
+  ) {
+    return await requestResult(
+      responseContracts.getParticipants,
+      () =>
+        rpcClient.events[":eventId"].participants.$get({
+          param: { eventId: String(eventId) },
+          query: input,
+        }),
     );
   }
 
   return {
-    createCustomGameEvent,
-    getCustomGameEventsByCreatorId,
-    deleteCustomGameEvent,
-    getEventStartingTodayByCreatorId,
+    getNextCustomGameSequence: (
+      eventId: number,
+      scope: { guildId: string; recruitmentChannelId: string },
+    ) =>
+      requestResult(
+        responseContracts.getNextCustomGameSequence,
+        () =>
+          rpcClient.events[":eventId"]["next-game"].$get({
+            param: { eventId: String(eventId) },
+            query: scope,
+          }),
+      ),
+    prepareCustomGameEvent,
+    updateCustomGameEventCreationProgress,
+    activateCustomGameEvent,
+    markCustomGameEventCreationFailed,
+    getCustomGameEventsByCreator,
+    getEventStartingTodayByCreator,
+    beginCustomGameEventCancellation,
+    updateCustomGameEventCancellationProgress,
+    saveCustomGameEventParticipants,
+    confirmCustomGameEventParticipants,
+    getCustomGameEventParticipants,
   };
 }
 

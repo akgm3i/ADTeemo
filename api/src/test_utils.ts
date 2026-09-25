@@ -27,20 +27,74 @@ export function createTestDependencies(
 ): AppDependencies {
   const deps = {
     dbActions: {
+      getGuildMatchWatchSettings: () =>
+        unexpectedDependencyCall("dbActions.getGuildMatchWatchSettings"),
+      setGuildMatchWatchSettings: () =>
+        unexpectedDependencyCall("dbActions.setGuildMatchWatchSettings"),
+      syncGuildMatchWatchMembers: () =>
+        unexpectedDependencyCall("dbActions.syncGuildMatchWatchMembers"),
+      setMatchWatchOptOut: () =>
+        unexpectedDependencyCall("dbActions.setMatchWatchOptOut"),
+      getNextCustomGameSequence: () =>
+        unexpectedDependencyCall("dbActions.getNextCustomGameSequence"),
+      getCustomGameSettings: () =>
+        unexpectedDependencyCall("dbActions.getCustomGameSettings"),
+      setCustomGameSettings: () =>
+        unexpectedDependencyCall("dbActions.setCustomGameSettings"),
+      prepareNotificationDelivery: () =>
+        unexpectedDependencyCall("dbActions.prepareNotificationDelivery"),
+      claimNotificationDelivery: () =>
+        unexpectedDependencyCall("dbActions.claimNotificationDelivery"),
+      completeNotificationDelivery: () =>
+        unexpectedDependencyCall("dbActions.completeNotificationDelivery"),
+      failNotificationDelivery: () =>
+        unexpectedDependencyCall("dbActions.failNotificationDelivery"),
+      getPendingNotificationDeliveries: () =>
+        unexpectedDependencyCall("dbActions.getPendingNotificationDeliveries"),
       upsertUser: () => unexpectedDependencyCall("dbActions.upsertUser"),
       ensureGuild: () => unexpectedDependencyCall("dbActions.ensureGuild"),
       deleteUser: () => unexpectedDependencyCall("dbActions.deleteUser"),
       setMainRole: () => unexpectedDependencyCall("dbActions.setMainRole"),
       createCustomGameEvent: () =>
         unexpectedDependencyCall("dbActions.createCustomGameEvent"),
-      getCustomGameEventsByCreatorId: () =>
-        unexpectedDependencyCall("dbActions.getCustomGameEventsByCreatorId"),
-      deleteCustomGameEventByDiscordEventId: () =>
+      prepareCustomGameEvent: () =>
+        unexpectedDependencyCall("dbActions.prepareCustomGameEvent"),
+      updateCustomGameEventCreationProgress: () =>
         unexpectedDependencyCall(
-          "dbActions.deleteCustomGameEventByDiscordEventId",
+          "dbActions.updateCustomGameEventCreationProgress",
         ),
-      getEventStartingTodayByCreatorId: () =>
-        unexpectedDependencyCall("dbActions.getEventStartingTodayByCreatorId"),
+      activateCustomGameEvent: () =>
+        unexpectedDependencyCall("dbActions.activateCustomGameEvent"),
+      markCustomGameEventCreationFailed: () =>
+        unexpectedDependencyCall(
+          "dbActions.markCustomGameEventCreationFailed",
+        ),
+      beginCustomGameEventCancellation: () =>
+        unexpectedDependencyCall(
+          "dbActions.beginCustomGameEventCancellation",
+        ),
+      updateCustomGameEventCancellationProgress: () =>
+        unexpectedDependencyCall(
+          "dbActions.updateCustomGameEventCancellationProgress",
+        ),
+      getCustomGameEventsByCreator: () =>
+        unexpectedDependencyCall("dbActions.getCustomGameEventsByCreator"),
+      getEventStartingTodayByCreator: () =>
+        unexpectedDependencyCall("dbActions.getEventStartingTodayByCreator"),
+      confirmCustomGameEventParticipants: () =>
+        unexpectedDependencyCall(
+          "dbActions.confirmCustomGameEventParticipants",
+        ),
+      saveCustomGameEventParticipants: () =>
+        unexpectedDependencyCall(
+          "dbActions.saveCustomGameEventParticipants",
+        ),
+      getCustomGameEventParticipants: () =>
+        unexpectedDependencyCall(
+          "dbActions.getCustomGameEventParticipants",
+        ),
+      recordCustomMatch: () =>
+        unexpectedDependencyCall("dbActions.recordCustomMatch"),
       createMatchWithParticipants: () =>
         unexpectedDependencyCall("dbActions.createMatchWithParticipants"),
       createMatchParticipant: () =>
@@ -52,12 +106,18 @@ export function createTestDependencies(
       upsertExternalMatchDetail: () =>
         unexpectedDependencyCall("dbActions.upsertExternalMatchDetail"),
       getAuthState: () => unexpectedDependencyCall("dbActions.getAuthState"),
-      deleteAuthState: () =>
-        unexpectedDependencyCall("dbActions.deleteAuthState"),
+      consumeAuthState: () =>
+        unexpectedDependencyCall("dbActions.consumeAuthState"),
       updateUserRiotId: () =>
         unexpectedDependencyCall("dbActions.updateUserRiotId"),
       linkUserWithRiotId: () =>
         unexpectedDependencyCall("dbActions.linkUserWithRiotId"),
+      getRiotAccountsByDiscordId: () =>
+        unexpectedDependencyCall("dbActions.getRiotAccountsByDiscordId"),
+      setMainRiotAccount: () =>
+        unexpectedDependencyCall("dbActions.setMainRiotAccount"),
+      deleteRiotAccount: () =>
+        unexpectedDependencyCall("dbActions.deleteRiotAccount"),
       upsertRiotAccount: () =>
         unexpectedDependencyCall("dbActions.upsertRiotAccount"),
       getRiotAccountByDiscordId: () =>
@@ -100,7 +160,7 @@ export function createTestDependencies(
     rso: {
       exchangeCodeForTokens: () =>
         unexpectedDependencyCall("rso.exchangeCodeForTokens"),
-      getUserInfo: () => unexpectedDependencyCall("rso.getUserInfo"),
+      getAccount: () => unexpectedDependencyCall("rso.getAccount"),
       getAuthorizationUrl: () =>
         unexpectedDependencyCall("rso.getAuthorizationUrl"),
       ...overrides.rso,

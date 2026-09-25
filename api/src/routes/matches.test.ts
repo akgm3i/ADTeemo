@@ -1,25 +1,23 @@
 import { describe, test } from "@std/testing/bdd";
-import { assert, assertEquals, assertStrictEquals } from "@std/assert";
+import { assertEquals, assertStrictEquals } from "@std/assert";
 import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
-import { testClient } from "@hono/hono/testing";
 import { createApp } from "../app.ts";
 import {
   createTestDependencies,
   TEST_BOT_SERVICE_AUTH_HEADERS,
 } from "../test_utils.ts";
-import type { Lane } from "../db/schema.ts";
 import {
+  DomainConflictError,
+  EventNotFoundError,
   OpggMatchParticipantMismatchError,
   RecordNotFoundError,
+  RiotAccountNotFoundError,
 } from "../errors.ts";
 
 describe("routes/matches.ts", () => {
   const deps = createTestDependencies();
   const app = createApp(deps);
   const { dbActions, opggMatchDetailService, logger } = deps;
-  const client = testClient(app, {}, undefined, {
-    headers: TEST_BOT_SERVICE_AUTH_HEADERS,
-  });
 
   describe("POST /matches/rank-snapshots/pending", () => {
     test("Active Game検知時のbeforeスナップショットを受け取ったとき、204を返す", async () => {
@@ -400,121 +398,152 @@ describe("routes/matches.ts", () => {
     });
   });
 
-  describe("POST /matches/:matchId/participants", () => {
-    const matchId = "test-match-id";
-    const participantData: {
-      userId: string;
-      team: "BLUE" | "RED";
-      win: boolean;
-      lane: Lane;
-      kills: number;
-      deaths: number;
-      assists: number;
-      cs: number;
-      gold: number;
-    } = {
-      userId: "test-user-id",
-      team: "BLUE",
-      win: true,
-      lane: "Middle",
-      kills: 10,
-      deaths: 2,
-      assists: 8,
-      cs: 250,
-      gold: 15000,
+  describe("POST /matches/custom", () => {
+    const payload = {
+      eventId: 1,
+      guildId: "guild-1",
+      recruitmentChannelId: "channel-1",
+      gameSequence: 1,
+      winner: "BLUE" as const,
+      stats: Array.from({ length: 10 }, (_, index) => ({
+        userId: `user-${index + 1}`,
+        kills: index,
+        deaths: 2,
+        assists: 3,
+        cs: 100,
+        gold: 10_000,
+      })),
     };
 
-    describe("正常系", () => {
-      test("有効な参加者データが指定されたとき、参加者の戦績が記録され、201 CreatedとIDを返す", async () => {
-        // Arrange
-        using createParticipantStub = stub(
-          dbActions,
-          "createMatchParticipant",
-          () => Promise.resolve({ id: 1 }),
-        );
-
-        // Act
-        const res = await client.matches[":matchId"].participants.$post({
-          param: { matchId },
-          json: participantData,
-        });
-
-        // Assert
-        assert(res.status === 201);
-        const body = await res.json();
-        assertEquals(body, { id: 1 });
-        assertSpyCall(createParticipantStub, 0, {
-          args: [{ ...participantData, matchId }],
-        });
+    function request(body: unknown = payload) {
+      return app.request("/matches/custom", {
+        method: "POST",
+        headers: {
+          ...TEST_BOT_SERVICE_AUTH_HEADERS,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
       });
+    }
+
+    test("matchと全participantを一括保存できたときだけ201を返す", async () => {
+      // Arrange
+      using recordStub = stub(
+        dbActions,
+        "recordCustomMatch",
+        () =>
+          Promise.resolve({
+            created: true as const,
+            matchId: "custom:1:1",
+            participantCount: 10,
+          }),
+      );
+
+      // Act
+      const response = await request();
+      const body = await response.json();
+
+      // Assert
+      assertEquals(response.status, 201);
+      assertEquals(body, {
+        created: true,
+        matchId: "custom:1:1",
+        participantCount: 10,
+      });
+      assertEquals("success" in body, false);
+      assertSpyCall(recordStub, 0, { args: [payload] });
     });
 
-    describe("異常系", () => {
-      test("無効なデータ（必須項目不足）が指定されたとき、422エラーを返す", async () => {
+    test("同じeventとgame sequenceの再送が適用済みのとき、200を返す", async () => {
+      // Arrange
+      using _recordStub = stub(
+        dbActions,
+        "recordCustomMatch",
+        () =>
+          Promise.resolve({
+            created: false as const,
+            matchId: "custom:1:1",
+            participantCount: 10,
+          }),
+      );
+
+      // Act
+      const response = await request();
+
+      // Assert
+      assertEquals(response.status, 200);
+      assertEquals((await response.json()).created, false);
+    });
+
+    const failures = [
+      {
+        name: "event所有境界外",
+        error: new EventNotFoundError("not found"),
+        status: 404,
+        code: "EVENT_NOT_FOUND",
+      },
+      {
+        name: "canonical Riot account不足",
+        error: new RiotAccountNotFoundError("not found"),
+        status: 404,
+        code: "RIOT_ACCOUNT_NOT_FOUND",
+      },
+      {
+        name: "idempotency key競合",
+        error: new DomainConflictError("conflict"),
+        status: 409,
+        code: "CONFLICT",
+      },
+    ] as const;
+
+    for (const failure of failures) {
+      test(`${failure.name}のとき、保存成功に変換せず${failure.status}を返す`, async () => {
         // Arrange
-        const invalidData = {
-          userId: "test-user-id",
-          kills: 10,
-        };
-        const req = new Request(
-          `http://localhost/matches/${matchId}/participants`,
-          {
-            method: "POST",
-            headers: {
-              ...TEST_BOT_SERVICE_AUTH_HEADERS,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(invalidData),
-          },
-        );
-
-        // Act
-        const res = await app.request(req);
-
-        // Assert
-        assertEquals(res.status, 422);
-      });
-
-      test("存在しないIDが指定されたとき、404とエラーメッセージを返す", async () => {
-        // Arrange
-        using _createParticipantStub = stub(
+        using _recordStub = stub(
           dbActions,
-          "createMatchParticipant",
-          () => Promise.reject(new RecordNotFoundError("Not found")),
+          "recordCustomMatch",
+          () => Promise.reject(failure.error),
         );
 
         // Act
-        const res = await client.matches[":matchId"].participants.$post({
-          param: { matchId },
-          json: participantData,
-        });
+        const response = await request();
 
         // Assert
-        assert(res.status === 404);
-        const body = await res.json();
-        assertEquals(body, {
-          code: "RESOURCE_NOT_FOUND",
-          message: "Match or user not found",
-        });
+        assertEquals(response.status, failure.status);
+        assertEquals((await response.json()).code, failure.code);
       });
+    }
 
-      test("予期せぬDBエラーが発生したとき、500エラーを返す", async () => {
-        // Arrange
-        using _createParticipantStub = stub(
-          dbActions,
-          "createMatchParticipant",
-          () => Promise.reject(new Error("Generic DB error")),
-        );
+    test("repositoryが例外を投げたとき、500を返して成功bodyを返さない", async () => {
+      // Arrange
+      using _recordStub = stub(
+        dbActions,
+        "recordCustomMatch",
+        () => Promise.reject(new Error("DB unavailable")),
+      );
 
-        // Act
-        const res = await client.matches[":matchId"].participants.$post({
-          param: { matchId },
-          json: participantData,
-        });
+      // Act
+      const response = await request();
 
-        // Assert
-        assertEquals(res.status, 500);
-      });
+      // Assert
+      assertEquals(response.status, 500);
+      assertEquals((await response.json()).code, "INTERNAL_ERROR");
+    });
+
+    test("参加者が10人未満のとき、repositoryを呼ばず422を返す", async () => {
+      // Arrange
+      using recordStub = stub(
+        dbActions,
+        "recordCustomMatch",
+        () => Promise.reject(new Error("must not be called")),
+      );
+
+      // Act
+      const response = await request({ ...payload, stats: payload.stats[0] });
+
+      // Assert
+      assertEquals(response.status, 422);
+      assertSpyCalls(recordStub, 0);
     });
   });
 });

@@ -1,18 +1,17 @@
+import { responseContracts } from "@adteemo/api/contract";
 import type {
-  ActiveGame,
-  LeagueEntry,
-  RiotMatch,
   RiotPlatform,
   RiotRegion,
+  RiotStaticDataResolveData,
 } from "@adteemo/api/contract";
 import {
   type ApiRpcClient,
-  failureFromResponse,
   type FailureResult,
-  resultFromRequest,
+  readContractResponse,
+  requestResult,
   throwApiResponseError,
 } from "./transport.ts";
-
+export type { RiotStaticDataResolveData };
 export type RiotStaticDataResolveInput = {
   locale?: string;
   championIds?: number[];
@@ -20,18 +19,10 @@ export type RiotStaticDataResolveInput = {
   mapIds?: number[];
   gameModes?: string[];
 };
-export type RiotStaticDataResolveData = {
-  champions: Record<
-    string,
-    { name: string | null; iconUrl: string | null }
-  >;
-  queues: Record<string, string | null>;
-  maps: Record<string, string | null>;
-  gameModes: Record<string, string | null>;
-};
-export type RiotStaticDataResolveResult =
-  | { success: true; data: RiotStaticDataResolveData }
-  | FailureResult;
+export type RiotStaticDataResolveResult = {
+  success: true;
+  data: RiotStaticDataResolveData;
+} | FailureResult;
 
 export function createRiotApiClient(
   { rpcClient }: { rpcClient: ApiRpcClient },
@@ -45,10 +36,13 @@ export function createRiotApiClient(
         param: { platform, puuid },
       });
     if (!res.ok) {
-      await throwApiResponseError(res);
+      await throwApiResponseError(
+        res,
+        "GET /riot/active-games/:platform/:puuid",
+      );
     }
-    const body = await res.json() as { activeGame?: ActiveGame | null } | null;
-    return body?.activeGame ?? null;
+    return (await readContractResponse(responseContracts.activeGame, res))
+      .activeGame;
   }
 
   async function getMatchById(region: RiotRegion, matchId: string) {
@@ -56,10 +50,9 @@ export function createRiotApiClient(
       param: { region, matchId },
     });
     if (!res.ok) {
-      await throwApiResponseError(res);
+      await throwApiResponseError(res, "GET /riot/matches/:region/:matchId");
     }
-    const body = await res.json() as { match?: RiotMatch | null } | null;
-    return body?.match ?? null;
+    return (await readContractResponse(responseContracts.riotMatch, res)).match;
   }
 
   async function getLeagueEntriesByPuuid(
@@ -71,26 +64,28 @@ export function createRiotApiClient(
         param: { platform, puuid },
       });
     if (!res.ok) {
-      await throwApiResponseError(res);
+      await throwApiResponseError(
+        res,
+        "GET /riot/league-entries/:platform/:puuid",
+      );
     }
-    const body = await res.json() as { entries?: LeagueEntry[] } | null;
-    return body?.entries ?? [];
+    return (await readContractResponse(responseContracts.leagueEntries, res))
+      .entries;
   }
 
   async function resolveRiotStaticData(
     payload: RiotStaticDataResolveInput,
   ): Promise<RiotStaticDataResolveResult> {
-    return await resultFromRequest(
+    const result = await requestResult(
+      responseContracts.staticData,
       () =>
         rpcClient.riot["static-data"].resolve.$post({
           json: payload,
         }),
-      async (res) => {
-        const data = await res.json() as RiotStaticDataResolveData;
-        return { data };
-      },
-      failureFromResponse,
     );
+    if (!result.success) return result;
+    const { success, ...data } = result;
+    return { success, data };
   }
 
   return {

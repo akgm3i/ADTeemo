@@ -1,5 +1,9 @@
+import { watchPolicyRoutes } from "./routes/watch_policy.ts";
+import { guildSettingsRoutes } from "./routes/guild_settings.ts";
+import { responseValidationMiddleware } from "./response_validation.ts";
 import { type Context, Hono } from "@hono/hono";
 import { createMiddleware } from "@hono/hono/factory";
+import { notificationDeliveriesRoutes } from "./routes/notification_deliveries.ts";
 import { usersRoutes } from "./routes/users.ts";
 import { eventsRoutes } from "./routes/events.ts";
 import { matchesRoutes } from "./routes/matches.ts";
@@ -82,7 +86,7 @@ export function createRequestLoggingMiddleware(
 export function createClassifiedRoutes(deps: AppDependencies) {
   const publicRoutes = new Hono()
     .get("/health", (c) => {
-      return c.json({ message: "This API is healthy!" });
+      return c.json({ message: "This API is healthy!" }, 200);
     });
 
   const callbackRoutes = new Hono()
@@ -91,10 +95,13 @@ export function createClassifiedRoutes(deps: AppDependencies) {
   const auth = createBotServiceAuthMiddleware(deps);
   const botServiceRoutes = new Hono()
     .use(auth)
+    .route("/guild-settings", guildSettingsRoutes(deps))
     .route("/users", usersRoutes(deps))
     .route("/events", eventsRoutes(deps))
+    .route("/notification-deliveries", notificationDeliveriesRoutes(deps))
     .route("/matches", matchesRoutes(deps))
     .route("/match-watchers", matchWatchersRoutes(deps))
+    .route("/watch-policy", watchPolicyRoutes(deps))
     .route("/riot/static-data", riotStaticDataRoutes(deps))
     .route("/riot", riotRoutes(deps))
     .route("/auth", authBotServiceRoutes(deps));
@@ -112,6 +119,7 @@ export function createApp(deps: AppDependencies) {
 
   return new Hono()
     .use("*", createRequestLoggingMiddleware(deps.logger))
+    .use("*", responseValidationMiddleware())
     .route("/", publicRoutes)
     .route("/", callbackRoutes)
     .route("/", botServiceRoutes)

@@ -1,4 +1,16 @@
 import {
+  createWatchPolicyApiClient,
+  type WatchPolicyApiClient,
+} from "./api_clients/watch_policy.ts";
+import {
+  createGuildSettingsApiClient,
+  type GuildSettingsApiClient,
+} from "./api_clients/guild_settings.ts";
+import {
+  createNotificationDeliveriesApiClient,
+  type NotificationDeliveriesApiClient,
+} from "./api_clients/notification_deliveries.ts";
+import {
   BOT_SERVICE_TOKEN_MAX_LENGTH,
   BOT_SERVICE_TOKEN_MIN_LENGTH,
   botServiceAuthorization,
@@ -34,10 +46,11 @@ export type {
 } from "./api_clients/transport.ts";
 
 export type {
+  CustomMatchStat,
   FinalizedRankSnapshot,
-  MatchParticipant,
   OpggMatchDetail,
   RankSnapshotPayload,
+  RecordCustomMatchInput,
   ResolveOpggMatchDetailPayload,
   ResolveOpggMatchDetailResult,
 } from "./api_clients/matches.ts";
@@ -48,11 +61,14 @@ export type {
 } from "./api_clients/riot.ts";
 
 export type ApiResourceClients = {
+  watchPolicy: WatchPolicyApiClient;
+  guildSettings: GuildSettingsApiClient;
   health: HealthApiClient;
   users: UsersApiClient;
   events: EventsApiClient;
   matches: MatchesApiClient;
   matchWatchers: MatchWatchersApiClient;
+  notificationDeliveries: NotificationDeliveriesApiClient;
   riot: RiotApiClient;
   auth: AuthApiClient;
 };
@@ -113,7 +129,12 @@ export function createApiResourceClients(
     users: createUsersApiClient({ rpcClient }),
     events: createEventsApiClient({ rpcClient }),
     matches: createMatchesApiClient({ rpcClient }),
+    watchPolicy: createWatchPolicyApiClient({ rpcClient }),
+    guildSettings: createGuildSettingsApiClient({ rpcClient }),
     matchWatchers: createMatchWatchersApiClient({ rpcClient }),
+    notificationDeliveries: createNotificationDeliveriesApiClient({
+      rpcClient,
+    }),
     riot: createRiotApiClient({ rpcClient }),
     auth: createAuthApiClient({ rpcClient }),
   };
@@ -137,7 +158,10 @@ export function createApiClient(
     ...resources.events,
     ...resources.matches,
     ...resources.auth,
+    ...resources.guildSettings,
+    ...resources.watchPolicy,
     ...resources.matchWatchers,
+    ...resources.notificationDeliveries,
   };
 }
 
@@ -158,8 +182,53 @@ function getConfiguredApiClient(): ApiClient {
 }
 
 export const apiClient: ApiClient = {
+  getGuildMatchWatchSettings(...args) {
+    return getConfiguredApiClient().getGuildMatchWatchSettings(...args);
+  },
+  setGuildMatchWatchSettings(...args) {
+    return getConfiguredApiClient().setGuildMatchWatchSettings(...args);
+  },
+  syncGuildMatchWatchMembers(...args) {
+    return getConfiguredApiClient().syncGuildMatchWatchMembers(...args);
+  },
+  setMatchWatchOptOut(...args) {
+    return getConfiguredApiClient().setMatchWatchOptOut(...args);
+  },
+  getNextCustomGameSequence(...args) {
+    return getConfiguredApiClient().getNextCustomGameSequence(...args);
+  },
+  getCustomGameSettings(...args) {
+    return getConfiguredApiClient().getCustomGameSettings(...args);
+  },
+  setCustomGameSettings(...args) {
+    return getConfiguredApiClient().setCustomGameSettings(...args);
+  },
+  prepareNotificationDelivery(...args) {
+    return getConfiguredApiClient().prepareNotificationDelivery(...args);
+  },
+  claimNotificationDelivery(...args) {
+    return getConfiguredApiClient().claimNotificationDelivery(...args);
+  },
+  completeNotificationDelivery(...args) {
+    return getConfiguredApiClient().completeNotificationDelivery(...args);
+  },
+  failNotificationDelivery(...args) {
+    return getConfiguredApiClient().failNotificationDelivery(...args);
+  },
+  getPendingNotificationDeliveries(...args) {
+    return getConfiguredApiClient().getPendingNotificationDeliveries(...args);
+  },
   linkAccountByRiotId(...args) {
     return getConfiguredApiClient().linkAccountByRiotId(...args);
+  },
+  getRiotAccounts(...args) {
+    return getConfiguredApiClient().getRiotAccounts(...args);
+  },
+  setMainRiotAccount(...args) {
+    return getConfiguredApiClient().setMainRiotAccount(...args);
+  },
+  deleteRiotAccount(...args) {
+    return getConfiguredApiClient().deleteRiotAccount(...args);
   },
   getRiotAccount(...args) {
     return getConfiguredApiClient().getRiotAccount(...args);
@@ -179,20 +248,45 @@ export const apiClient: ApiClient = {
   setMainRole(...args) {
     return getConfiguredApiClient().setMainRole(...args);
   },
-  createCustomGameEvent(...args) {
-    return getConfiguredApiClient().createCustomGameEvent(...args);
+  prepareCustomGameEvent(...args) {
+    return getConfiguredApiClient().prepareCustomGameEvent(...args);
   },
-  getCustomGameEventsByCreatorId(...args) {
-    return getConfiguredApiClient().getCustomGameEventsByCreatorId(...args);
+  updateCustomGameEventCreationProgress(...args) {
+    return getConfiguredApiClient().updateCustomGameEventCreationProgress(
+      ...args,
+    );
   },
-  deleteCustomGameEvent(...args) {
-    return getConfiguredApiClient().deleteCustomGameEvent(...args);
+  activateCustomGameEvent(...args) {
+    return getConfiguredApiClient().activateCustomGameEvent(...args);
   },
-  getEventStartingTodayByCreatorId(...args) {
-    return getConfiguredApiClient().getEventStartingTodayByCreatorId(...args);
+  markCustomGameEventCreationFailed(...args) {
+    return getConfiguredApiClient().markCustomGameEventCreationFailed(...args);
   },
-  createMatchParticipant(...args) {
-    return getConfiguredApiClient().createMatchParticipant(...args);
+  getCustomGameEventsByCreator(...args) {
+    return getConfiguredApiClient().getCustomGameEventsByCreator(...args);
+  },
+  getEventStartingTodayByCreator(...args) {
+    return getConfiguredApiClient().getEventStartingTodayByCreator(...args);
+  },
+  beginCustomGameEventCancellation(...args) {
+    return getConfiguredApiClient().beginCustomGameEventCancellation(...args);
+  },
+  updateCustomGameEventCancellationProgress(...args) {
+    return getConfiguredApiClient().updateCustomGameEventCancellationProgress(
+      ...args,
+    );
+  },
+  confirmCustomGameEventParticipants(...args) {
+    return getConfiguredApiClient().confirmCustomGameEventParticipants(...args);
+  },
+  saveCustomGameEventParticipants(...args) {
+    return getConfiguredApiClient().saveCustomGameEventParticipants(...args);
+  },
+  getCustomGameEventParticipants(...args) {
+    return getConfiguredApiClient().getCustomGameEventParticipants(...args);
+  },
+  recordCustomMatch(...args) {
+    return getConfiguredApiClient().recordCustomMatch(...args);
   },
   upsertPendingRankSnapshots(...args) {
     return getConfiguredApiClient().upsertPendingRankSnapshots(...args);
