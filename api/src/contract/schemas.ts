@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  customGameTeams,
   lanes,
   matchWatcherStates,
   rankedQueueTypes,
@@ -20,13 +21,119 @@ export const linkByRiotIdSchema = z.object({
   region: z.enum(riotRegions).optional(),
 });
 
-export const createEventSchema = z.object({
-  name: z.string(),
-  guildId: z.string(),
-  creatorId: z.string(),
-  discordScheduledEventId: z.string(),
-  recruitmentMessageId: z.string(),
+const nonEmptyId = z.string().trim().min(1).max(128);
+
+export const eventIdParamSchema = z.object({
+  eventId: z.coerce.number().int().positive(),
+});
+
+export const eventScopeSchema = z.object({
+  guildId: nonEmptyId,
+  recruitmentChannelId: nonEmptyId,
+});
+
+export const prepareEventSchema = eventScopeSchema.extend({
+  // Discord message nonce is limited to 25 characters.
+  operationKey: z.string().trim().min(1).max(25),
+  name: z.string().trim().min(1).max(100),
+  creatorId: nonEmptyId,
+  voiceChannelId: nonEmptyId,
   scheduledStartAt: z.coerce.date(),
+});
+
+export const eventCreationProgressSchema = eventScopeSchema.extend({
+  discordScheduledEventId: nonEmptyId.optional(),
+  recruitmentMessageId: nonEmptyId.optional(),
+}).refine(
+  (value) =>
+    value.discordScheduledEventId !== undefined ||
+    value.recruitmentMessageId !== undefined,
+  { message: "At least one Discord id is required" },
+);
+
+export const eventCreationFailureSchema = eventScopeSchema.extend({
+  discordScheduledEventId: nonEmptyId.optional(),
+  recruitmentMessageId: nonEmptyId.optional(),
+  discordEventDeleted: z.boolean(),
+  recruitmentMessageDeleted: z.boolean(),
+  failureCode: z.string().regex(/^[A-Z0-9_]{1,64}$/),
+});
+
+export const eventCancellationProgressSchema = eventScopeSchema.extend({
+  discordScheduledEventId: nonEmptyId.optional(),
+  recruitmentMessageId: nonEmptyId.optional(),
+  discordEventDeleted: z.boolean().optional(),
+  recruitmentMessageDeleted: z.boolean().optional(),
+  failureCode: z.string().regex(/^[A-Z0-9_]{1,64}$/).nullable().optional(),
+}).refine(
+  (value) =>
+    value.discordScheduledEventId !== undefined ||
+    value.recruitmentMessageId !== undefined ||
+    value.discordEventDeleted !== undefined ||
+    value.recruitmentMessageDeleted !== undefined ||
+    value.failureCode !== undefined,
+  { message: "Cancellation progress must include a change" },
+);
+
+export const eventParticipantSchema = z.object({
+  userId: nonEmptyId,
+  team: z.enum(customGameTeams),
+  lane: z.enum(lanes),
+});
+
+export const saveEventParticipantsSchema = eventScopeSchema.extend({
+  participants: z.array(eventParticipantSchema).length(10),
+}).superRefine((value, context) => {
+  const userIds = new Set<string>();
+  const assignments = new Set<string>();
+  value.participants.forEach((participant, index) => {
+    if (userIds.has(participant.userId)) {
+      context.addIssue({
+        code: "custom",
+        message: "Participant userId must be unique within an event",
+        path: ["participants", index, "userId"],
+      });
+    }
+    userIds.add(participant.userId);
+
+    const assignment = `${participant.team}:${participant.lane}`;
+    if (assignments.has(assignment)) {
+      context.addIssue({
+        code: "custom",
+        message: "Each team and lane assignment must be unique",
+        path: ["participants", index, "lane"],
+      });
+    }
+    assignments.add(assignment);
+  });
+});
+
+export const customMatchStatSchema = z.object({
+  userId: nonEmptyId,
+  kills: z.number().int().min(0),
+  deaths: z.number().int().min(0),
+  assists: z.number().int().min(0),
+  cs: z.number().int().min(0),
+  gold: z.number().int().min(0),
+});
+
+export const recordCustomMatchSchema = eventScopeSchema.extend({
+  eventId: z.number().int().positive(),
+  gameSequence: z.number().int().positive(),
+  winner: z.enum(customGameTeams),
+  stats: z.array(customMatchStatSchema).length(10),
+}).superRefine((value, context) => {
+  const userIds = new Set<string>();
+  value.stats.forEach((stat, index) => {
+    if (userIds.has(stat.userId)) {
+      context.addIssue({
+        code: "custom",
+        message: "Stat userId must be unique within a match",
+        path: ["stats", index, "userId"],
+      });
+    }
+    userIds.add(stat.userId);
+  });
 });
 
 export const createParticipantSchema = z.object({
@@ -87,6 +194,7 @@ export const createMatchWatcherSchema = z.object({
 });
 
 export const updateMatchWatcherStateSchema = z.object({
+  riotAccountPuuid: z.string().min(1).optional(),
   lastState: z.enum(matchWatcherStates),
   currentGameId: z.string().nullable().optional(),
   currentMatchId: z.string().nullable().optional(),
@@ -100,6 +208,8 @@ export const updateMatchWatcherStateSchema = z.object({
 });
 
 export const inspectMatchWatcherActiveGameSchema = z.object({
+  inspectionBatchId: z.uuid().optional(),
+  riotAccountPuuid: z.string().min(1).optional(),
   lastState: z.enum(matchWatcherStates),
   currentGameId: z.string().nullable(),
   currentNotificationMessageId: z.string().nullable().optional(),
@@ -110,6 +220,8 @@ export const inspectMatchWatcherActiveGameSchema = z.object({
 });
 
 export const inspectMatchWatcherResultSchema = z.object({
+  inspectionBatchId: z.uuid().optional(),
+  riotAccountPuuid: z.string().min(1).optional(),
   matchId: z.string().min(1),
   messageId: z.string().nullable().optional(),
   startedAt: z.coerce.date().nullable().optional(),
@@ -135,15 +247,20 @@ export const riotStaticDataResolveSchema = z.object({
 });
 
 export const callbackQuerySchema = z.object({
-  code: z.string().min(1),
-  state: z.string().min(1),
-});
+  code: z.string().min(1).max(4096),
+  state: z.string().min(1).max(256),
+}).strict();
 
 export const loginUrlQuerySchema = z.object({
   discordId: z.string().min(1),
-});
+  guildId: z.string().min(1),
+  platform: z.enum(riotPlatforms).default("jp1"),
+  region: z.enum(riotRegions).default("asia"),
+}).strict();
 
 export type MatchParticipant = z.infer<typeof createParticipantSchema>;
+export type CustomMatchStat = z.infer<typeof customMatchStatSchema>;
+export type RecordCustomMatchInput = z.infer<typeof recordCustomMatchSchema>;
 export type RankSnapshotPayload = z.infer<
   typeof upsertPendingRankSnapshotsSchema
 >["snapshots"][number];
