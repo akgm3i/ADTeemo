@@ -88,7 +88,8 @@ async function askForStat<T extends string | number>(
         };
       }
 
-      await message.delete();
+      // 入力の後片付けが権限不足などで失敗しても、検証・記録は継続する。
+      await message.delete().catch(() => {});
 
       if (isCancellationInput(message.content)) {
         return { status: "cancelled" };

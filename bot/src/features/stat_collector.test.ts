@@ -108,12 +108,76 @@ describe("stat collector", () => {
       assertEquals(result, { status: "value", value: 123 });
     });
 
-    test("不正な入力の後に有効な入力を受信したとき、警告後に再試行してvalue結果を返す", async () => {
+    for (
+      const { label, content, validation, promptKey, errorKey, value } of [
+        {
+          label: "KDA",
+          content: "10/2/8",
+          validation: /^\d+\/\d+\/\d+$/,
+          promptKey: messageKeys.matchManagement.recordMatch.promptKDA,
+          errorKey: messageKeys.matchManagement.recordMatch.invalidFormatKDA,
+          value: "10/2/8",
+        },
+        {
+          label: "CS",
+          content: "200",
+          validation: /^\d+$/,
+          promptKey: messageKeys.matchManagement.recordMatch.promptCS,
+          errorKey: messageKeys.matchManagement.recordMatch.invalidFormatNumber,
+          value: 200,
+        },
+        {
+          label: "Gold",
+          content: "12000",
+          validation: /^\d+$/,
+          promptKey: messageKeys.matchManagement.recordMatch.promptGold,
+          errorKey: messageKeys.matchManagement.recordMatch.invalidFormatNumber,
+          value: 12000,
+        },
+      ]
+    ) {
+      test(`${label}入力の削除が権限不足で失敗しても、有効なvalue結果を返す`, async () => {
+        // Arrange
+        const { channel, interaction } = createInteraction();
+        const message = testMessage(content);
+        using deleteStub = stub(
+          message,
+          "delete",
+          () => Promise.reject(new Error("Missing Permissions")),
+        );
+        using _collectorStub = stub(
+          channel,
+          "createMessageCollector",
+          () => collectorEndingWith([message]),
+        );
+
+        // Act
+        const result = await statCollector.askForStat(
+          interaction,
+          "Player1",
+          validation,
+          promptKey,
+          errorKey,
+        );
+
+        // Assert
+        assertEquals(result, { status: "value", value });
+        assertSpyCalls(deleteStub, 1);
+      });
+    }
+
+    test("不正な入力の削除が失敗しても、警告後に再試行して有効なvalue結果を返す", async () => {
       // Arrange
       using time = new FakeTime();
       const { channel, interaction } = createInteraction();
+      const invalidMessage = testMessage("invalid");
+      using _deleteStub = stub(
+        invalidMessage,
+        "delete",
+        () => Promise.reject(new Error("Missing Permissions")),
+      );
       const collectors = [
-        collectorEndingWith([testMessage("invalid")]),
+        collectorEndingWith([invalidMessage]),
         collectorEndingWith([testMessage("456")]),
       ];
       using collectorStub = stub(
