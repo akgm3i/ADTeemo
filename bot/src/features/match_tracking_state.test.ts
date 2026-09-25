@@ -1,7 +1,10 @@
+import {
+  account,
+  rankSnapshot,
+  watcher,
+} from "./testing/match_tracking_fixtures.ts";
 import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
-import type { MatchWatcher, RiotAccount } from "@adteemo/api/contract";
-import type { FinalizedRankSnapshot } from "../api_client.ts";
 import {
   activeGameCacheKey,
   activeNotificationGroupKey,
@@ -16,64 +19,6 @@ import {
   selectResultNotificationMessageId,
   shouldNotifySince,
 } from "./match_tracking_state.ts";
-
-function watcher(overrides: Partial<MatchWatcher> = {}): MatchWatcher {
-  const now = new Date("2026-01-01T00:00:00.000Z");
-  return {
-    guildId: "guild-1",
-    targetDiscordId: "target-1",
-    requesterId: "requester-1",
-    channelId: "channel-1",
-    enabled: true,
-    lastState: "IDLE",
-    currentGameId: null,
-    currentMatchId: null,
-    currentNotificationMessageId: null,
-    pendingResultMatchId: null,
-    pendingResultNotificationMessageId: null,
-    pendingResultStartedAt: null,
-    gameStartedAt: null,
-    lastCheckedAt: null,
-    lastInGameNotifiedAt: null,
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  };
-}
-
-function account(overrides: Partial<RiotAccount> = {}): RiotAccount {
-  const now = new Date("2026-01-01T00:00:00.000Z");
-  return {
-    discordId: "target-1",
-    puuid: "puuid-1",
-    gameName: "Teemo",
-    tagLine: "JP1",
-    platform: "jp1",
-    region: "asia",
-    createdAt: now,
-    updatedAt: now,
-    ...overrides,
-  };
-}
-
-function rankSnapshot(
-  overrides: Partial<FinalizedRankSnapshot> = {},
-): FinalizedRankSnapshot {
-  return {
-    matchId: "JP1_12345",
-    platform: "jp1",
-    puuid: "puuid-1",
-    queueType: "RANKED_SOLO_5x5",
-    phase: "after",
-    tier: "EMERALD",
-    rank: "IV",
-    leaguePoints: 19,
-    wins: 11,
-    losses: 8,
-    fetchedAt: new Date("2026-01-01T00:10:00.000Z"),
-    ...overrides,
-  };
-}
 
 describe("match_tracking_state.ts", () => {
   test("match IDとcache keyを作るとき、platformを正規化しregionとpuuidを区別する", () => {
@@ -236,9 +181,23 @@ describe("match_tracking_state.ts", () => {
         teamPosition: "TOP",
         individualPosition: "TOP",
       }, 1800),
+      [],
+    );
+  });
+  test("Jungleの取得済み内訳が0でも表示し、欠損した自陣内訳や中立だけの数は生成しない", () => {
+    assertEquals(
+      resultMetricValues({
+        teamPosition: "JUNGLE",
+        totalMinionsKilled: 0,
+        neutralMinionsKilled: 0,
+        totalEnemyJungleMinionsKilled: 0,
+      }, 1800),
       [
         { kind: "cs", value: "0" },
         { kind: "csPerMinute", value: "0.0" },
+        { kind: "minionCs", value: "0" },
+        { kind: "jungleCs", value: "0" },
+        { kind: "enemyJungleCs", value: "0" },
       ],
     );
   });

@@ -9,7 +9,7 @@ import {
   formatRankSnapshot,
   rankDelta,
   type RankSummary,
-  type ResultMetricKind,
+  resultMetricRole,
   resultMetricValues,
 } from "./match_tracking_state.ts";
 
@@ -45,6 +45,7 @@ export type MatchTrackingRiotMatchParticipant = {
   goldEarned: number;
   totalDamageDealtToChampions?: number;
   visionScore?: number;
+  totalAllyJungleMinionsKilled?: number;
   totalEnemyJungleMinionsKilled?: number;
   teamPosition?: string;
   individualPosition?: string;
@@ -62,6 +63,8 @@ export type MatchTrackingRiotMatch = {
 };
 export type ActiveGameTargetDetail = {
   targetDiscordId: string;
+  riotAccountPuuid?: string;
+  accountName?: string;
   championId?: number;
 };
 export type MatchTrackingRendererDependencies = {
@@ -158,34 +161,64 @@ export function createMatchTrackingRenderer(
     return staticData?.gameModes[gameMode] ?? gameMode;
   }
 
-  function resultMetricFieldMessageKey(kind: ResultMetricKind) {
-    switch (kind) {
-      case "visionScore":
-        return messages.keys.matchTracking.embed.field.visionScore;
-      case "visionScorePerMinute":
-        return messages.keys.matchTracking.embed.field.visionScorePerMinute;
-      case "jungleCs":
-        return messages.keys.matchTracking.embed.field.jungleCs;
-      case "enemyJungleCs":
-        return messages.keys.matchTracking.embed.field.enemyJungleCs;
-      case "cs":
-        return messages.keys.matchTracking.embed.field.cs;
-      case "csPerMinute":
-        return messages.keys.matchTracking.embed.field.csPerMinute;
-    }
-  }
-
   function resultMetricFields(
     participant: MatchTrackingRiotMatchParticipant,
     gameDurationSeconds: number,
   ) {
-    return resultMetricValues(participant, gameDurationSeconds).map(
-      ({ kind, value }) => ({
-        name: messages.formatMessage(resultMetricFieldMessageKey(kind)),
-        value,
-        inline: true,
-      }),
+    const metrics = resultMetricValues(participant, gameDurationSeconds);
+    if (metrics.length === 0) return [];
+    const support = resultMetricRole(participant) === "SUPPORT";
+    const total = metrics.find(({ kind }) =>
+      kind === (support ? "visionScore" : "cs")
     );
+    const rate = metrics.find(({ kind }) =>
+      kind === (support ? "visionScorePerMinute" : "csPerMinute")
+    );
+    const lines: string[] = [];
+    if (total && rate) {
+      lines.push(
+        messages.formatMessage(
+          messages.keys.matchTracking.embed.metric.totalWithRate,
+          {
+            total: total.value,
+            rate: rate.value,
+          },
+        ),
+      );
+    }
+    for (const { kind, value } of metrics) {
+      if (
+        kind !== "minionCs" && kind !== "jungleCs" && kind !== "allyJungleCs" &&
+        kind !== "enemyJungleCs"
+      ) continue;
+      lines.push(
+        messages.formatMessage(messages.keys.matchTracking.embed.metric[kind], {
+          value,
+        }),
+      );
+    }
+    return [{
+      name: messages.formatMessage(
+        support
+          ? messages.keys.matchTracking.embed.field.visionScore
+          : messages.keys.matchTracking.embed.field.cs,
+      ),
+      value: lines.join("\n"),
+      inline: true,
+    }];
+  }
+
+  function resultRole(participant: MatchTrackingRiotMatchParticipant) {
+    const role = resultMetricRole(participant);
+    return messages.formatMessage(messages.keys.matchTracking.embed.role[role]);
+  }
+
+  function duration(seconds: number) {
+    if (!Number.isFinite(seconds) || seconds < 0) return "-";
+    const wholeSeconds = Math.floor(seconds);
+    return `${Math.floor(wholeSeconds / 60)}:${
+      String(wholeSeconds % 60).padStart(2, "0")
+    }`;
   }
 
   function rankFieldValue(summary: RankSummary | null) {
@@ -293,11 +326,16 @@ export function createMatchTrackingRenderer(
         messages.keys.matchTracking.embed.active.progressTitle,
       );
     const targets = targetDetails?.length
-      ? targetDetails.map(({ targetDiscordId, championId }) => ({
+      ? targetDetails.map(({ targetDiscordId, championId, accountName }) => ({
+        accountName,
         targetDiscordId,
         champion: championNameById(staticData, championId),
       }))
-      : [{ targetDiscordId: watcher.targetDiscordId, champion }];
+      : [{
+        targetDiscordId: watcher.targetDiscordId,
+        champion,
+        accountName: `${account.gameName}#${account.tagLine}`,
+      }];
     const thumbnailUrl = targets.length === 1
       ? championIconUrlById(staticData, participant?.championId)
       : null;
@@ -313,8 +351,14 @@ export function createMatchTrackingRenderer(
         name: messages.formatMessage(
           messages.keys.matchTracking.embed.field.activeChampions,
         ),
-        value: targets.map(({ targetDiscordId, champion }) =>
-          `<@${targetDiscordId}>: ${champion}`
+        value: targets.map(({ targetDiscordId, champion, accountName }) =>
+          `<@${targetDiscordId}>${
+            targets.filter((target) =>
+                  target.targetDiscordId === targetDiscordId
+                ).length > 1 && accountName
+              ? ` (${accountName})`
+              : ""
+          }: ${champion}`
         ).join("\n"),
         inline: false,
       }
@@ -509,9 +553,30 @@ export function createMatchTrackingRenderer(
     const fields: { name: string; value: string; inline: boolean }[] = [
       {
         name: messages.formatMessage(
+          messages.keys.matchTracking.embed.field.matchDetails,
+        ),
+        value: `${map} / ${mode} / ${queue}`,
+        inline: false,
+      },
+      {
+        name: messages.formatMessage(
           messages.keys.matchTracking.embed.field.champion,
         ),
         value: champion,
+        inline: true,
+      },
+      {
+        name: messages.formatMessage(
+          messages.keys.matchTracking.embed.field.role,
+        ),
+        value: resultRole(participant),
+        inline: true,
+      },
+      {
+        name: messages.formatMessage(
+          messages.keys.matchTracking.embed.field.duration,
+        ),
+        value: duration(match.info.gameDuration),
         inline: true,
       },
       {
@@ -548,27 +613,6 @@ export function createMatchTrackingRenderer(
       });
     }
     fields.push(
-      {
-        name: messages.formatMessage(
-          messages.keys.matchTracking.embed.field.queue,
-        ),
-        value: queue,
-        inline: true,
-      },
-      {
-        name: messages.formatMessage(
-          messages.keys.matchTracking.embed.field.map,
-        ),
-        value: map,
-        inline: true,
-      },
-      {
-        name: messages.formatMessage(
-          messages.keys.matchTracking.embed.field.mode,
-        ),
-        value: mode,
-        inline: true,
-      },
       ...resultMetricFields(participant, match.info.gameDuration),
     );
     const embed = new EmbedBuilder()

@@ -1,35 +1,22 @@
+import { stub } from "@std/testing/mock";
+import {
+  account as accountFixture,
+  match as matchFixture,
+  watcher,
+} from "./testing/match_tracking_fixtures.ts";
 import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { EmbedBuilder } from "discord.js";
-import type { MatchWatcher } from "@adteemo/api/contract";
 import { markFailureLogged } from "../api_clients/transport.ts";
 import { createMatchTrackingService } from "./match_tracking_service.ts";
 
-function watcher(overrides: Partial<MatchWatcher> = {}): MatchWatcher {
-  return {
-    guildId: "guild-1",
-    targetDiscordId: "target-1",
-    requesterId: "requester-1",
-    channelId: "channel-1",
-    enabled: true,
-    lastState: "IDLE",
-    currentGameId: null,
-    currentMatchId: null,
-    currentNotificationMessageId: null,
-    gameStartedAt: null,
-    lastCheckedAt: null,
-    lastInGameNotifiedAt: null,
-    pendingResultMatchId: null,
-    pendingResultNotificationMessageId: null,
-    pendingResultStartedAt: null,
-    createdAt: new Date("2026-01-01T00:00:00Z"),
-    updatedAt: null,
-    ...overrides,
-  };
-}
-
 describe("match_tracking_service.ts", () => {
   test("結果取得待ちのwatcherを処理するとき、BackendのResult検査を使って通知と状態更新を行う", async () => {
+    using _batchId = stub(
+      crypto,
+      "randomUUID",
+      () => "00000000-0000-4000-8000-000000000001" as const,
+    );
     const resultInspectionCalls: unknown[] = [];
     const activeGameInspectionCalls: unknown[] = [];
     const renderedMatches: unknown[] = [];
@@ -41,44 +28,8 @@ describe("match_tracking_service.ts", () => {
       currentNotificationMessageId: "message-existing",
       gameStartedAt: new Date("2026-01-01T00:00:00Z"),
     });
-    const account = {
-      discordId: "target-1",
-      puuid: "puuid-1",
-      gameName: "Teemo",
-      tagLine: "JP1",
-      platform: "jp1" as const,
-      region: "asia" as const,
-      createdAt: new Date("2026-01-01T00:00:00Z"),
-      updatedAt: null,
-    };
-    const match = {
-      metadata: {
-        matchId: "JP1_12345",
-        participants: ["puuid-1"],
-      },
-      info: {
-        gameId: 12345,
-        gameCreation: 1_700_000_000_000,
-        gameDuration: 1800,
-        gameMode: "CLASSIC",
-        gameType: "MATCHED_GAME",
-        mapId: 11,
-        queueId: 420,
-        participants: [{
-          puuid: "puuid-1",
-          championId: 17,
-          championName: "Teemo",
-          teamId: 100,
-          win: true,
-          kills: 10,
-          deaths: 2,
-          assists: 8,
-          totalMinionsKilled: 180,
-          neutralMinionsKilled: 12,
-          goldEarned: 12345,
-        }],
-      },
-    };
+    const account = accountFixture();
+    const match = matchFixture();
     const service = createMatchTrackingService({
       apiClient: {
         getEnabledMatchWatchers: () =>
@@ -118,7 +69,10 @@ describe("match_tracking_service.ts", () => {
       notifier: {
         sendOrEditWatcherMessage: (...args) => {
           notifications.push(args);
-          return Promise.resolve("message-result");
+          return Promise.resolve({
+            status: "sent" as const,
+            messageId: "message-result",
+          });
         },
       },
       renderer: {
@@ -158,6 +112,8 @@ describe("match_tracking_service.ts", () => {
       "guild-1",
       "target-1",
       {
+        inspectionBatchId: "00000000-0000-4000-8000-000000000001",
+        riotAccountPuuid: "puuid-1",
         matchId: "JP1_12345",
         messageId: "message-existing",
         startedAt: new Date("2026-01-01T00:00:00Z"),
@@ -171,6 +127,7 @@ describe("match_tracking_service.ts", () => {
       "guild-1",
       "target-1",
       {
+        riotAccountPuuid: "puuid-1",
         lastState: "IDLE",
         currentGameId: null,
         currentMatchId: null,
@@ -186,6 +143,11 @@ describe("match_tracking_service.ts", () => {
   });
 
   test("BackendのResult検査がmatchだけを返す旧形式のとき、結果通知として処理してpendingを解除する", async () => {
+    using _batchId = stub(
+      crypto,
+      "randomUUID",
+      () => "00000000-0000-4000-8000-000000000001" as const,
+    );
     const renderedMatches: unknown[] = [];
     const notifications: unknown[] = [];
     const stateUpdates: unknown[] = [];
@@ -195,44 +157,8 @@ describe("match_tracking_service.ts", () => {
       currentNotificationMessageId: "message-existing",
       gameStartedAt: new Date("2026-01-01T00:00:00Z"),
     });
-    const account = {
-      discordId: "target-1",
-      puuid: "puuid-1",
-      gameName: "Teemo",
-      tagLine: "JP1",
-      platform: "jp1" as const,
-      region: "asia" as const,
-      createdAt: new Date("2026-01-01T00:00:00Z"),
-      updatedAt: null,
-    };
-    const match = {
-      metadata: {
-        matchId: "JP1_12345",
-        participants: ["puuid-1"],
-      },
-      info: {
-        gameId: 12345,
-        gameCreation: 1_700_000_000_000,
-        gameDuration: 1800,
-        gameMode: "CLASSIC",
-        gameType: "MATCHED_GAME",
-        mapId: 11,
-        queueId: 420,
-        participants: [{
-          puuid: "puuid-1",
-          championId: 17,
-          championName: "Teemo",
-          teamId: 100,
-          win: true,
-          kills: 10,
-          deaths: 2,
-          assists: 8,
-          totalMinionsKilled: 180,
-          neutralMinionsKilled: 12,
-          goldEarned: 12345,
-        }],
-      },
-    };
+    const account = accountFixture();
+    const match = matchFixture();
     const service = createMatchTrackingService({
       apiClient: {
         getEnabledMatchWatchers: () =>
@@ -264,7 +190,10 @@ describe("match_tracking_service.ts", () => {
       notifier: {
         sendOrEditWatcherMessage: (...args) => {
           notifications.push(args);
-          return Promise.resolve("message-result");
+          return Promise.resolve({
+            status: "sent" as const,
+            messageId: "message-result",
+          });
         },
       },
       renderer: {
@@ -306,6 +235,7 @@ describe("match_tracking_service.ts", () => {
       "guild-1",
       "target-1",
       {
+        riotAccountPuuid: "puuid-1",
         lastState: "IDLE",
         currentGameId: null,
         currentMatchId: null,
@@ -321,6 +251,11 @@ describe("match_tracking_service.ts", () => {
   });
 
   test("gameId変更後に旧試合結果が取得できたとき、BackendのResult transitionで新試合状態を消さない", async () => {
+    using _batchId = stub(
+      crypto,
+      "randomUUID",
+      () => "00000000-0000-4000-8000-000000000001" as const,
+    );
     const stateUpdates: unknown[] = [];
     const now = new Date("2026-01-01T00:05:00Z");
     const targetWatcher = watcher({
@@ -329,16 +264,7 @@ describe("match_tracking_service.ts", () => {
       currentNotificationMessageId: "message-active-old",
       gameStartedAt: new Date("2026-01-01T00:00:00Z"),
     });
-    const account = {
-      discordId: "target-1",
-      puuid: "puuid-1",
-      gameName: "Teemo",
-      tagLine: "JP1",
-      platform: "jp1" as const,
-      region: "asia" as const,
-      createdAt: new Date("2026-01-01T00:00:00Z"),
-      updatedAt: null,
-    };
+    const account = accountFixture();
     const nextActiveGame = {
       gameId: 67890,
       gameType: "MATCHED_GAME",
@@ -432,7 +358,11 @@ describe("match_tracking_service.ts", () => {
         },
       },
       notifier: {
-        sendOrEditWatcherMessage: () => Promise.resolve("message-new"),
+        sendOrEditWatcherMessage: () =>
+          Promise.resolve({
+            status: "sent" as const,
+            messageId: "message-new",
+          }),
       },
       renderer: {
         activeGame: () => Promise.resolve(new EmbedBuilder()),
@@ -468,6 +398,11 @@ describe("match_tracking_service.ts", () => {
   });
 
   test("試合終了直後にpending通知IDが確定したとき、そのIDでBackendのResult検査と状態更新を行う", async () => {
+    using _batchId = stub(
+      crypto,
+      "randomUUID",
+      () => "00000000-0000-4000-8000-000000000001" as const,
+    );
     const resultInspectionCalls: unknown[] = [];
     const stateUpdates: unknown[] = [];
     const now = new Date("2026-01-01T00:05:00Z");
@@ -477,16 +412,7 @@ describe("match_tracking_service.ts", () => {
       currentNotificationMessageId: null,
       gameStartedAt: new Date("2026-01-01T00:00:00Z"),
     });
-    const account = {
-      discordId: "target-1",
-      puuid: "puuid-1",
-      gameName: "Teemo",
-      tagLine: "JP1",
-      platform: "jp1" as const,
-      region: "asia" as const,
-      createdAt: new Date("2026-01-01T00:00:00Z"),
-      updatedAt: null,
-    };
+    const account = accountFixture();
     const service = createMatchTrackingService({
       apiClient: {
         getEnabledMatchWatchers: () =>
@@ -525,7 +451,11 @@ describe("match_tracking_service.ts", () => {
         },
       },
       notifier: {
-        sendOrEditWatcherMessage: () => Promise.resolve("message-pending-new"),
+        sendOrEditWatcherMessage: () =>
+          Promise.resolve({
+            status: "sent" as const,
+            messageId: "message-pending-new",
+          }),
       },
       renderer: {
         activeGame: () => {
@@ -557,6 +487,8 @@ describe("match_tracking_service.ts", () => {
       "guild-1",
       "target-1",
       {
+        inspectionBatchId: "00000000-0000-4000-8000-000000000001",
+        riotAccountPuuid: "puuid-1",
         matchId: "JP1_12345",
         messageId: "message-pending-new",
         startedAt: new Date("2026-01-01T00:00:00Z"),
@@ -567,6 +499,7 @@ describe("match_tracking_service.ts", () => {
       "guild-1",
       "target-1",
       {
+        riotAccountPuuid: "puuid-1",
         lastState: "IDLE",
         currentGameId: null,
         currentMatchId: null,
@@ -582,6 +515,11 @@ describe("match_tracking_service.ts", () => {
   });
 
   test("同一targetとmatchIdでもguildごとに異なるmessageIdでBackend Result検査を行う", async () => {
+    using _batchId = stub(
+      crypto,
+      "randomUUID",
+      () => "00000000-0000-4000-8000-000000000001" as const,
+    );
     const resultInspectionCalls: unknown[] = [];
     const targetWatchers = [
       watcher({
@@ -600,16 +538,7 @@ describe("match_tracking_service.ts", () => {
         gameStartedAt: new Date("2026-01-01T00:01:00Z"),
       }),
     ];
-    const account = {
-      discordId: "target-1",
-      puuid: "puuid-1",
-      gameName: "Teemo",
-      tagLine: "JP1",
-      platform: "jp1" as const,
-      region: "asia" as const,
-      createdAt: new Date("2026-01-01T00:00:00Z"),
-      updatedAt: null,
-    };
+    const account = accountFixture();
     const service = createMatchTrackingService({
       apiClient: {
         getEnabledMatchWatchers: () =>
@@ -638,7 +567,11 @@ describe("match_tracking_service.ts", () => {
           Promise.resolve({ success: true as const }),
       },
       notifier: {
-        sendOrEditWatcherMessage: () => Promise.resolve(null),
+        sendOrEditWatcherMessage: () =>
+          Promise.resolve({
+            status: "skipped" as const,
+            reason: "backoff" as const,
+          }),
       },
       renderer: {
         activeGame: () => {
@@ -676,6 +609,8 @@ describe("match_tracking_service.ts", () => {
       "guild-1",
       "target-1",
       {
+        inspectionBatchId: "00000000-0000-4000-8000-000000000001",
+        riotAccountPuuid: "puuid-1",
         matchId: "JP1_12345",
         messageId: "message-existing-1",
         startedAt: new Date("2026-01-01T00:00:00Z"),
@@ -685,6 +620,8 @@ describe("match_tracking_service.ts", () => {
       "guild-2",
       "target-1",
       {
+        inspectionBatchId: "00000000-0000-4000-8000-000000000001",
+        riotAccountPuuid: "puuid-1",
         matchId: "JP1_12345",
         messageId: "message-existing-2",
         startedAt: new Date("2026-01-01T00:01:00Z"),
@@ -694,6 +631,11 @@ describe("match_tracking_service.ts", () => {
   });
 
   test("watcher検査が404または502で失敗したとき、未連携と上流障害を安全なstatusとreasonで区別する", async () => {
+    using _batchId = stub(
+      crypto,
+      "randomUUID",
+      () => "00000000-0000-4000-8000-000000000001" as const,
+    );
     const warnings: Array<[string, Record<string, unknown> | undefined]> = [];
     const service = createMatchTrackingService({
       apiClient: {
@@ -708,8 +650,14 @@ describe("match_tracking_service.ts", () => {
                 currentNotificationMessageId: "message-result",
                 gameStartedAt: new Date("2026-01-01T00:00:00Z"),
               }),
-              watcher({ targetDiscordId: "active-game-target" }),
-              watcher({ targetDiscordId: "missing-target" }),
+              watcher({
+                targetDiscordId: "active-game-target",
+                riotAccountPuuid: "active-puuid",
+              }),
+              watcher({
+                targetDiscordId: "missing-target",
+                riotAccountPuuid: "missing-puuid",
+              }),
             ],
           }),
         getRiotAccount: () => {
@@ -808,6 +756,11 @@ describe("match_tracking_service.ts", () => {
   });
 
   test("watcher単位処理で例外が発生したとき、後続のwatcher処理を継続する", async () => {
+    using _batchId = stub(
+      crypto,
+      "randomUUID",
+      () => "00000000-0000-4000-8000-000000000001" as const,
+    );
     const inspectionCalls: string[] = [];
     const errors: unknown[] = [];
     const service = createMatchTrackingService({
@@ -817,7 +770,10 @@ describe("match_tracking_service.ts", () => {
             success: true as const,
             watchers: [
               watcher({ targetDiscordId: "target-1" }),
-              watcher({ targetDiscordId: "target-2" }),
+              watcher({
+                targetDiscordId: "target-2",
+                riotAccountPuuid: "puuid-2",
+              }),
             ],
           }),
         getRiotAccount: () => {
@@ -831,6 +787,7 @@ describe("match_tracking_service.ts", () => {
           return Promise.resolve({
             success: true as const,
             account: {
+              isMain: true,
               discordId: targetDiscordId,
               puuid: `puuid-${targetDiscordId}`,
               gameName: "Teemo",
@@ -852,7 +809,11 @@ describe("match_tracking_service.ts", () => {
           Promise.resolve({ success: true as const }),
       },
       notifier: {
-        sendOrEditWatcherMessage: () => Promise.resolve(null),
+        sendOrEditWatcherMessage: () =>
+          Promise.resolve({
+            status: "skipped" as const,
+            reason: "backoff" as const,
+          }),
       },
       renderer: {
         activeGame: () => {
@@ -891,6 +852,11 @@ describe("match_tracking_service.ts", () => {
   });
 
   test("transportで記録済みの取得失敗は、worker境界で重複記録しない", async () => {
+    using _batchId = stub(
+      crypto,
+      "randomUUID",
+      () => "00000000-0000-4000-8000-000000000001" as const,
+    );
     const events: string[] = [];
     const service = createMatchTrackingService({
       apiClient: {
@@ -913,7 +879,11 @@ describe("match_tracking_service.ts", () => {
         },
       },
       notifier: {
-        sendOrEditWatcherMessage: () => Promise.resolve(null),
+        sendOrEditWatcherMessage: () =>
+          Promise.resolve({
+            status: "skipped" as const,
+            reason: "backoff" as const,
+          }),
       },
       renderer: {
         activeGame: () => Promise.resolve(new EmbedBuilder()),

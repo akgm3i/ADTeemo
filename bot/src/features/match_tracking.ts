@@ -1,3 +1,4 @@
+import { createDurableMatchTrackingNotifier } from "./match_tracking_delivery.ts";
 import type { Client } from "discord.js";
 import type { MatchWatcher } from "@adteemo/api/contract";
 import { apiClient } from "../api_client.ts";
@@ -91,17 +92,34 @@ function createDefaultMatchTrackingService(
 ) {
   const logContext = { correlationId };
   const logger = createBotLogger(logContext);
-  const service = createMatchTrackingService({
-    apiClient,
+  const notifier = createDurableMatchTrackingNotifier({
+    store: apiClient,
     notifier: createMatchTrackingNotifier({
       client: {
         channels: {
-          fetch: async (channelId) =>
-            await client.channels.fetch(channelId) as WatcherChannel | null,
+          fetch: async (channelId) => {
+            const channel = await client.channels.fetch(channelId);
+            if (!channel) return null;
+            const gateway = channel as WatcherChannel;
+            return {
+              send: gateway.send?.bind(channel),
+              messages: gateway.messages,
+              history: channel.isTextBased() && "messages" in channel
+                ? async (
+                  options,
+                ) => [...(await channel.messages.fetch(options)).values()]
+                : undefined,
+            };
+          },
         },
       },
       logger,
     }),
+    logger,
+  });
+  const service = createMatchTrackingService({
+    apiClient,
+    notifier,
     renderer: createDefaultMatchTrackingRenderer(),
     clock: {
       now: () => new Date(),
@@ -111,6 +129,10 @@ function createDefaultMatchTrackingService(
   });
   return {
     ...service,
+    async processMatchWatchers() {
+      await notifier.resumePending();
+      await service.processMatchWatchers();
+    },
     setCorrelationId(value: string) {
       logContext.correlationId = value;
     },

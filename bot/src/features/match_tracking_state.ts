@@ -39,14 +39,16 @@ export type PendingResult = {
 };
 export type ActiveNotificationGroup = {
   messageId: string | null;
-  targetDiscordIds: Set<string>;
+  targetAccountPuuids: Set<string>;
   activeWatchers: Map<string, MatchWatcher>;
-  messageIdTargetDiscordIds: Map<string, Set<string>>;
+  messageIdAccountPuuids: Map<string, Set<string>>;
   resultMessageIdsInUse: Set<string>;
 };
 export type ResultMetricKind =
   | "visionScore"
   | "visionScorePerMinute"
+  | "minionCs"
+  | "allyJungleCs"
   | "jungleCs"
   | "enemyJungleCs"
   | "cs"
@@ -60,6 +62,7 @@ export type ResultMetricParticipant = {
   individualPosition?: string;
   visionScore?: number;
   neutralMinionsKilled?: number;
+  totalAllyJungleMinionsKilled?: number;
   totalEnemyJungleMinionsKilled?: number;
   totalMinionsKilled?: number;
 };
@@ -359,38 +362,30 @@ export function resultMetricValues(
     return fields;
   }
 
-  if (role === "JUNGLE") {
-    const jungleCs = displayMetric(participant.neutralMinionsKilled);
-    if (jungleCs) {
-      fields.push({
-        kind: "jungleCs",
-        value: jungleCs,
-      });
-    }
-    const enemyJungleCs = displayMetric(
-      participant.totalEnemyJungleMinionsKilled,
+  const minions = displayMetric(participant.totalMinionsKilled);
+  const jungle = displayMetric(participant.neutralMinionsKilled);
+  if (minions !== null && jungle !== null) {
+    const cs = Number(minions) + Number(jungle);
+    fields.push(
+      { kind: "cs", value: String(cs) },
+      { kind: "csPerMinute", value: formatPerMinute(cs, gameDurationSeconds) },
     );
-    if (enemyJungleCs) {
-      fields.push({
-        kind: "enemyJungleCs",
-        value: enemyJungleCs,
-      });
-    }
-    return fields;
   }
-
-  const cs = (participant.totalMinionsKilled ?? 0) +
-    (participant.neutralMinionsKilled ?? 0);
-  fields.push(
-    {
-      kind: "cs",
-      value: String(cs),
-    },
-    {
-      kind: "csPerMinute",
-      value: formatPerMinute(cs, gameDurationSeconds),
-    },
-  );
+  if (role === "JUNGLE") {
+    // Riot's neutralMinionsKilled also counts pets; it is not a disjoint
+    // river/objective count. Display reported counts without subtracting camps.
+    for (
+      const [kind, raw] of [
+        ["minionCs", participant.totalMinionsKilled],
+        ["jungleCs", participant.neutralMinionsKilled],
+        ["allyJungleCs", participant.totalAllyJungleMinionsKilled],
+        ["enemyJungleCs", participant.totalEnemyJungleMinionsKilled],
+      ] as const
+    ) {
+      const value = displayMetric(raw);
+      if (value !== null) fields.push({ kind, value });
+    }
+  }
   return fields;
 }
 
