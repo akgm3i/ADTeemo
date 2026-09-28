@@ -1,4 +1,8 @@
-import type { MatchWatcher, RiotAccount } from "@adteemo/api/contract";
+import type {
+  MatchGameObservation,
+  MatchWatcher,
+  RiotAccount,
+} from "@adteemo/api/contract";
 import type { ApiClient } from "../api_client.ts";
 import { wasFailureLogged } from "../api_clients/transport.ts";
 import {
@@ -10,6 +14,7 @@ import {
   matchIdForGame,
   matchIdParts,
   newerDate,
+  observeMayhemGame,
   type PendingResult,
   pendingResultFromWatcher,
   selectResultNotificationMessageId,
@@ -330,6 +335,8 @@ async function syncActiveNotificationWatcherState(
   gameId: string,
   messageId: string | null,
   notifiedAt?: Date,
+  gameMode?: string,
+  observation?: MatchGameObservation | null,
 ) {
   if (!messageId) return false;
 
@@ -337,11 +344,24 @@ async function syncActiveNotificationWatcherState(
     messageId;
   const shouldSyncNotifiedAt = notifiedAt &&
     isAfterDate(notifiedAt, watcher.lastInGameNotifiedAt);
-  if (!shouldSyncMessageId && !shouldSyncNotifiedAt) return false;
+  const shouldSyncMode = gameMode !== undefined &&
+    watcher.currentGameMode !== gameMode;
+  const shouldSyncObservation = observation !== undefined &&
+    (watcher.currentGameObservation?.championId !== observation?.championId ||
+      watcher.currentGameObservation?.elapsedSeconds !==
+        observation?.elapsedSeconds);
+  if (
+    !shouldSyncMessageId && !shouldSyncNotifiedAt && !shouldSyncMode &&
+    !shouldSyncObservation
+  ) {
+    return false;
+  }
 
   await setWatcherState(dependencies, watcher, {
     lastState: "IN_GAME",
     currentGameId: gameId,
+    ...(shouldSyncMode ? { currentGameMode: gameMode } : {}),
+    ...(shouldSyncObservation ? { currentGameObservation: observation } : {}),
     currentNotificationMessageId: messageId,
     lastCheckedAt: dependencies.clock.now(),
     ...(shouldSyncNotifiedAt ? { lastInGameNotifiedAt: notifiedAt } : {}),
@@ -350,6 +370,8 @@ async function syncActiveNotificationWatcherState(
     ...watcher,
     lastState: "IN_GAME",
     currentGameId: gameId,
+    ...(shouldSyncMode ? { currentGameMode: gameMode } : {}),
+    ...(shouldSyncObservation ? { currentGameObservation: observation } : {}),
     currentNotificationMessageId: messageId,
     lastInGameNotifiedAt: shouldSyncNotifiedAt
       ? notifiedAt
@@ -575,6 +597,8 @@ function resultTransitionStateForCurrentState(
   const {
     lastState: _lastState,
     currentGameId: _currentGameId,
+    currentGameMode: _currentGameMode,
+    currentGameObservation: _currentGameObservation,
     currentMatchId: _currentMatchId,
     currentNotificationMessageId: _currentNotificationMessageId,
     gameStartedAt: _gameStartedAt,
@@ -612,6 +636,8 @@ function logWatcherInspectionFailure(
     ...(result.status === undefined ? {} : { status: result.status }),
     reason: result.status === 502 && result.code === "RIOT_API_UNAVAILABLE"
       ? "upstream_failure"
+      : result.status === 502 && result.code === "RIOT_MATCH_ACCESS_DENIED"
+      ? "match_access_denied"
       : "unclassified_failure",
   });
 }
@@ -622,6 +648,7 @@ async function tryFetchAndNotifyResult(
   context: MatchWatcherProcessingContext,
   pending: PendingResult,
   currentState: WatcherState = currentStateFromWatcher(watcher),
+  notifyPending = false,
 ) {
   const result = await inspectResultForWatcher(
     dependencies,
@@ -629,51 +656,74 @@ async function tryFetchAndNotifyResult(
     watcher,
     pending,
   );
+  const accessDenied = !result.success && result.status === 502 &&
+    result.code === "RIOT_MATCH_ACCESS_DENIED";
   if (!result.success) {
     logWatcherInspectionFailure(dependencies, watcher, "result", result);
-    return { status: "pending" as const, messageId: pending.messageId };
+    if (!notifyPending && !accessDenied) {
+      return { status: "pending" as const, messageId: pending.messageId };
+    }
   }
-  const {
-    account,
-    match,
-    rankSummary,
-    opggDetail,
-    notificationIntent,
-    stateTransition,
-  } = result;
-  if (notificationIntent?.kind === "timeout") {
-    dependencies.logger.warn("match_tracking.fetch_result_timeout", {
-      guildId: watcher.guildId,
-      targetDiscordId: watcher.targetDiscordId,
-      matchId: pending.matchId,
-    });
+  if (
+    accessDenied ||
+    (result.success && result.notificationIntent?.kind === "timeout")
+  ) {
+    if (!accessDenied) {
+      dependencies.logger.warn("match_tracking.fetch_result_timeout", {
+        guildId: watcher.guildId,
+        targetDiscordId: watcher.targetDiscordId,
+        matchId: pending.matchId,
+      });
+    }
     const messageId = await notify(
       dependencies,
       watcher,
       pending.messageId,
-      dependencies.renderer.resultFetchTimeout(
+      await dependencies.renderer.resultUnavailable(
         watcher,
-        notificationIntent.matchId,
+        pending.matchId,
+        pending.gameMode === "KIWI"
+          ? "mayhem"
+          : accessDenied
+          ? "access_denied"
+          : "timeout",
+        pending.observation,
       ),
-      `timeout:${pending.matchId}`,
+      `${accessDenied ? "unavailable" : "timeout"}:${pending.matchId}`,
     );
     await setWatcherState(dependencies, watcher, {
       ...currentState,
       ...resultTransitionStateForCurrentState(
         currentState,
-        stateTransition
-          ?.state ?? {
+        (result.success ? result.stateTransition?.state : null) ?? {
           pendingResultMatchId: null,
           pendingResultNotificationMessageId: null,
           pendingResultStartedAt: null,
         },
       ),
       currentMatchId: null,
+      pendingResultGameMode: null,
+      pendingResultObservation: null,
       lastCheckedAt: dependencies.clock.now(),
     });
     return { status: "cleared" as const, messageId };
   }
-  if (!match || (notificationIntent && notificationIntent.kind !== "result")) {
+  if (
+    !result.success || !result.match ||
+    (result.notificationIntent && result.notificationIntent.kind !== "result")
+  ) {
+    // Inspect before editing: a ready result must not race a transient pending
+    // embed on the same Discord post. Only announce pending when it is needed.
+    const messageId = notifyPending
+      ? await notify(
+        dependencies,
+        watcher,
+        pending.messageId,
+        dependencies.renderer.resultPending(watcher, pending.matchId),
+        `pending:${pending.matchId}`,
+      )
+      : pending.messageId;
+    const stateTransition = result.success ? result.stateTransition : null;
     await setWatcherState(dependencies, watcher, {
       ...currentState,
       ...resultTransitionStateForCurrentState(
@@ -686,11 +736,15 @@ async function tryFetchAndNotifyResult(
           currentMatchId: null,
         },
       ),
+      pendingResultGameMode: pending.gameMode ?? null,
+      pendingResultObservation: pending.observation ?? null,
+      pendingResultNotificationMessageId: messageId,
       lastCheckedAt: dependencies.clock.now(),
     });
-    return { status: "pending" as const, messageId: pending.messageId };
+    return { status: "pending" as const, messageId };
   }
 
+  const { account, match, rankSummary, opggDetail, stateTransition } = result;
   const messageId = await notify(
     dependencies,
     watcher,
@@ -701,6 +755,7 @@ async function tryFetchAndNotifyResult(
       match,
       rankSummary,
       opggDetail,
+      pending.observation,
     ),
     `result:${pending.matchId}`,
   );
@@ -716,6 +771,8 @@ async function tryFetchAndNotifyResult(
         pendingResultStartedAt: null,
       },
     ),
+    pendingResultGameMode: null,
+    pendingResultObservation: null,
     lastCheckedAt: dependencies.clock.now(),
   });
   return { status: "cleared" as const, messageId };
@@ -779,12 +836,9 @@ async function processWatcher(
           ),
         };
       const matchId = resultPendingIntent.matchId;
-      const messageId = await notify(
-        dependencies,
+      const messageId = resultNotificationMessageId(
+        activeNotificationGroup,
         watcher,
-        resultNotificationMessageId(activeNotificationGroup, watcher),
-        dependencies.renderer.resultPending(watcher, matchId),
-        `pending:${matchId}`,
       );
       await tryFetchAndNotifyResult(
         dependencies,
@@ -792,17 +846,22 @@ async function processWatcher(
         context,
         {
           matchId,
+          gameMode: watcher.currentGameMode,
+          observation: watcher.currentGameObservation,
           messageId,
           startedAt: watcher.gameStartedAt,
         },
         {
           lastState: "IDLE",
           currentGameId: null,
+          currentGameMode: null,
+          currentGameObservation: null,
           currentMatchId: null,
           currentNotificationMessageId: null,
           gameStartedAt: null,
           lastInGameNotifiedAt: null,
         },
+        true,
       );
       return;
     }
@@ -814,6 +873,8 @@ async function processWatcher(
     await setWatcherState(dependencies, watcher, {
       lastState: "IDLE",
       currentGameId: null,
+      currentGameMode: null,
+      currentGameObservation: null,
       currentNotificationMessageId: null,
       lastCheckedAt: dependencies.clock.now(),
     });
@@ -821,6 +882,11 @@ async function processWatcher(
   }
 
   const currentGameId = String(activeGame.gameId);
+  const observation = observeMayhemGame(
+    watcher,
+    activeGame,
+    dependencies.clock.now(),
+  );
   const activeNotificationGroup = getActiveNotificationGroup(
     context,
     watcher,
@@ -847,12 +913,9 @@ async function processWatcher(
       watcher.currentGameId,
     );
     const notifiedAt = dependencies.clock.now();
-    const previousMessageId = await notify(
-      dependencies,
+    const previousMessageId = resultNotificationMessageId(
+      previousActiveNotificationGroup,
       watcher,
-      resultNotificationMessageId(previousActiveNotificationGroup, watcher),
-      dependencies.renderer.resultPending(watcher, previousMatchId),
-      `pending:${previousMatchId}`,
     );
     const newMessageId = await notify(
       dependencies,
@@ -882,6 +945,8 @@ async function processWatcher(
     const currentState = {
       lastState: "IN_GAME" as const,
       currentGameId,
+      currentGameMode: activeGame.gameMode,
+      currentGameObservation: observation,
       currentMatchId: null,
       currentNotificationMessageId: newMessageId,
       gameStartedAt: new Date(activeGame.gameStartTime),
@@ -890,6 +955,8 @@ async function processWatcher(
     await setWatcherState(dependencies, watcher, {
       ...currentState,
       pendingResultMatchId: previousMatchId,
+      pendingResultGameMode: watcher.currentGameMode,
+      pendingResultObservation: watcher.currentGameObservation,
       pendingResultNotificationMessageId: previousMessageId,
       pendingResultStartedAt: watcher.gameStartedAt,
       lastCheckedAt: dependencies.clock.now(),
@@ -900,10 +967,13 @@ async function processWatcher(
       context,
       {
         matchId: previousMatchId,
+        gameMode: watcher.currentGameMode,
+        observation: watcher.currentGameObservation,
         messageId: previousMessageId,
         startedAt: watcher.gameStartedAt,
       },
       currentState,
+      true,
     );
     return;
   }
@@ -940,6 +1010,8 @@ async function processWatcher(
     await setWatcherState(dependencies, watcher, {
       lastState: "IN_GAME",
       currentGameId,
+      currentGameMode: activeGame.gameMode,
+      currentGameObservation: observation,
       currentMatchId: null,
       currentNotificationMessageId: messageId,
       gameStartedAt: new Date(activeGame.gameStartTime),
@@ -987,6 +1059,8 @@ async function processWatcher(
     await setWatcherState(dependencies, watcher, {
       lastState: "IN_GAME",
       currentGameId,
+      currentGameMode: activeGame.gameMode,
+      currentGameObservation: observation,
       currentNotificationMessageId: messageId,
       lastCheckedAt: dependencies.clock.now(),
       ...(messageId ? { lastInGameNotifiedAt: notifiedAt } : {}),
@@ -1000,6 +1074,9 @@ async function processWatcher(
     watcher,
     currentGameId,
     activeNotificationGroup.messageId,
+    undefined,
+    activeGame.gameMode,
+    observation,
   );
   if (didSyncSharedMessageId) {
     return;
@@ -1008,6 +1085,8 @@ async function processWatcher(
   await setWatcherState(dependencies, watcher, {
     lastState: "IN_GAME",
     currentGameId,
+    currentGameMode: activeGame.gameMode,
+    currentGameObservation: observation,
     lastCheckedAt: dependencies.clock.now(),
   });
 }

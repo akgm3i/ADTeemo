@@ -2,6 +2,10 @@ import { assertEquals, assertFalse, assertRejects } from "@std/assert";
 import { beforeEach, describe, test } from "@std/testing/bdd";
 import { assertSpyCalls, stub } from "@std/testing/mock";
 import { riotApi } from "./riot_api.ts";
+import {
+  activeGameResponseSchema,
+  riotMatchResponseSchema,
+} from "./contract/responses.ts";
 
 describe("riot_api.ts", () => {
   beforeEach(() => {
@@ -38,6 +42,51 @@ describe("riot_api.ts", () => {
 
     assertEquals(activeGame?.gameId, 12345);
     assertEquals(activeGame?.gameQueueConfigId, 420);
+    assertSpyCalls(fetchStub, 1);
+  });
+
+  test("参加者のPUUIDがnullでも、ID欠損として扱い監視対象者を含む試合概要を返す", async () => {
+    // Arrange
+    Deno.env.set("RIOT_API_KEY", "test-key");
+    using fetchStub = stub(
+      globalThis,
+      "fetch",
+      () =>
+        Promise.resolve(
+          new Response(JSON.stringify({
+            gameId: 12346,
+            gameType: "MATCHED_GAME",
+            gameStartTime: 1_700_000_000_000,
+            mapId: 11,
+            gameMode: "CLASSIC",
+            gameQueueConfigId: 420,
+            participants: [
+              { puuid: "watched-puuid", championId: 17, teamId: 100 },
+              {
+                puuid: null,
+                riotId: "Anonymous#JP1",
+                championId: 22,
+                teamId: 200,
+              },
+              { championId: 10, teamId: 100 },
+            ],
+          })),
+        ),
+    );
+
+    // Act
+    const game = await riotApi.getActiveGameByPuuid("jp1", "watched-puuid");
+    const serialized = activeGameResponseSchema.parse(
+      JSON.parse(JSON.stringify(game)),
+    );
+
+    // Assert
+    assertEquals(serialized.gameId, 12346);
+    assertEquals(serialized.participants, [
+      { puuid: "watched-puuid", championId: 17, teamId: 100 },
+      { riotId: "Anonymous#JP1", championId: 22, teamId: 200 },
+      { championId: 10, teamId: 100 },
+    ]);
     assertSpyCalls(fetchStub, 1);
   });
 
@@ -340,3 +389,39 @@ describe("riot_api.ts", () => {
     assertSpyCalls(fetchStub, 1);
   });
 });
+
+for (const win of [true, false, undefined]) {
+  test(`Mayhemの部分戦績を取得すると、勝敗が${String(win)}でも欠損値を捏造せず公開契約へ渡す`, async () => {
+    riotApi.__testing.resetRateLimiter();
+    Deno.env.set("RIOT_API_KEY", "test-key");
+    const payload = {
+      metadata: { matchId: "JP1_12345", participants: ["puuid-1"] },
+      info: {
+        gameId: 12345,
+        gameCreation: 1700000000000,
+        gameDuration: 1200,
+        gameMode: "KIWI",
+        gameType: "MATCHED_GAME",
+        mapId: 12,
+        queueId: 2400,
+        participants: [{ puuid: "puuid-1", win, kills: 5 }],
+      },
+    };
+    using _fetch = stub(
+      globalThis,
+      "fetch",
+      () => Promise.resolve(Response.json(payload)),
+    );
+    const actual = await riotApi.getMatchById("asia", "JP1_12345");
+    assertEquals(
+      riotMatchResponseSchema.parse(actual),
+      JSON.parse(JSON.stringify(payload)),
+    );
+    assertFalse(
+      riotMatchResponseSchema.safeParse({
+        ...payload,
+        info: { ...payload.info, gameMode: "CLASSIC" },
+      }).success,
+    );
+  });
+}

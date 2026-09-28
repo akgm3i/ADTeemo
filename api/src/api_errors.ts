@@ -38,7 +38,10 @@ export class ApiHttpError extends Error {
 }
 
 export function remoteApiError(
-  code: "RIOT_API_UNAVAILABLE" | "RIOT_STATIC_DATA_UNAVAILABLE",
+  code:
+    | "RIOT_API_UNAVAILABLE"
+    | "RIOT_MATCH_ACCESS_DENIED"
+    | "RIOT_STATIC_DATA_UNAVAILABLE",
   cause: unknown,
 ): ApiHttpError {
   return new ApiHttpError(code, { cause, errorCategory: "remote_api" });

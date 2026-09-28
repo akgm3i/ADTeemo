@@ -298,3 +298,193 @@ describe("試合結果rendererの表示回帰", () => {
     assertEquals(json.footer?.text.includes("Teemo#JP1"), false);
   });
 });
+
+test("Mayhemの情報がなければ取得不可だけを表示し、試合時間を取得できていれば表示する", async () => {
+  const expected = {
+    title: "ARAM: Mayhem",
+    description: "試合結果を取得できません。",
+  };
+  assertEquals(
+    (await renderer().resultUnavailable(watcher(), "JP1_12345", "mayhem"))
+      .toJSON(),
+    expected,
+  );
+  const value = match();
+  value.info.gameMode = "KIWI";
+  value.info.participants = [];
+  assertEquals(
+    (await renderer().matchResult(watcher(), account(), value)).toJSON(),
+    {
+      ...expected,
+      fields: [{ name: "試合時間", value: "30:00", inline: true }],
+    },
+  );
+});
+
+for (const win of [true, false]) {
+  test(`Mayhemの${win ? "勝利" : "敗北"}とKDAが取得できた場合、欠損した任意の戦績を補わず取得値を表示する`, async () => {
+    const value = match();
+    value.info.gameMode = "KIWI";
+    value.info.queueId = 2400;
+    value.info.mapId = 12;
+    const participant = value.info.participants[0];
+    participant.win = win;
+    delete participant.totalDamageDealtToChampions;
+    delete participant.visionScore;
+    delete participant.totalEnemyJungleMinionsKilled;
+    const embed = (await renderer().matchResult(watcher(), account(), value))
+      .toJSON();
+    assertEquals(
+      embed.title,
+      messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.result.title,
+        {
+          result: messageHandler.formatMessage(
+            win
+              ? messageKeys.matchTracking.embed.result.win
+              : messageKeys.matchTracking.embed.result.loss,
+          ),
+        },
+      ),
+    );
+    assertEquals(
+      embed.fields?.find(({ name }) => name === "KDA")?.value,
+      "10/2/8",
+    );
+    assertEquals(embed.fields?.some(({ name }) => name === "ダメージ"), false);
+  });
+}
+
+for (const win of [true, false, undefined]) {
+  test(`Mayhemで勝敗が${String(win)}かつkillsだけ取得できた場合、未取得の戦績や敗北を捏造しない`, async () => {
+    const value: RiotMatch = {
+      ...match(),
+      info: {
+        ...match().info,
+        gameMode: "KIWI",
+        queueId: 2400,
+        mapId: 12,
+        participants: [{ puuid: "puuid-1", win, kills: 5 }],
+      },
+    };
+    const embed = (await renderer().matchResult(watcher(), account(), value))
+      .toJSON();
+    if (win === undefined) {
+      assertEquals(embed, {
+        title: "ARAM: Mayhem",
+        description: "試合結果を取得できません。",
+        fields: [{ name: "試合時間", value: "30:00", inline: true }],
+      });
+      return;
+    }
+    assertEquals(
+      embed.title,
+      messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.result.title,
+        {
+          result: messageHandler.formatMessage(
+            win
+              ? messageKeys.matchTracking.embed.result.win
+              : messageKeys.matchTracking.embed.result.loss,
+          ),
+        },
+      ),
+    );
+    assertEquals(embed.fields?.map(({ name }) => name), [
+      "試合情報",
+      "試合時間",
+      "KDA",
+    ]);
+    assertEquals(
+      embed.fields?.find(({ name }) => name === "KDA")?.value,
+      "5/-/-",
+    );
+  });
+}
+
+for (
+  const observation of [
+    { championId: 17, elapsedSeconds: 1259 },
+    { championId: 17, elapsedSeconds: null },
+    { championId: null, elapsedSeconds: 1259 },
+  ]
+) {
+  test(`Mayhem結果が取得不可でも、観測済みの${observation.championId === null ? "時間" : observation.elapsedSeconds === null ? "チャンピオン" : "チャンピオンと時間"}だけを表示する`, async () => {
+    const embed = (await renderer().resultUnavailable(
+      watcher(),
+      "JP1_12345",
+      "mayhem",
+      observation,
+    )).toJSON();
+    const fields = [
+      ...(observation.championId === null
+        ? []
+        : [{ name: "チャンピオン", value: "ティーモ", inline: true }]),
+      ...(observation.elapsedSeconds === null ? [] : [{
+        name: "試合時間（概算）",
+        value: "約20分（最終確認時点）",
+        inline: true,
+      }]),
+    ];
+    assertEquals(embed, {
+      title: "ARAM: Mayhem",
+      description: "試合結果を取得できません。",
+      fields,
+    });
+  });
+}
+
+test("Mayhemで正式なチャンピオンと時間を取得できた場合、観測時の値より優先し勝敗は不明のまま表示する", async () => {
+  const value: RiotMatch = {
+    ...match(),
+    info: {
+      ...match().info,
+      gameMode: "KIWI",
+      participants: [{ puuid: "puuid-1", championId: 18 }],
+    },
+  };
+  const embed =
+    (await renderer().matchResult(watcher(), account(), value, null, null, {
+      championId: 17,
+      elapsedSeconds: 1259,
+    })).toJSON();
+  assertEquals(embed.fields, [{
+    name: "チャンピオン",
+    value: "トリスターナ",
+    inline: true,
+  }, { name: "試合時間", value: "30:00", inline: true }]);
+  assertEquals(embed.description, "試合結果を取得できません。");
+});
+
+test("Mayhemのチャンピオン表示名を解決できない場合、取得済みIDと概算時間を保持する", async () => {
+  const embed =
+    (await renderer(null).resultUnavailable(watcher(), "JP1_12345", "mayhem", {
+      championId: 17,
+      elapsedSeconds: 1259,
+    })).toJSON();
+  assertEquals(
+    embed.fields?.[0].value,
+    messageHandler.formatMessage(
+      messageKeys.matchTracking.embed.fallback.championId,
+      { id: 17 },
+    ),
+  );
+  assertEquals(embed.fields?.[1].value, "約20分（最終確認時点）");
+});
+
+test("Mayhemで正式なチャンピオン名だけ取得できた場合、古い観測IDの表示名で上書きしない", async () => {
+  const value: RiotMatch = {
+    ...match(),
+    info: {
+      ...match().info,
+      gameMode: "KIWI",
+      participants: [{ puuid: "puuid-1", championName: "Tristana" }],
+    },
+  };
+  const embed =
+    (await renderer().matchResult(watcher(), account(), value, null, null, {
+      championId: 17,
+      elapsedSeconds: 1259,
+    })).toJSON();
+  assertEquals(embed.fields?.[0].value, "Tristana");
+});

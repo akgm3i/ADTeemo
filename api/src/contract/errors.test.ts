@@ -20,6 +20,7 @@ describe("API error schema", () => {
       RATE_LIMITED: 429,
       INTERNAL_ERROR: 500,
       RIOT_API_UNAVAILABLE: 502,
+      RIOT_MATCH_ACCESS_DENIED: 502,
       RIOT_STATIC_DATA_UNAVAILABLE: 502,
     });
   });

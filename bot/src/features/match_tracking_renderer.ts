@@ -1,5 +1,9 @@
 import { EmbedBuilder } from "discord.js";
-import type { MatchWatcher, RiotAccount } from "@adteemo/api/contract";
+import type {
+  MatchGameObservation,
+  MatchWatcher,
+  RiotAccount,
+} from "@adteemo/api/contract";
 import type { MessageKey, messageKeys } from "../messages.ts";
 import type { OpggMatchDetail } from "../api_client.ts";
 import {
@@ -35,14 +39,14 @@ export type MatchTrackingRiotMatchParticipant = {
   puuid: string;
   championId?: number;
   championName?: string;
-  teamId: number;
-  win: boolean;
-  kills: number;
-  deaths: number;
-  assists: number;
+  teamId?: number;
+  win?: boolean;
+  kills?: number;
+  deaths?: number;
+  assists?: number;
   totalMinionsKilled?: number;
   neutralMinionsKilled?: number;
-  goldEarned: number;
+  goldEarned?: number;
   totalDamageDealtToChampions?: number;
   visionScore?: number;
   totalAllyJungleMinionsKilled?: number;
@@ -158,7 +162,12 @@ export function createMatchTrackingRenderer(
     staticData: MatchTrackingStaticData | null,
     gameMode: string,
   ) {
-    return staticData?.gameModes[gameMode] ?? gameMode;
+    return staticData?.gameModes[gameMode] ??
+      (gameMode === "KIWI"
+        ? messages.formatMessage(
+          messages.keys.matchTracking.embed.mayhemResultUnavailable.title,
+        )
+        : gameMode);
   }
 
   function resultMetricFields(
@@ -457,19 +466,101 @@ export function createMatchTrackingRenderer(
       .setTimestamp(dependencies.clock.now());
   }
 
-  function resultFetchTimeout(
-    watcher: MatchWatcher,
-    matchId: string,
+  function resultChampionId(
+    participant: MatchTrackingRiotMatchParticipant | undefined,
+    observation: MatchGameObservation | null,
   ) {
-    return new EmbedBuilder()
+    return participant?.championId ??
+      (participant?.championName
+        ? undefined
+        : observation?.championId ?? undefined);
+  }
+
+  async function mayhemResultUnavailable(
+    observation: MatchGameObservation | null,
+    participant?: MatchTrackingRiotMatchParticipant,
+    gameDuration?: number,
+  ) {
+    const embed = new EmbedBuilder()
       .setTitle(
         messages.formatMessage(
-          messages.keys.matchTracking.embed.resultTimeout.title,
+          messages.keys.matchTracking.embed.mayhemResultUnavailable.title,
         ),
       )
       .setDescription(
         messages.formatMessage(
-          messages.keys.matchTracking.embed.resultTimeout.description,
+          messages.keys.matchTracking.embed.mayhemResultUnavailable.description,
+        ),
+      );
+    const championId = resultChampionId(participant, observation);
+    if (championId !== undefined || participant?.championName) {
+      const staticData = championId === undefined
+        ? null
+        : await dependencies.resolveStaticData({
+          championIds: [championId],
+          queueIds: [],
+          mapIds: [],
+          gameModes: [],
+        });
+      embed.addFields({
+        name: messages.formatMessage(
+          messages.keys.matchTracking.embed.field.champion,
+        ),
+        value: championNameById(
+          staticData,
+          championId,
+          participant?.championName,
+        ),
+        inline: true,
+      });
+    }
+    if (gameDuration !== undefined) {
+      embed.addFields({
+        name: messages.formatMessage(
+          messages.keys.matchTracking.embed.field.duration,
+        ),
+        value: duration(gameDuration),
+        inline: true,
+      });
+    } else if (
+      observation?.elapsedSeconds !== null &&
+      observation?.elapsedSeconds !== undefined
+    ) {
+      embed.addFields({
+        name: messages.formatMessage(
+          messages.keys.matchTracking.embed.field.estimatedDuration,
+        ),
+        value: messages.formatMessage(
+          messages.keys.matchTracking.embed.fallback.observedElapsedMinutes,
+          { minutes: Math.floor(observation.elapsedSeconds / 60) },
+        ),
+        inline: true,
+      });
+    }
+    return embed;
+  }
+
+  async function resultUnavailable(
+    watcher: MatchWatcher,
+    matchId: string,
+    reason: "timeout" | "access_denied" | "mayhem" = "timeout",
+    observation: MatchGameObservation | null = null,
+  ) {
+    if (reason === "mayhem") {
+      return await mayhemResultUnavailable(observation);
+    }
+    const copy = reason === "access_denied"
+      ? messages.keys.matchTracking.embed.resultAccessDenied
+      : messages.keys.matchTracking.embed.resultTimeout;
+    return new EmbedBuilder()
+      .setTitle(
+        messages.formatMessage(
+          copy.title,
+        ),
+      )
+      .setDescription(
+        messages.formatMessage(
+          copy.description,
           { member: `<@${watcher.targetDiscordId}>` },
         ),
       )
@@ -489,11 +580,19 @@ export function createMatchTrackingRenderer(
     match: MatchTrackingRiotMatch,
     rankSummary: RankSummary | null = null,
     opggDetail: OpggMatchDetail | null = null,
+    observation: MatchGameObservation | null = null,
   ) {
     const participant = match.info.participants.find((p) =>
       p.puuid === account.puuid
     );
-    if (!participant) {
+    if (!participant || participant.win === undefined) {
+      if (match.info.gameMode === "KIWI") {
+        return await mayhemResultUnavailable(
+          observation,
+          participant,
+          match.info.gameDuration,
+        );
+      }
       return new EmbedBuilder()
         .setTitle(
           messages.formatMessage(
@@ -517,31 +616,40 @@ export function createMatchTrackingRenderer(
         .setTimestamp(dependencies.clock.now());
     }
 
+    const championId = resultChampionId(
+      participant,
+      match.info.gameMode === "KIWI" ? observation : null,
+    );
     const staticData = await dependencies.resolveStaticData({
-      championIds: participant.championId === undefined
-        ? []
-        : [participant.championId],
+      championIds: championId === undefined ? [] : [championId],
       queueIds: [match.info.queueId],
       mapIds: [match.info.mapId],
       gameModes: [match.info.gameMode],
     });
     const champion = championNameById(
       staticData,
-      participant.championId,
+      championId,
       participant.championName,
     );
     const thumbnailUrl = championIconUrlById(
       staticData,
-      participant.championId,
+      championId,
     );
-    const teamKills = match.info.participants
-      .filter((candidate) => candidate.teamId === participant.teamId)
-      .reduce((sum, candidate) => sum + candidate.kills, 0);
-    const killParticipation = formatKillParticipation(
-      participant.kills,
-      participant.assists,
-      teamKills,
+    const teammates = match.info.participants.filter((candidate) =>
+      candidate.teamId === participant.teamId
     );
+    const teamKills = participant.teamId !== undefined &&
+        teammates.every((candidate) => candidate.kills !== undefined)
+      ? teammates.reduce((sum, candidate) => sum + candidate.kills!, 0)
+      : undefined;
+    const killParticipation = participant.kills !== undefined &&
+        participant.assists !== undefined && teamKills !== undefined
+      ? formatKillParticipation(
+        participant.kills,
+        participant.assists,
+        teamKills,
+      )
+      : null;
     const queue = queueName(staticData, match.info.queueId);
     const map = mapName(staticData, match.info.mapId);
     const mode = gameModeName(staticData, match.info.gameMode);
@@ -558,20 +666,26 @@ export function createMatchTrackingRenderer(
         value: `${map} / ${mode} / ${queue}`,
         inline: false,
       },
-      {
-        name: messages.formatMessage(
-          messages.keys.matchTracking.embed.field.champion,
-        ),
-        value: champion,
-        inline: true,
-      },
-      {
-        name: messages.formatMessage(
-          messages.keys.matchTracking.embed.field.role,
-        ),
-        value: resultRole(participant),
-        inline: true,
-      },
+      ...(match.info.gameMode === "KIWI" && championId === undefined &&
+          !participant.championName
+        ? []
+        : [{
+          name: messages.formatMessage(
+            messages.keys.matchTracking.embed.field.champion,
+          ),
+          value: champion,
+          inline: true,
+        }]),
+      ...(match.info.gameMode === "KIWI" &&
+          resultMetricRole(participant) === "UNKNOWN"
+        ? []
+        : [{
+          name: messages.formatMessage(
+            messages.keys.matchTracking.embed.field.role,
+          ),
+          value: resultRole(participant),
+          inline: true,
+        }]),
       {
         name: messages.formatMessage(
           messages.keys.matchTracking.embed.field.duration,
@@ -579,28 +693,33 @@ export function createMatchTrackingRenderer(
         value: duration(match.info.gameDuration),
         inline: true,
       },
-      {
-        name: messages.formatMessage(
-          messages.keys.matchTracking.embed.field.kda,
-        ),
-        value:
-          `${participant.kills}/${participant.deaths}/${participant.assists}`,
-        inline: true,
-      },
-      {
+      ...([participant.kills, participant.deaths, participant.assists].every(
+          (value) => value === undefined,
+        )
+        ? []
+        : [{
+          name: messages.formatMessage(
+            messages.keys.matchTracking.embed.field.kda,
+          ),
+          value: `${participant.kills ?? "-"}/${participant.deaths ?? "-"}/${
+            participant.assists ?? "-"
+          }`,
+          inline: true,
+        }]),
+      ...(killParticipation === null ? [] : [{
         name: messages.formatMessage(
           messages.keys.matchTracking.embed.field.killParticipation,
         ),
         value: killParticipation,
         inline: true,
-      },
-      {
+      }]),
+      ...(participant.goldEarned === undefined ? [] : [{
         name: messages.formatMessage(
           messages.keys.matchTracking.embed.field.gold,
         ),
         value: String(participant.goldEarned),
         inline: true,
-      },
+      }]),
     ];
     const damage = displayMetric(participant.totalDamageDealtToChampions);
     if (damage) {
@@ -669,7 +788,7 @@ export function createMatchTrackingRenderer(
   return {
     activeGame,
     resultPending,
-    resultFetchTimeout,
+    resultUnavailable,
     matchResult,
   };
 }

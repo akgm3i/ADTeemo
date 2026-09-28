@@ -6,9 +6,9 @@
 - Read when: route・RPC schema・エラー応答を変更するとき。
 - Related: [#115](https://github.com/akgm3i/ADTeemo/issues/115)
 - Code: [error contract](../api/src/contract/errors.ts), [API errors](../api/src/api_errors.ts)
-- Tests: [error contract tests](../api/src/error_contract.test.ts)
-- Reviewed: 2026-09-25
-- Verified: local code review, 2026-09-25
+- Tests: [error contract tests](../api/src/error_contract.test.ts), [Riot応答診断](../api/src/riot_api_diagnostics.test.ts), [Riot応答の正規化](../api/src/riot_api.test.ts)
+- Reviewed: 2026-09-26
+- Verified: 2026-09-26、local code review・qualityと、実Riot応答のnull PUUIDによる502の再現・正規化後の監視復旧と、Match-v5の403を専用codeへ分類した両guildの取得不可通知を確認。
 
 Backend APIの成否はHTTPステータスだけで判定します。すべてのエラーレスポンスは `application/json` で、次の共通形式を使います。
 
@@ -61,3 +61,19 @@ malformed JSONとschema不一致、未認証、対象なし、状態競合、内
 Botでは不正な2xxを`ApiContractError`（`kind: contract_error`）へ変換し、公開HTTPエラーや通信失敗と区別します。provider側の不正応答は安全な500へ閉じ、内部値をレスポンスへ漏らしません。
 
 実providerとの対応は[contract app tests](../api/src/contract/app.test.ts)、resourceごとのparse・失敗は[Bot resource tests](../bot/src/api_clients)で検証します。facadeの[api_client.test.ts](../bot/src/api_client.test.ts)は組み立てを検証し、各resourceの全挙動を複製しません。fakeの未定義呼出し・未消費応答の扱いは[テスト方針](../TESTING_STYLE.md)に従います。
+
+## 試合結果へのアクセス拒否
+
+結果検査のMatch-v5呼出しで`RiotApiRequestError`のHTTP 403を受けた場合は、`502 / RIOT_MATCH_ACCESS_DENIED`として返す。正常な未反映（200の`match: null`）、通信失敗・429・5xxの`RIOT_API_UNAVAILABLE`と区別し、provider失敗を成功レスポンスへ変換しない。元例外は`remote_api`として記録し、公開本文にprovider本文やcredentialを含めない。この分類は結果検査に限り、Spectator等の403は変更しない。
+
+Botは取得拒否を終端の取得不可通知として扱い、通知完了後にその試合の結果待ちを解除する。403はモードの非公開以外に認証・権限の問題でも起こるため、文言で特定モード非対応やキー失効と断定しない。対象試合IDと通知はoutboxに残り、APIキー等の設定を直しただけで過去の拒否された試合を自動再取得する仕様ではない。
+
+## Riot応答の検証失敗の診断
+
+Riotが2xxを返しても、JSON解析または消費するfieldのschema検証に失敗した場合は、従来どおり成功に変換せず502へ分類する。`riot_api.invalid_response` に固定の `reason`（`parse` / `schema`）、個人識別子を含まないmethod template、Riot側HTTP statusを記録する。schema失敗では `issueCode` と固定field名・配列indexからなる `path` も残す。入力値、provider本文、Zodの自由記述messageは記録しない。診断出力自体の失敗で元の失敗種別を置き換えない。
+
+2026-09-26の実環境では、1試合目の結果配送後にwatcherがIDLEへ戻った一方、2試合目の進行中だけactive-game検査が毎分502になった。既存ログには `RiotApiRequestError` の名前しかなく、当時の解析・検証失敗の項目は確定できなかった。診断を反映した次の実試合で、参加者の `puuid: null` による同じ502を再現した。Riotは200を返しており、監視対象者自身のPUUIDは取得できていた。
+
+Spectator-v5の参加者PUUIDは、Riot境界で `null` を既存契約のID省略へ正規化する。参加者そのものや試合全体を捨てず、取得できた監視対象者のID・champion・team情報は保持する。HTTP契約のPUUIDは従来どおり省略可能な文字列であり、他fieldの型不正は引き続き失敗とする。Riotの応答形式が変わる場合は、実際の検証項目を確認してから正規化範囲を見直す。
+
+正規化を検証APIへ反映した後、同日の13:56 JSTの通常workerで同じ実試合のactive-game検査が200となり、2guildの開始通知が `delivered`、watcherが `IN_GAME` へ進んだ。Botの監視設定やDB状態を手作業で修正せず復旧した。検知できなかった過去試合の通知を遡って生成する変更は含まない。

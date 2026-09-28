@@ -1,3 +1,4 @@
+import type { MatchGameObservation } from "@adteemo/api/contract";
 import { responseContracts } from "@adteemo/api/contract";
 import type {
   ActiveGame,
@@ -80,9 +81,13 @@ export function createMatchWatchersApiClient(
       riotAccountPuuid?: string;
       lastState: MatchWatcherState;
       currentGameId?: string | null;
+      currentGameMode?: string | null;
+      currentGameObservation?: MatchGameObservation | null;
       currentMatchId?: string | null;
       currentNotificationMessageId?: string | null;
       pendingResultMatchId?: string | null;
+      pendingResultGameMode?: string | null;
+      pendingResultObservation?: MatchGameObservation | null;
       pendingResultNotificationMessageId?: string | null;
       pendingResultStartedAt?: Date | null;
       gameStartedAt?: Date | null;

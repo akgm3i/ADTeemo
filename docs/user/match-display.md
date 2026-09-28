@@ -7,8 +7,8 @@
 - Related: [#28](https://github.com/akgm3i/ADTeemo/issues/28), [#55](https://github.com/akgm3i/ADTeemo/issues/55)
 - Code: [renderer](../../bot/src/features/match_tracking_renderer.ts)
 - Tests: [renderer tests](../../bot/src/features/match_tracking_renderer_result.test.ts)
-- Reviewed: 2026-09-25
-- Verified: renderer 21 scenarios, 2026-09-25
+- Reviewed: 2026-09-28
+- Verified: renderer tests including partial Mayhem results and observed champion/duration, 2026-09-28
 
 サーバー管理者が`/watch-settings`で設定した通知先へ、所属者の全登録Riotアカウントの試合を通知します。`/watch-list`で有効な対象を確認し、本人の停止・再開は`/watch-preference`で変更します。[アカウント管理と監視設定](./riot-accounts-and-monitoring.md)を参照してください。
 
@@ -31,6 +31,12 @@
 Jungleの「JG等 合計」はRiotの `neutralMinionsKilled` の取得値です。自陣/敵陣はその内訳として取得できた値だけを示し、合計へ加算しません。公式定義にはジャングルモンスターに加えてpetも含まれるため、合計から自陣/敵陣を引いて「中立だけ」の数を算出しません。未提供の内訳は省略します。根拠は[Riot公式Match-v5 ParticipantDto](https://developer.riotgames.com/apis/#match-v5/GET_getMatch)です（2026-09-25確認）。
 
 ランク対象試合では[ランク・LP](./ranked-lp.md)を表示します。任意の[OP.GG連携](../integrations/opgg.md)が成功すると試合詳細リンクと、取得できたレーン戦スコア・平均Tierを補足します。プロフィールへのリンクは表示しません。
+
+## ARAM: Mayhem
+
+勝敗が取得できる場合は、取得できた戦績だけを表示します。未取得の項目は省略し、KDAの一部だけ取得できた場合は不明な部分を`-`で示します。勝敗が不明な場合は、Mayhemの試合であることと結果を取得できないことを通知し、取得済みのチャンピオンや試合時間があれば添えます。勝敗や戦績を推測して補いません。
+
+試合中に確認したチャンピオンと経過時間は、再起動や次の試合の開始後も結果表示に利用します。結果APIのチャンピオン・試合時間を優先し、試合時間を取得できない場合は「試合時間（概算）: 約17分（最終確認時点）」のように表示します。この概算は最後に試合中と確認できた時点の経過時間で、実際の終了時刻までの長さではありません。結果を待った時間は加算しません。チャンピオン・時間の片方だけ判明していればその項目だけを表示し、どちらも不明ならMayhemであることと結果取得不可の説明だけにします。
 
 ## 情報が不足している場合
 

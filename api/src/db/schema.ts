@@ -1,3 +1,4 @@
+import type { MatchGameObservation } from "../contract/schemas.ts";
 import type { CustomGameSettings } from "../contract/custom_game_settings.ts";
 import {
   index,
@@ -344,9 +345,15 @@ export const matchWatchers = sqliteTable("match_watchers", {
     "IDLE",
   ),
   currentGameId: text("current_game_id"),
+  currentGameMode: text("current_game_mode"),
+  currentGameObservation: text("current_game_observation", { mode: "json" })
+    .$type<MatchGameObservation>(),
   currentMatchId: text("current_match_id"),
   currentNotificationMessageId: text("current_notification_message_id"),
   pendingResultMatchId: text("pending_result_match_id"),
+  pendingResultGameMode: text("pending_result_game_mode"),
+  pendingResultObservation: text("pending_result_observation", { mode: "json" })
+    .$type<MatchGameObservation>(),
   pendingResultNotificationMessageId: text(
     "pending_result_notification_message_id",
   ),

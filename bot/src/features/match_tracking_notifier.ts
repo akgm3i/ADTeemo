@@ -16,7 +16,7 @@ export type NotificationResult =
 export type WatcherMessage = {
   id?: string;
   nonce?: string | number | null;
-  embeds?: { footer?: { text: string } | null }[];
+  embeds?: { footer?: { text: string } | null; url?: string | null }[];
   author?: { id: string };
   client?: { user: { id: string } | null };
   createdTimestamp?: number;
@@ -130,7 +130,11 @@ export function createMatchTrackingNotifier(
     if (!channel?.send) return failure("channel_missing");
 
     const markedEmbed = attempt
-      ? withMessageMarker(embed, `ADTeemo delivery:${attempt.nonce}`)
+      ? withMessageMarker(
+        embed,
+        `ADTeemo delivery:${attempt.nonce}`,
+        `https://discord.com/channels/${watcher.guildId}/${watcher.channelId}`,
+      )
       : embed;
 
     if (messageId) {

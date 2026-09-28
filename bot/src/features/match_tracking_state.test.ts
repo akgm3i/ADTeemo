@@ -1,5 +1,6 @@
 import {
   account,
+  activeGame,
   rankSnapshot,
   watcher,
 } from "./testing/match_tracking_fixtures.ts";
@@ -13,6 +14,7 @@ import {
   matchCacheKey,
   matchIdForGame,
   matchIdParts,
+  observeMayhemGame,
   pendingResultFromWatcher,
   rankDelta,
   resultMetricValues,
@@ -61,6 +63,8 @@ describe("match_tracking_state.ts", () => {
     assertEquals(currentStateFromWatcher(target), {
       lastState: "IDLE",
       currentGameId: null,
+      currentGameMode: null,
+      currentGameObservation: null,
       currentMatchId: null,
       currentNotificationMessageId: null,
       gameStartedAt: null,
@@ -68,6 +72,8 @@ describe("match_tracking_state.ts", () => {
     });
     assertEquals(pendingResultFromWatcher(target), {
       matchId: "JP1_12345",
+      gameMode: null,
+      observation: null,
       messageId: "message-existing",
       startedAt,
     });
@@ -201,4 +207,44 @@ describe("match_tracking_state.ts", () => {
       ],
     );
   });
+});
+
+test("Mayhemを観測すると、PUUIDが一致する本人のチャンピオンと確認時点の経過時間だけを保持する", () => {
+  const now = new Date("2026-09-28T00:10:00Z");
+  const game = {
+    ...activeGame(),
+    gameMode: "KIWI",
+    gameStartTime: now.getTime() - 605_000,
+    participants: [{ puuid: "other", championId: 99, teamId: 100 }, {
+      puuid: "puuid-1",
+      championId: 17,
+      teamId: 100,
+    }],
+  };
+  assertEquals(observeMayhemGame(watcher(), game, now), {
+    championId: 17,
+    elapsedSeconds: 605,
+  });
+  const saved = watcher({
+    currentGameId: String(game.gameId),
+    currentGameObservation: { championId: 17, elapsedSeconds: 605 },
+  });
+  const missing = {
+    ...game,
+    gameStartTime: 0,
+    gameLength: undefined,
+    participants: [{ puuid: "other", championId: 99, teamId: 100 }],
+  };
+  assertEquals(observeMayhemGame(saved, missing, now), {
+    championId: 17,
+    elapsedSeconds: 605,
+  });
+  assertEquals(
+    observeMayhemGame(saved, { ...missing, gameId: 67890 }, now),
+    null,
+  );
+  assertEquals(
+    observeMayhemGame(saved, { ...game, gameMode: "CLASSIC" }, now),
+    null,
+  );
 });

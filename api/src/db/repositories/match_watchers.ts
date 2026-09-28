@@ -1,3 +1,4 @@
+import type { MatchGameObservation } from "../../contract/schemas.ts";
 import { and, asc, eq, exists, notExists, notInArray } from "drizzle-orm";
 import { MatchWatcherLimitError, RecordNotFoundError } from "../../errors.ts";
 import type { DbActionsConfig } from "../actions.ts";
@@ -282,9 +283,13 @@ export function createMatchWatchersRepository(
       riotAccountPuuid?: string;
       lastState: MatchWatcherState;
       currentGameId?: string | null;
+      currentGameMode?: string | null;
+      currentGameObservation?: MatchGameObservation | null;
       currentMatchId?: string | null;
       currentNotificationMessageId?: string | null;
       pendingResultMatchId?: string | null;
+      pendingResultGameMode?: string | null;
+      pendingResultObservation?: MatchGameObservation | null;
       pendingResultNotificationMessageId?: string | null;
       pendingResultStartedAt?: Date | null;
       gameStartedAt?: Date | null;

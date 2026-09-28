@@ -193,13 +193,23 @@ export const createMatchWatcherSchema = z.object({
   channelId: z.string(),
 });
 
+export const matchGameObservationSchema = z.object({
+  championId: z.number().int().positive().nullable(),
+  elapsedSeconds: z.number().int().nonnegative().nullable(),
+}).strict();
+export type MatchGameObservation = z.infer<typeof matchGameObservationSchema>;
+
 export const updateMatchWatcherStateSchema = z.object({
   riotAccountPuuid: z.string().min(1).optional(),
   lastState: z.enum(matchWatcherStates),
   currentGameId: z.string().nullable().optional(),
+  currentGameMode: z.string().min(1).nullable().optional(),
+  currentGameObservation: matchGameObservationSchema.nullable().optional(),
   currentMatchId: z.string().nullable().optional(),
   currentNotificationMessageId: z.string().nullable().optional(),
   pendingResultMatchId: z.string().nullable().optional(),
+  pendingResultGameMode: z.string().min(1).nullable().optional(),
+  pendingResultObservation: matchGameObservationSchema.nullable().optional(),
   pendingResultNotificationMessageId: z.string().nullable().optional(),
   pendingResultStartedAt: z.coerce.date().nullable().optional(),
   gameStartedAt: z.coerce.date().nullable().optional(),

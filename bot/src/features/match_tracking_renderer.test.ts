@@ -128,7 +128,7 @@ describe("match_tracking_renderer.ts", () => {
     assertStringIncludes(content, "Sub#JP1");
   });
 
-  test("pendingとtimeout Embedを生成するとき、Discord送信やstatic data解決を行わない", () => {
+  test("pending・timeout・取得拒否のEmbedを生成するとき、理由を区別しstatic data解決を行わない", async () => {
     const dependencies = {
       resolveStaticData: (_input: StaticDataInput) =>
         Promise.resolve(staticData()),
@@ -137,8 +137,30 @@ describe("match_tracking_renderer.ts", () => {
     const renderer = rendererWith(dependencies.resolveStaticData);
 
     const pending = renderer.resultPending(watcher(), "JP1_12345").toJSON();
-    const timeout = renderer.resultFetchTimeout(watcher(), "JP1_12345")
+    const timeout = (await renderer.resultUnavailable(watcher(), "JP1_12345"))
       .toJSON();
+
+    const denied = (await renderer.resultUnavailable(
+      watcher(),
+      "JP1_12345",
+      "access_denied",
+    )).toJSON();
+    assertEquals(
+      denied.title,
+      messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.resultAccessDenied.title,
+      ),
+    );
+    assertEquals(
+      denied.description,
+      messageHandler.formatMessage(
+        messageKeys.matchTracking.embed.resultAccessDenied.description,
+        { member: "<@target-1>" },
+      ),
+    );
+    assertEquals(denied.footer, timeout.footer);
+    assertEquals(denied.timestamp, timeout.timestamp);
+    assertEquals(denied.fields, undefined);
 
     assertEquals(pending.timestamp, "2026-01-01T00:02:00.000Z");
     assertEquals(timeout.timestamp, "2026-01-01T00:02:00.000Z");

@@ -1,6 +1,7 @@
 import { assertEquals, assertFalse, assertMatch } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { assertSpyCalls, stub } from "@std/testing/mock";
+import { RiotApiRequestError } from "./riot_api.ts";
 import { createApp } from "./app.ts";
 import {
   API_ERROR_STATUS_BY_CODE,
@@ -291,3 +292,58 @@ describe("API error contract", () => {
     assertEquals(errorStub.calls[0].args[2], cause);
   });
 });
+
+for (const status of [403, 429, 503]) {
+  test(`結果取得時にRiotが${status}を返す場合、HTTP失敗を維持し取得拒否だけを専用codeで区別する`, async () => {
+    // Arrange
+    const cause = new RiotApiRequestError(
+      "http",
+      "asia:GET /lol/match/v5/matches/:matchId",
+      status,
+    );
+    const deps = createTestDependencies({
+      dbActions: {
+        getRiotAccountByDiscordId: () =>
+          Promise.resolve({
+            discordId: "target-1",
+            isMain: true,
+            puuid: "puuid-1",
+            gameName: "Teemo",
+            tagLine: "JP1",
+            platform: "jp1",
+            region: "asia",
+            createdAt: new Date("2026-01-01T00:00:00Z"),
+            updatedAt: null,
+          }),
+      },
+      riotApi: { getMatchById: () => Promise.reject(cause) },
+    });
+    using errors = stub(deps.logger, "error", () => {});
+    const app = createApp(deps);
+    // Act
+    const response = await app.request(
+      "/match-watchers/guild-1/target-1/tracking/result",
+      {
+        method: "POST",
+        headers: {
+          ...TEST_BOT_SERVICE_AUTH_HEADERS,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ matchId: "JP1_12345" }),
+      },
+    );
+    // Assert
+    assertEquals(response.status, 502);
+    const body = await response.json();
+    assertEquals(body, {
+      code: status === 403
+        ? "RIOT_MATCH_ACCESS_DENIED"
+        : "RIOT_API_UNAVAILABLE",
+      message: status === 403
+        ? "Riot denied access to match data"
+        : "Riot API request failed",
+    });
+    assertSpyCalls(errors, 1);
+    assertEquals(errors.calls[0].args[2], cause);
+  });
+}

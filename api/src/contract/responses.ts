@@ -1,3 +1,4 @@
+import { matchGameObservationSchema } from "./schemas.ts";
 import { guildMatchWatchSettingsSchema } from "./watch_policy.ts";
 import { customGameSettingsSchema } from "./custom_game_settings.ts";
 import { notificationDeliverySchema } from "./notification_delivery.ts";
@@ -62,9 +63,13 @@ export const riotAccountResponseSchema = z.object({
 const watcherStateFields = {
   lastState: z.enum(matchWatcherStates),
   currentGameId: id.nullable(),
+  currentGameMode: id.nullable(),
+  currentGameObservation: matchGameObservationSchema.nullable(),
   currentMatchId: id.nullable(),
   currentNotificationMessageId: id.nullable(),
   pendingResultMatchId: id.nullable(),
+  pendingResultGameMode: id.nullable(),
+  pendingResultObservation: matchGameObservationSchema.nullable(),
   pendingResultNotificationMessageId: id.nullable(),
   pendingResultStartedAt: nullableDate,
   gameStartedAt: nullableDate,
@@ -135,7 +140,7 @@ export const activeGameResponseSchema = z.object({
     }),
   ),
 });
-export const riotMatchResponseSchema = z.object({
+const completeMatchSchema = z.object({
   metadata: z.object({ matchId: id, participants: z.array(id) }),
   info: z.object({
     gameId: count,
@@ -170,6 +175,21 @@ export const riotMatchResponseSchema = z.object({
     })),
   }),
 });
+// Accept partial Mayhem results. Other modes retain the complete
+// contract; absent values stay absent rather than becoming zero or a loss.
+export const riotMatchResponseSchema = z.union([
+  completeMatchSchema,
+  completeMatchSchema.extend({
+    info: completeMatchSchema.shape.info.extend({
+      gameMode: z.literal("KIWI"),
+      participants: z.array(
+        completeMatchSchema.shape.info.shape.participants.element.partial()
+          .required({ puuid: true }),
+      ),
+    }),
+  }),
+]);
+
 export const leagueEntrySchema = z.object({
   queueType: id,
   tier: z.string().optional(),
