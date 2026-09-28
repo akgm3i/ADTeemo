@@ -251,7 +251,8 @@
         "opgg": "OP.GG",
         "matchDetails": "試合情報",
         "duration": "試合時間",
-        "role": "ロール"
+        "role": "ロール",
+        "estimatedDuration": "試合時間（概算）"
       },
       "opgg": {
         "detail": "[試合詳細]({url})",
@@ -264,7 +265,8 @@
         "unknownQueue": "知らないキュー",
         "queueId": "キュー {id}",
         "mapId": "マップ {id}",
-        "elapsedMinutes": "約{minutes}分"
+        "elapsedMinutes": "約{minutes}分",
+        "observedElapsedMinutes": "約{minutes}分（最終確認時点）"
       },
       "footer": {
         "game": "{platform} Game {gameId} / {riotId}",
@@ -286,6 +288,14 @@
         "jungleCs": "JG等 合計: {value}",
         "allyJungleCs": "自陣JG: {value}",
         "enemyJungleCs": "敵陣JG: {value}"
+      },
+      "resultAccessDenied": {
+        "title": "戦績を取得できなかった",
+        "description": "{member} の戦績へのアクセスがRiot側で拒否された。この試合の結果確認はここまでだ。次の試合も僕が見守るよ。"
+      },
+      "mayhemResultUnavailable": {
+        "title": "ARAM: Mayhem",
+        "description": "試合結果を取得できません。"
       }
     }
   },

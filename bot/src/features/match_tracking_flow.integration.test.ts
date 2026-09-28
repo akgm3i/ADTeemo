@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertObjectMatch } from "@std/assert";
 import { test } from "@std/testing/bdd";
 import { stub } from "@std/testing/mock";
 import { EmbedBuilder } from "discord.js";
+import { RiotApiRequestError } from "../../../api/src/riot_api.ts";
 import { createApp } from "../../../api/src/app.ts";
 import { createTestDependencies } from "../../../api/src/test_utils.ts";
 import { createMigratedTestDatabase } from "../../../api/src/db/integration_test_harness.ts";
@@ -25,7 +26,11 @@ const config = {
 const renderer = {
   activeGame: () => Promise.resolve(new EmbedBuilder().setTitle("progress")),
   resultPending: () => new EmbedBuilder().setTitle("pending"),
-  resultFetchTimeout: () => new EmbedBuilder().setTitle("timeout"),
+  resultUnavailable: (
+    _watcher: unknown,
+    _matchId: string,
+    reason = "timeout",
+  ) => Promise.resolve(new EmbedBuilder().setTitle(reason)),
   matchResult: (watcher: { targetDiscordId: string }) =>
     Promise.resolve(
       new EmbedBuilder().setTitle(`result:${watcher.targetDiscordId}`),
@@ -260,7 +265,87 @@ test("同一accountを2guildで監視すると、tick内のRiot元データは1�
   assertEquals(activeFetches, 2); // A new tick must fetch fresh source data.
 });
 
-test("同じ試合の結果待ちが2guildにある場合、Matchとランク取得は共有し結果投稿と状態は各guildへ保存する", async () => {
+for (const endedNow of [false, true]) {
+  test(`同じ試合を2guildで${endedNow ? "終了検知した" : "結果待ちしている"}場合、結果取得を共有し各投稿を一度だけ結果へ更新する`, async () => {
+    // Arrange
+    await using db = await createMigratedTestDatabase();
+    await db.actions.upsertRiotAccount({
+      discordId: "A",
+      puuid: "puuid-1",
+      gameName: "A",
+      tagLine: "JP1",
+      platform: "jp1",
+      region: "asia",
+    });
+    for (const guildId of ["guild-1", "guild-2"]) {
+      await db.actions.upsertMatchWatcher({
+        guildId,
+        targetDiscordId: "A",
+        requesterId: "A",
+        channelId: `${guildId}-channel`,
+      });
+      await db.actions.updateMatchWatcherState(guildId, "A", {
+        ...(endedNow
+          ? {
+            lastState: "IN_GAME" as const,
+            currentGameId: "12345",
+            currentNotificationMessageId: `${guildId}-message`,
+            gameStartedAt: new Date(),
+          }
+          : {
+            lastState: "IDLE" as const,
+            pendingResultMatchId: "JP1_12345",
+            pendingResultNotificationMessageId: `${guildId}-message`,
+            pendingResultStartedAt: new Date(),
+          }),
+      });
+    }
+    const deps = createTestDependencies({ dbActions: db.actions });
+    let matchFetches = 0;
+    let rankFetches = 0;
+    deps.riotApi.getActiveGameByPuuid = () => Promise.resolve(null);
+    deps.riotApi.getMatchById = () => {
+      matchFetches++;
+      return Promise.resolve(match());
+    };
+    deps.riotApi.getLeagueEntriesByPuuid = () => {
+      rankFetches++;
+      return Promise.resolve([]);
+    };
+    const apiClient = createInProcessBotApiClient(createApp(deps));
+    const notified: unknown[] = [];
+    const service = createMatchTrackingService({
+      apiClient,
+      notifier: {
+        sendOrEditWatcherMessage: (watcher, messageId, embed, intent) => {
+          notified.push([watcher.guildId, messageId, embed.data.title, intent]);
+          return Promise.resolve({ status: "edited", messageId: messageId! });
+        },
+      },
+      renderer,
+      clock: { now: () => new Date() },
+      logger,
+      config,
+    });
+    // Act
+    await service.processMatchWatchers();
+    // Assert
+    assertEquals(notified, [
+      ["guild-1", "guild-1-message", "result:A", "result:JP1_12345"],
+      ["guild-2", "guild-2-message", "result:A", "result:JP1_12345"],
+    ]);
+    assertEquals(matchFetches, 1);
+    assertEquals(rankFetches, 1);
+    assertEquals(
+      (await db.actions.getEnabledMatchWatchers()).map((watcher) =>
+        watcher.pendingResultMatchId
+      ),
+      [null, null],
+    );
+  });
+}
+
+test("結果取得が403で拒否された場合、2guildへ取得不可を一度だけ通知して結果待ちを解除する", async () => {
   // Arrange
   await using db = await createMigratedTestDatabase();
   await db.actions.upsertRiotAccount({
@@ -285,43 +370,188 @@ test("同じ試合の結果待ちが2guildにある場合、Matchとランク取
       pendingResultStartedAt: new Date(),
     });
   }
-  const deps = createTestDependencies({ dbActions: db.actions });
   let matchFetches = 0;
-  let rankFetches = 0;
+  const deps = createTestDependencies({ dbActions: db.actions });
   deps.riotApi.getActiveGameByPuuid = () => Promise.resolve(null);
   deps.riotApi.getMatchById = () => {
     matchFetches++;
-    return Promise.resolve(match());
-  };
-  deps.riotApi.getLeagueEntriesByPuuid = () => {
-    rankFetches++;
-    return Promise.resolve([]);
+    return Promise.reject(
+      new RiotApiRequestError(
+        "http",
+        "asia:GET /lol/match/v5/matches/:matchId",
+        403,
+      ),
+    );
   };
   const apiClient = createInProcessBotApiClient(createApp(deps));
-  const notified: (string | null | undefined)[] = [];
+  const sent: unknown[] = [];
   const service = createMatchTrackingService({
     apiClient,
-    notifier: {
-      sendOrEditWatcherMessage: (_watcher, messageId) => {
-        notified.push(messageId);
-        return Promise.resolve({ status: "edited", messageId: messageId! });
-      },
-    },
     renderer,
-    clock: { now: () => new Date() },
     logger,
     config,
+    clock: { now: () => new Date() },
+    notifier: createDurableMatchTrackingNotifier({
+      store: apiClient,
+      logger,
+      notifier: {
+        sendOrEditWatcherMessage: (watcher, messageId, embed) => {
+          sent.push([watcher.guildId, messageId, embed.data.title]);
+          return Promise.resolve({ status: "edited", messageId: messageId! });
+        },
+      },
+    }),
   });
   // Act
   await service.processMatchWatchers();
+  await service.processMatchWatchers();
   // Assert
-  assertEquals(notified, ["guild-1-message", "guild-2-message"]);
+  assertEquals(sent, [["guild-1", "guild-1-message", "access_denied"], [
+    "guild-2",
+    "guild-2-message",
+    "access_denied",
+  ]]);
   assertEquals(matchFetches, 1);
-  assertEquals(rankFetches, 1);
   assertEquals(
-    (await db.actions.getEnabledMatchWatchers()).map((watcher) =>
-      watcher.pendingResultMatchId
+    (await db.actions.getEnabledMatchWatchers()).map((w) =>
+      w.pendingResultMatchId
     ),
     [null, null],
   );
 });
+
+for (const available of [false, true]) {
+  test(`Mayhem開始を保存して再起動した場合、2guildで${available ? "取得した戦績を表示" : "取得不可をMayhemとして表示"}する`, async () => {
+    await using db = await createMigratedTestDatabase();
+    await db.actions.upsertRiotAccount({
+      discordId: "A",
+      puuid: "puuid-1",
+      gameName: "A",
+      tagLine: "JP1",
+      platform: "jp1",
+      region: "asia",
+    });
+    for (const guildId of ["guild-1", "guild-2"]) {
+      await db.actions.upsertMatchWatcher({
+        guildId,
+        targetDiscordId: "A",
+        requesterId: "A",
+        channelId: `${guildId}-channel`,
+      });
+    }
+    const gameStartedAt = Date.now() - 120_000;
+    let now = new Date(gameStartedAt + 120_000);
+    let inGame = true;
+    let ready = false;
+    const deps = createTestDependencies({ dbActions: db.actions });
+    deps.riotApi.getActiveGameByPuuid = () =>
+      Promise.resolve(
+        inGame
+          ? {
+            ...activeGame(),
+            gameMode: "KIWI",
+            gameStartTime: gameStartedAt,
+            gameQueueConfigId: 2400,
+          }
+          : null,
+      );
+    deps.riotApi.getMatchById = () => {
+      if (!ready) return Promise.resolve(null);
+      if (!available) {
+        return Promise.reject(
+          new RiotApiRequestError(
+            "http",
+            "asia:GET /lol/match/v5/matches/:matchId",
+            403,
+          ),
+        );
+      }
+      return Promise.resolve({
+        ...match(),
+        info: { ...match().info, gameMode: "KIWI", queueId: 2400 },
+      });
+    };
+    deps.opggMatchDetailService.resolveAndSave = () => Promise.resolve(null);
+    const apiClient = createInProcessBotApiClient(createApp(deps));
+    const sent: unknown[] = [];
+    const renderedObservations: unknown[] = [];
+    const restart = () =>
+      createMatchTrackingService({
+        apiClient,
+        renderer: {
+          ...renderer,
+          resultUnavailable: (watcher, matchId, reason, observation) => {
+            renderedObservations.push(observation);
+            return renderer.resultUnavailable(watcher, matchId, reason);
+          },
+          matchResult: (
+            watcher,
+            _account,
+            _match,
+            _rank,
+            _opgg,
+            observation,
+          ) => {
+            renderedObservations.push(observation);
+            return renderer.matchResult(watcher);
+          },
+        },
+        logger,
+        config,
+        clock: { now: () => now },
+        notifier: {
+          sendOrEditWatcherMessage: (watcher, messageId, embed) => {
+            sent.push([watcher.guildId, embed.data.title]);
+            return Promise.resolve({
+              status: "edited",
+              messageId: messageId ?? `${watcher.guildId}-message`,
+            });
+          },
+        },
+      });
+    await restart().processMatchWatchers();
+    for (const watcher of await db.actions.getEnabledMatchWatchers()) {
+      assertObjectMatch(watcher, {
+        currentGameMode: "KIWI",
+        currentGameObservation: { championId: 17, elapsedSeconds: 120 },
+      });
+    }
+    now = new Date(now.getTime() + 60_000);
+    await restart().processMatchWatchers();
+    for (const watcher of await db.actions.getEnabledMatchWatchers()) {
+      assertObjectMatch(watcher, {
+        currentGameObservation: { championId: 17, elapsedSeconds: 180 },
+      });
+    }
+    inGame = false;
+    await restart().processMatchWatchers();
+    for (const watcher of await db.actions.getEnabledMatchWatchers()) {
+      assertObjectMatch(watcher, {
+        currentGameMode: null,
+        currentGameObservation: null,
+        pendingResultGameMode: "KIWI",
+        pendingResultObservation: { championId: 17, elapsedSeconds: 180 },
+      });
+    }
+    now = new Date(now.getTime() + 60 * 60_000);
+    ready = true;
+    sent.length = 0;
+    await restart().processMatchWatchers();
+    await restart().processMatchWatchers();
+    assertEquals(renderedObservations, [
+      { championId: 17, elapsedSeconds: 180 },
+      { championId: 17, elapsedSeconds: 180 },
+    ]);
+    assertEquals(sent, [["guild-1", available ? "result:A" : "mayhem"], [
+      "guild-2",
+      available ? "result:A" : "mayhem",
+    ]]);
+    for (const watcher of await db.actions.getEnabledMatchWatchers()) {
+      assertObjectMatch(watcher, {
+        pendingResultMatchId: null,
+        pendingResultGameMode: null,
+        pendingResultObservation: null,
+      });
+    }
+  });
+}

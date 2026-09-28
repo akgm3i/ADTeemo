@@ -5,10 +5,14 @@
   },
   "tasks": {
     "dev": "deno run -A --watch --env=../.env.dev src/main.ts",
-    "test": "deno test -A"
+    "test": "deno test -A",
+    "run:prod": "deno run --cached-only --frozen --no-prompt \"--allow-net=discord.com:443,*.discord.gg:443,api:8000\" --allow-env=NODE_V8_COVERAGE,UNDICI_NO_FG,JEST_WORKER_ID,BOT_LOG_LEVEL,ADTEEMO_LOG_LEVEL,BOT_MESSAGE_LANG,BOT_MESSAGE_THEME,LC_MESSAGES,LC_ALL,DISCORD_TOKEN,WS_NO_BUFFER_UTIL,WS_NO_UTF_8_VALIDATE,API_URL,BOT_SERVICE_TOKEN,MATCH_WATCH_POLL_INTERVAL_MS,MATCH_WATCH_IN_GAME_NOTIFY_INTERVAL_MS,MATCH_WATCH_RESULT_FETCH_TIMEOUT_MS,RIOT_RATE_LIMIT_LONG_WINDOW_LIMIT,RIOT_RATE_LIMIT_LONG_WINDOW_MS,SHARDS,SHARD_COUNT,SHARDING_MANAGER --allow-read=src,../messages",
+    "run:deploy": "deno run --cached-only --frozen --no-prompt --allow-net=discord.com:443 --allow-env=NODE_V8_COVERAGE,UNDICI_NO_FG,JEST_WORKER_ID,BOT_LOG_LEVEL,ADTEEMO_LOG_LEVEL,BOT_MESSAGE_LANG,BOT_MESSAGE_THEME,LC_MESSAGES,LC_ALL,DISCORD_TOKEN,WS_NO_BUFFER_UTIL,WS_NO_UTF_8_VALIDATE,DISCORD_CLIENT_ID,DISCORD_GUILD_ID --allow-read=src,../messages,../api/src/contract"
   },
   "compilerOptions": {
-    "types": ["./src/@types/discord.js.d.ts"]
+    "types": [
+      "./src/@types/discord.js.d.ts"
+    ]
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@^1.0.14",

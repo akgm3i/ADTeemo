@@ -7,7 +7,7 @@
 - Related: [#123](https://github.com/akgm3i/ADTeemo/issues/123), [#110](https://github.com/akgm3i/ADTeemo/issues/110), [#98](https://github.com/akgm3i/ADTeemo/issues/98)
 - Code: [service](../bot/src/features/match_tracking_service.ts), [renderer](../bot/src/features/match_tracking_renderer.ts)
 - Tests: [service regression](../bot/src/features/match_tracking_service_regression.test.ts), [renderer result](../bot/src/features/match_tracking_renderer_result.test.ts), [composition](../bot/src/features/match_tracking.test.ts)
-- Reviewed: 2026-09-25
+- Reviewed: 2026-09-26
 - Verified: local regression tests including real API/DB delivery, cross-tick restart and shared Riot acquisition, 2026-09-25
 
 ## 所有者
@@ -85,6 +85,8 @@
 ## fixture・fakeと接続テスト
 
 [型付きfixture](../bot/src/features/testing/match_tracking_fixtures.ts) はwatcher/account/game/match/static dataを返す。[strict fake](../bot/src/features/testing/strict_fake.ts) は未予定呼び出し・引数不一致・未消費応答を検出する。検査APIの出力は直接指定し、Riot取得・rank snapshot・OP.GG判断をfake内で再実装しない。
+
+workerはmanual schedulerでtickを発火し、`FakeTime.runMicrotasks()`でその時点のPromise処理を待つ。処理中のtickはdeferredで解放時点を制御し、固定回数のflushを使わない。起動・二重起動・重複tick抑止・例外後継続・停止をworker testが保証する。排他、例外後の処理中flag解除、interval解除を壊した一時コピーで、移行後のassertionが回帰を検出することを2026-09-26に確認した。
 
 compositionに残すのは、IDLE検査への接続、永続pendingからDiscord editとreceipt保存への接続、pending読取失敗のworkerへの伝播の3本。workerのtimer/concurrency、rendererの表示詳細、rank計算はそれぞれの所有者が保証する。実時間sleep、固定回数microtask flush、手動のglobal restoreは旧facadeとともに削除した。
 

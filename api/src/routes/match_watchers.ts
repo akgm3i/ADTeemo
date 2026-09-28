@@ -1,3 +1,4 @@
+import { RiotApiRequestError } from "../riot_api.ts";
 import { Hono } from "@hono/hono";
 import { zValidator } from "@hono/zod-validator";
 import {
@@ -155,6 +156,14 @@ export function matchWatchersRoutes(
             stateTransition: result.stateTransition,
           }, 200);
         } catch (error) {
+          if (
+            error instanceof MatchTrackingInspectionError &&
+            error.source === "riot_api" &&
+            error.cause instanceof RiotApiRequestError &&
+            error.cause.reason === "http" && error.cause.status === 403
+          ) {
+            throw remoteApiError("RIOT_MATCH_ACCESS_DENIED", error.cause);
+          }
           throw matchTrackingApiError(error);
         }
       },

@@ -16,6 +16,7 @@ export const apiErrorCodes = [
   "RATE_LIMITED",
   "INTERNAL_ERROR",
   "RIOT_API_UNAVAILABLE",
+  "RIOT_MATCH_ACCESS_DENIED",
   "RIOT_STATIC_DATA_UNAVAILABLE",
 ] as const;
 
@@ -37,6 +38,7 @@ export const API_ERROR_STATUS_BY_CODE = {
   RATE_LIMITED: 429,
   INTERNAL_ERROR: 500,
   RIOT_API_UNAVAILABLE: 502,
+  RIOT_MATCH_ACCESS_DENIED: 502,
   RIOT_STATIC_DATA_UNAVAILABLE: 502,
 } as const satisfies Record<ApiErrorCode, number>;
 
@@ -93,6 +95,7 @@ export const DEFAULT_API_ERROR_MESSAGE = {
   RATE_LIMITED: "Too many requests",
   INTERNAL_ERROR: "Internal server error",
   RIOT_API_UNAVAILABLE: "Riot API request failed",
+  RIOT_MATCH_ACCESS_DENIED: "Riot denied access to match data",
   RIOT_STATIC_DATA_UNAVAILABLE: "Failed to resolve Riot static data",
 } as const satisfies Record<ApiErrorCode, string>;
 

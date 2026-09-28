@@ -40,4 +40,4 @@ COPY --from=builder --chown=deno:deno /app /app
 
 RUN mkdir -p /app/data /app/node_modules
 
-CMD ["deno", "run", "-A", "src/main.ts"]
+CMD ["deno", "task", "run:prod", "src/main.ts"]

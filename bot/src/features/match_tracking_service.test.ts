@@ -82,8 +82,8 @@ describe("match_tracking_service.ts", () => {
         resultPending: () => {
           throw new Error("renderer.resultPending should not be called");
         },
-        resultFetchTimeout: () => {
-          throw new Error("renderer.resultFetchTimeout should not be called");
+        resultUnavailable: () => {
+          throw new Error("renderer.resultUnavailable should not be called");
         },
         matchResult: (...args) => {
           renderedMatches.push(args);
@@ -130,9 +130,13 @@ describe("match_tracking_service.ts", () => {
         riotAccountPuuid: "puuid-1",
         lastState: "IDLE",
         currentGameId: null,
+        currentGameMode: null,
+        currentGameObservation: null,
         currentMatchId: null,
         currentNotificationMessageId: null,
         pendingResultMatchId: null,
+        pendingResultGameMode: null,
+        pendingResultObservation: null,
         pendingResultNotificationMessageId: null,
         pendingResultStartedAt: null,
         gameStartedAt: null,
@@ -203,8 +207,8 @@ describe("match_tracking_service.ts", () => {
         resultPending: () => {
           throw new Error("renderer.resultPending should not be called");
         },
-        resultFetchTimeout: () => {
-          throw new Error("renderer.resultFetchTimeout should not be called");
+        resultUnavailable: () => {
+          throw new Error("renderer.resultUnavailable should not be called");
         },
         matchResult: (...args) => {
           renderedMatches.push(args);
@@ -238,9 +242,13 @@ describe("match_tracking_service.ts", () => {
         riotAccountPuuid: "puuid-1",
         lastState: "IDLE",
         currentGameId: null,
+        currentGameMode: null,
+        currentGameObservation: null,
         currentMatchId: null,
         currentNotificationMessageId: null,
         pendingResultMatchId: null,
+        pendingResultGameMode: null,
+        pendingResultObservation: null,
         pendingResultNotificationMessageId: null,
         pendingResultStartedAt: null,
         gameStartedAt: null,
@@ -367,7 +375,7 @@ describe("match_tracking_service.ts", () => {
       renderer: {
         activeGame: () => Promise.resolve(new EmbedBuilder()),
         resultPending: () => new EmbedBuilder(),
-        resultFetchTimeout: () => new EmbedBuilder(),
+        resultUnavailable: () => Promise.resolve(new EmbedBuilder()),
         matchResult: () => Promise.resolve(new EmbedBuilder()),
       },
       clock: { now: () => now },
@@ -397,7 +405,7 @@ describe("match_tracking_service.ts", () => {
     assertEquals(finalState[2].pendingResultMatchId, null);
   });
 
-  test("試合終了直後にpending通知IDが確定したとき、そのIDでBackendのResult検査と状態更新を行う", async () => {
+  test("試合終了直後の結果が未確定のとき、先に検査してから確定したpending通知IDで状態を保存する", async () => {
     using _batchId = stub(
       crypto,
       "randomUUID",
@@ -442,7 +450,15 @@ describe("match_tracking_service.ts", () => {
             rankSummary: null,
             opggDetail: null,
             notificationIntent: null,
-            stateTransition: null,
+            stateTransition: {
+              state: {
+                pendingResultMatchId: "JP1_12345",
+                pendingResultNotificationMessageId: null,
+                pendingResultStartedAt: targetWatcher.gameStartedAt,
+                currentMatchId: null,
+              },
+              messageIdField: null,
+            },
           });
         },
         updateMatchWatcherState: (...args) => {
@@ -462,7 +478,7 @@ describe("match_tracking_service.ts", () => {
           throw new Error("renderer.activeGame should not be called");
         },
         resultPending: () => new EmbedBuilder(),
-        resultFetchTimeout: () => new EmbedBuilder(),
+        resultUnavailable: () => Promise.resolve(new EmbedBuilder()),
         matchResult: () => {
           throw new Error("renderer.matchResult should not be called");
         },
@@ -490,7 +506,7 @@ describe("match_tracking_service.ts", () => {
         inspectionBatchId: "00000000-0000-4000-8000-000000000001",
         riotAccountPuuid: "puuid-1",
         matchId: "JP1_12345",
-        messageId: "message-pending-new",
+        messageId: null,
         startedAt: new Date("2026-01-01T00:00:00Z"),
         resultFetchTimeoutMs: 10 * 60_000,
       },
@@ -502,11 +518,15 @@ describe("match_tracking_service.ts", () => {
         riotAccountPuuid: "puuid-1",
         lastState: "IDLE",
         currentGameId: null,
+        currentGameMode: null,
+        currentGameObservation: null,
         currentMatchId: null,
         currentNotificationMessageId: null,
         gameStartedAt: null,
         lastInGameNotifiedAt: null,
         pendingResultMatchId: "JP1_12345",
+        pendingResultGameMode: null,
+        pendingResultObservation: null,
         pendingResultNotificationMessageId: "message-pending-new",
         pendingResultStartedAt: new Date("2026-01-01T00:00:00Z"),
         lastCheckedAt: now,
@@ -580,8 +600,8 @@ describe("match_tracking_service.ts", () => {
         resultPending: () => {
           throw new Error("renderer.resultPending should not be called");
         },
-        resultFetchTimeout: () => {
-          throw new Error("renderer.resultFetchTimeout should not be called");
+        resultUnavailable: () => {
+          throw new Error("renderer.resultUnavailable should not be called");
         },
         matchResult: () => {
           throw new Error("renderer.matchResult should not be called");
@@ -700,8 +720,8 @@ describe("match_tracking_service.ts", () => {
         resultPending: () => {
           throw new Error("renderer.resultPending should not be called");
         },
-        resultFetchTimeout: () => {
-          throw new Error("renderer.resultFetchTimeout should not be called");
+        resultUnavailable: () => {
+          throw new Error("renderer.resultUnavailable should not be called");
         },
         matchResult: () => {
           throw new Error("renderer.matchResult should not be called");
@@ -822,7 +842,7 @@ describe("match_tracking_service.ts", () => {
         resultPending: () => {
           throw new Error("renderer should not be called");
         },
-        resultFetchTimeout: () => {
+        resultUnavailable: () => {
           throw new Error("renderer should not be called");
         },
         matchResult: () => {
@@ -888,7 +908,7 @@ describe("match_tracking_service.ts", () => {
       renderer: {
         activeGame: () => Promise.resolve(new EmbedBuilder()),
         resultPending: () => new EmbedBuilder(),
-        resultFetchTimeout: () => new EmbedBuilder(),
+        resultUnavailable: () => Promise.resolve(new EmbedBuilder()),
         matchResult: () => Promise.resolve(new EmbedBuilder()),
       },
       clock: { now: () => new Date("2026-01-01T00:00:00Z") },

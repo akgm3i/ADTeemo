@@ -18,7 +18,10 @@ const activeGameSchema = z.object({
   gameQueueConfigId: z.number().optional(),
   participants: z.array(
     z.object({
-      puuid: z.string().optional(),
+      // Spectator can return null for an unidentified participant. Keep the
+      // existing optional-ID contract without discarding the entire game.
+      puuid: z.string().nullable().transform((value) => value ?? undefined)
+        .optional(),
       summonerName: z.string().optional(),
       riotId: z.string().optional(),
       championId: z.number(),
@@ -27,7 +30,7 @@ const activeGameSchema = z.object({
   ),
 });
 
-const matchSchema = z.object({
+const completeMatchSchema = z.object({
   metadata: z.object({
     matchId: z.string(),
     participants: z.array(z.string()),
@@ -67,6 +70,21 @@ const matchSchema = z.object({
     ),
   }),
 });
+
+// Accept partial Mayhem results. Other modes retain the complete
+// contract; absent values stay absent rather than becoming zero or a loss.
+const matchSchema = z.union([
+  completeMatchSchema,
+  completeMatchSchema.extend({
+    info: completeMatchSchema.shape.info.extend({
+      gameMode: z.literal("KIWI"),
+      participants: z.array(
+        completeMatchSchema.shape.info.shape.participants.element.partial()
+          .required({ puuid: true }),
+      ),
+    }),
+  }),
+]);
 
 const leagueEntrySchema = z.object({
   queueType: z.string(),
@@ -269,8 +287,12 @@ type AttemptResult<T> =
   | { kind: "http"; status: number; retryAfterMs: number }
   | { kind: "network" }
   | { kind: "not_found" }
-  | { kind: "parse" }
-  | { kind: "schema" }
+  | { kind: "parse"; status: number }
+  | {
+    kind: "schema";
+    status: number;
+    issues: { issueCode: string; path: PropertyKey[] }[];
+  }
   | { kind: "success"; data: T }
   | { kind: "timeout" };
 
@@ -624,10 +646,21 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
     try {
       raw = JSON.parse(text);
     } catch {
-      return { kind: "parse" };
+      return { kind: "parse", status: response.status };
     }
     const parsed = schema.safeParse(raw);
-    if (!parsed.success) return { kind: "schema" };
+    if (!parsed.success) {
+      return {
+        kind: "schema",
+        status: response.status,
+        // These schemas use fixed field names and array indices. Never retain
+        // input values, provider messages, or the full Zod error in diagnostics.
+        issues: parsed.error.issues.map(({ code, path }) => ({
+          issueCode: code,
+          path,
+        })),
+      };
+    }
     return { kind: "success", data: parsed.data };
   }
 
@@ -765,6 +798,16 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
       }
       if (result.kind === "not_found" && options.notFoundAsNull) return null;
       if (result.kind === "parse" || result.kind === "schema") {
+        try {
+          dependencies.logger.warn("riot_api.invalid_response", {
+            methodKey: requestMethodKey,
+            reason: result.kind,
+            status: result.status,
+            ...(result.kind === "schema" ? { issues: result.issues } : {}),
+          });
+        } catch {
+          // Diagnostic sink failures must not replace the provider failure.
+        }
         throw new RiotApiRequestError(result.kind, requestMethodKey);
       }
       if (result.kind === "not_found") {

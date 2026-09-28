@@ -34,6 +34,9 @@ export function trackingServiceHarness(input: {
   const states: Parameters<Deps["apiClient"]["updateMatchWatcherState"]>[] = [];
   const renderedActive: Parameters<Deps["renderer"]["activeGame"]>[] = [];
   const renderedResults: Parameters<Deps["renderer"]["matchResult"]>[] = [];
+  const renderedUnavailable: Parameters<
+    Deps["renderer"]["resultUnavailable"]
+  >[] = [];
   const errors: Parameters<Deps["logger"]["error"]>[] = [];
   const warnings: Parameters<Deps["logger"]["warn"]>[] = [];
   const gets = scope.use(
@@ -111,7 +114,12 @@ export function trackingServiceHarness(input: {
         return Promise.resolve(new EmbedBuilder().setTitle("active"));
       },
       resultPending: () => new EmbedBuilder().setTitle("pending"),
-      resultFetchTimeout: () => new EmbedBuilder().setTitle("timeout"),
+      resultUnavailable: (...args) => {
+        renderedUnavailable.push(args);
+        return Promise.resolve(
+          new EmbedBuilder().setTitle(args[2] ?? "timeout"),
+        );
+      },
       matchResult: (...args) => {
         renderedResults.push(args);
         return Promise.resolve(new EmbedBuilder().setTitle("result"));
@@ -137,6 +145,7 @@ export function trackingServiceHarness(input: {
     notifications: notifications.calls,
     renderedActive,
     renderedResults,
+    renderedUnavailable,
     errors,
     warnings,
     [Symbol.dispose]() {

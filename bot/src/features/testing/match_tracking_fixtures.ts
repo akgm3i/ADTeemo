@@ -16,9 +16,13 @@ export function watcher(overrides: Partial<MatchWatcher> = {}): MatchWatcher {
     enabled: true,
     lastState: "IDLE",
     currentGameId: null,
+    currentGameMode: null,
+    currentGameObservation: null,
     currentMatchId: null,
     currentNotificationMessageId: null,
     pendingResultMatchId: null,
+    pendingResultGameMode: null,
+    pendingResultObservation: null,
     pendingResultNotificationMessageId: null,
     pendingResultStartedAt: null,
     gameStartedAt: null,
@@ -74,7 +78,7 @@ export function activeGameWithParticipants(puuids: string[], gameId = 12345) {
   };
 }
 
-export function match(): RiotMatch {
+export function match(): Exclude<RiotMatch, { info: { gameMode: "KIWI" } }> {
   return {
     metadata: {
       matchId: "JP1_12345",

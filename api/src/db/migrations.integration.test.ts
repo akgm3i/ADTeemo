@@ -760,3 +760,44 @@ test("通知順序列を追加すると既存receiptとpayloadを保持し、順
     ],
   );
 });
+
+for (const beforeIndex of [11, 12]) {
+  test(`監視状態migration ${beforeIndex}を既存DBへ適用すると、試合と投稿IDを保持し未取得の観測情報を捏造しない`, async () => {
+    await using db = await createPreCustomGameConsistencyDatabase(beforeIndex);
+    await db.client.execute(
+      "INSERT INTO guilds (id, created_at) VALUES ('guild', 1700000000)",
+    );
+    await db.client.execute(
+      "INSERT INTO users (discord_id, created_at) VALUES ('user', 1700000000)",
+    );
+    await db.client.execute(
+      "INSERT INTO riot_accounts (discord_id, puuid, game_name, tag_line, platform, region, created_at) VALUES ('user', 'puuid', 'Teemo', 'JP1', 'jp1', 'asia', 1700000000)",
+    );
+    await db.client.execute(`INSERT INTO match_watchers
+    (guild_id, riot_account_puuid, target_discord_id, requester_id, channel_id, last_state, current_game_id, current_notification_message_id, pending_result_match_id, pending_result_notification_message_id, created_at)
+    VALUES ('guild', 'puuid', 'user', 'user', 'channel', 'IN_GAME', '456', 'current-message', 'JP1_123', 'result-message', 1700000000)`);
+    if (beforeIndex === 12) {
+      await db.client.execute(
+        "UPDATE match_watchers SET current_game_mode = 'KIWI', pending_result_game_mode = 'CLASSIC'",
+      );
+    }
+    await migrate(db.db, { migrationsFolder });
+    assertEquals<unknown>(
+      (await db.client.execute(
+        `SELECT enabled, last_state, current_game_id, current_notification_message_id, pending_result_match_id, pending_result_notification_message_id, current_game_mode, pending_result_game_mode, current_game_observation, pending_result_observation FROM match_watchers`,
+      )).rows.map((row) => ({ ...row })),
+      [{
+        enabled: 1,
+        last_state: "IN_GAME",
+        current_game_id: "456",
+        current_notification_message_id: "current-message",
+        pending_result_match_id: "JP1_123",
+        pending_result_notification_message_id: "result-message",
+        current_game_mode: beforeIndex === 12 ? "KIWI" : null,
+        current_game_observation: null,
+        pending_result_game_mode: beforeIndex === 12 ? "CLASSIC" : null,
+        pending_result_observation: null,
+      }],
+    );
+  });
+}

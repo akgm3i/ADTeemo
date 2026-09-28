@@ -77,6 +77,8 @@ function semanticDefault(
   if (key === "name_localizations" || key === "description_localizations") {
     return null;
   }
+  // Discord omits options when a command has no parameters.
+  if (key === "options") return [];
   if (key === "default_permission") return true;
   if (key === "default_member_permissions") return null;
   if (key === "dm_permission") {
@@ -95,6 +97,14 @@ function canonicalDesired(value: unknown, guildScoped: boolean): unknown {
   if (!isJsonObject(value)) return value;
   return Object.fromEntries(
     Object.entries(value).flatMap(([key, entry]) => {
+      if (
+        key === "dm_permission" && entry === undefined &&
+        Array.isArray(value.contexts)
+      ) {
+        // Explicit contexts own availability. Discord may derive false for the
+        // omitted legacy field instead of its standalone default of true.
+        return [];
+      }
       if (
         entry === undefined &&
         (key === "contexts" || key === "integration_types" ||

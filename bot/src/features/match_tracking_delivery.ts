@@ -49,7 +49,12 @@ function deliveryOrder(intentKey: string) {
       revision: kind === "started" ? 0 : Number(previousNotificationAt) + 1,
     };
   }
-  const stages: Record<string, number> = { pending: 1, timeout: 2, result: 3 };
+  const stages: Record<string, number> = {
+    pending: 1,
+    timeout: 2,
+    unavailable: 2,
+    result: 3,
+  };
   const stage = stages[kind];
   if (stage === undefined) throw new Error("Unknown notification intent");
   return { matchId: id, stage, revision: 0 };

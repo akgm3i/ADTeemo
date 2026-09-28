@@ -94,10 +94,8 @@ describe("match tracking serviceの共有投稿と連戦の回帰", () => {
         result: resultInspection(match(), a),
       })),
       notifications: [
-        { messageId: "shared", resultId: "shared" },
-        { messageId: "shared", resultId: "shared" },
-        { messageId: null, resultId: "sub-result" },
-        { messageId: "sub-result", resultId: "sub-result" },
+        { messageId: "shared", resultId: "shared", intent: "result:JP1_12345" },
+        { messageId: null, resultId: "sub-result", intent: "result:JP1_12345" },
       ],
     });
     await h.service.processMatchWatchers();
@@ -315,13 +313,11 @@ describe("match tracking serviceの共有投稿と連戦の回帰", () => {
           targetDiscordId: value.discordId,
           result: resultInspection(match(), value),
         })),
-        notifications: ids.flatMap((
-          id,
-          index,
-        ) => [{
+        notifications: ids.map((id, index) => ({
           messageId: ids.indexOf(id) === index ? id : null,
           resultId: resultIds[index],
-        }, { messageId: resultIds[index], resultId: resultIds[index] }]),
+          intent: "result:JP1_12345",
+        })),
       });
       await h.service.processMatchWatchers();
       assertEquals(h.renderedResults.length, ids.length);
@@ -407,10 +403,22 @@ describe("match tracking serviceの共有投稿と連戦の回帰", () => {
         },
       ],
       notifications: [
-        { messageId: "shared", resultId: "shared" },
-        { messageId: null, resultId: "new-game" },
-        { messageId: null, resultId: "second-old-result" },
-        { messageId: "new-game", resultId: "new-game" },
+        { messageId: null, resultId: "new-game", intent: "started:jp1:67890" },
+        {
+          messageId: "shared",
+          resultId: "shared",
+          intent: "pending:JP1_12345",
+        },
+        {
+          messageId: "new-game",
+          resultId: "new-game",
+          intent: "started:jp1:67890",
+        },
+        {
+          messageId: null,
+          resultId: "second-old-result",
+          intent: "pending:JP1_12345",
+        },
       ],
     });
     await h.service.processMatchWatchers();
@@ -595,9 +603,9 @@ describe("match tracking serviceの共有投稿と連戦の回帰", () => {
         targetDiscordId: "target-1",
         result: resultInspection(null),
       }],
-      notifications: [{ messageId: "shared", resultId: "shared" }, {
-        messageId: "new-game",
-        resultId: "new-game",
+      notifications: [{ messageId: "new-game", resultId: "new-game" }, {
+        messageId: "shared",
+        resultId: "shared",
       }],
     });
     await h.service.processMatchWatchers();
@@ -805,5 +813,200 @@ describe("match tracking serviceの共有投稿と連戦の回帰", () => {
     assertEquals(h.states, []);
     assertEquals(h.errors.length, 1);
     assertEquals(h.errors[0][0], "match_tracking.watcher_failed");
+  });
+});
+
+for (const nextGame of [false, true]) {
+  test(`終了検知時に結果が確定している場合、${nextGame ? "新試合の監視を開始し旧投稿は" : "進行投稿を"}直接結果へ更新する`, async () => {
+    // Arrange
+    using _batchId = stub(
+      crypto,
+      "randomUUID",
+      () => "00000000-0000-4000-8000-000000000001" as const,
+    );
+    using h = trackingServiceHarness({
+      watchers: [inGame()],
+      accounts: [account()],
+      active: [{
+        targetDiscordId: "target-1",
+        result: activeInspection(nextGame ? activeGame(67890) : null),
+      }],
+      results: [{
+        targetDiscordId: "target-1",
+        result: resultInspection(match()),
+      }],
+      notifications: [
+        ...(nextGame
+          ? [{
+            messageId: null,
+            resultId: "new-game",
+            intent: "started:jp1:67890",
+          }]
+          : []),
+        { messageId: "shared", resultId: "shared", intent: "result:JP1_12345" },
+      ],
+    });
+    // Act
+    await h.service.processMatchWatchers();
+    // Assert
+    assertEquals(h.errors, []);
+    assertEquals(h.states.at(-1)?.[2].pendingResultMatchId, null);
+    assertEquals(h.states.at(-1)?.[2].currentGameId, nextGame ? "67890" : null);
+  });
+}
+
+test("終了検知時の結果取得が失敗した場合、確認中の投稿IDを保存して次tickに結果取得を再開できる", async () => {
+  // Arrange
+  using _batchId = stub(
+    crypto,
+    "randomUUID",
+    () => "00000000-0000-4000-8000-000000000001" as const,
+  );
+  using h = trackingServiceHarness({
+    watchers: [inGame()],
+    accounts: [account()],
+    active: [{ targetDiscordId: "target-1", result: activeInspection(null) }],
+    results: [{
+      targetDiscordId: "target-1",
+      result: {
+        success: false,
+        error: "upstream",
+        status: 502,
+        code: "RIOT_API_UNAVAILABLE",
+      },
+    }],
+    notifications: [{
+      messageId: "shared",
+      resultId: "replacement",
+      intent: "pending:JP1_12345",
+    }],
+  });
+  // Act
+  await h.service.processMatchWatchers();
+  // Assert
+  assertEquals(h.errors, []);
+  assertEquals(h.warnings.length, 1);
+  assertEquals(h.states.at(-1)?.[2].lastState, "IDLE");
+  assertEquals(h.states.at(-1)?.[2].pendingResultMatchId, "JP1_12345");
+  assertEquals(
+    h.states.at(-1)?.[2].pendingResultNotificationMessageId,
+    "replacement",
+  );
+});
+
+for (const failedDelivery of [false, true]) {
+  test(`新試合中に旧結果の取得が拒否され、取得不可通知が${failedDelivery ? "一時失敗" : "成功"}すると、新試合を保持し旧結果待ちを${failedDelivery ? "維持" : "解除"}する`, async () => {
+    // Arrange
+    using _batchId = stub(
+      crypto,
+      "randomUUID",
+      () => "00000000-0000-4000-8000-000000000001" as const,
+    );
+    using h = trackingServiceHarness({
+      watchers: [{
+        ...inGame(),
+        currentGameId: "67890",
+        currentGameMode: "CLASSIC",
+        currentNotificationMessageId: "new-game",
+        lastInGameNotifiedAt: trackingNow,
+        pendingResultMatchId: "JP1_12345",
+        pendingResultGameMode: "KIWI",
+        pendingResultNotificationMessageId: "old-game",
+        pendingResultStartedAt: new Date("2026-01-01T00:00:00Z"),
+      }],
+      accounts: [account()],
+      results: [{
+        targetDiscordId: "target-1",
+        result: {
+          success: false,
+          status: 502,
+          code: "RIOT_MATCH_ACCESS_DENIED",
+          error: "denied",
+        },
+      }],
+      active: failedDelivery ? [] : [{
+        targetDiscordId: "target-1",
+        result: activeInspection(activeGame(67890)),
+      }],
+      notifications: [{
+        messageId: "old-game",
+        resultId: "old-game",
+        intent: "unavailable:JP1_12345",
+        ...(failedDelivery
+          ? {
+            failure: {
+              status: "retryable_failure" as const,
+              reason: "edit" as const,
+            },
+          }
+          : {}),
+      }],
+    });
+    // Act
+    await h.service.processMatchWatchers();
+    // Assert
+    if (failedDelivery) assertEquals(h.states, []);
+    else {
+      assertEquals(h.states[0][2].pendingResultMatchId, null);
+      assertEquals(h.states[0][2].currentGameId, "67890");
+      assertEquals(h.states[0][2].currentNotificationMessageId, "new-game");
+    }
+    assertEquals(h.notifications[0][2].data.title, "mayhem");
+    if (!failedDelivery) {
+      assertEquals(h.states[0][2].currentGameMode, "CLASSIC");
+      assertEquals(h.states[0][2].pendingResultGameMode, null);
+    }
+    assertEquals(h.warnings[0][1]?.reason, "match_access_denied");
+  });
+}
+
+test("次のMayhemが始まってから前試合の結果取得が拒否されても、使用チャンピオンと概算時間を混ぜない", async () => {
+  using _batchId = stub(
+    crypto,
+    "randomUUID",
+    () => "00000000-0000-4000-8000-000000000001" as const,
+  );
+  const previous = { championId: 17, elapsedSeconds: 840 };
+  using h = trackingServiceHarness({
+    watchers: [{
+      ...inGame(),
+      currentGameMode: "KIWI",
+      currentGameObservation: previous,
+    }],
+    accounts: [account()],
+    active: [{
+      targetDiscordId: "target-1",
+      result: activeInspection({
+        ...activeGame(67890),
+        gameMode: "KIWI",
+        participants: [{ puuid: "puuid-1", championId: 18, teamId: 100 }],
+      }),
+    }],
+    results: [{
+      targetDiscordId: "target-1",
+      result: {
+        success: false,
+        status: 502,
+        code: "RIOT_MATCH_ACCESS_DENIED",
+        error: "denied",
+      },
+    }],
+    notifications: [
+      { messageId: null, resultId: "new-game", intent: "started:jp1:67890" },
+      {
+        messageId: "shared",
+        resultId: "shared",
+        intent: "unavailable:JP1_12345",
+      },
+    ],
+  });
+  await h.service.processMatchWatchers();
+  assertEquals(h.errors, []);
+  assertEquals(h.renderedUnavailable[0][3], previous);
+  assertEquals(h.states[0][2].pendingResultObservation, previous);
+  assertEquals(h.states.at(-1)?.[2].pendingResultObservation, null);
+  assertEquals(h.states.at(-1)?.[2].currentGameObservation, {
+    championId: 18,
+    elapsedSeconds: 120,
   });
 });

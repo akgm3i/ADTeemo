@@ -154,6 +154,108 @@ describe("slash command deployment", () => {
     assertEquals(rest.putCalls, []);
   });
 
+  for (const phase of ["current", "published"] as const) {
+    const operation = phase === "current" ? "現在値を比較" : "PUT応答を検証";
+    const expectedStatus = phase === "current" ? "unchanged" : "updated";
+    const expectedPutCount = phase === "current" ? 0 : 1;
+
+    test(`Discordが空optionsを省略して返すとき、${operation}すると、同じcommand定義として扱う`, async () => {
+      // Arrange
+      const expected = command("health");
+      const response = [{
+        name: "health",
+        description: "health command",
+        type: 1,
+      }];
+      const rest = phase === "current"
+        ? new FakeRest(response)
+        : new FakeRest([], response);
+
+      // Act
+      const result = await syncApplicationCommands({
+        rest,
+        clientId: "client-id",
+        loadResult: loaded(expected),
+      });
+
+      // Assert
+      assertEquals(result.status, expectedStatus);
+      assertEquals(rest.putCalls.length, expectedPutCount);
+    });
+
+    test(`contexts指定時に未指定のdm_permissionがfalseで返るとき、${operation}すると、明示した公開範囲を正として扱う`, async () => {
+      // Arrange
+      const expected = command("guild-only");
+      expected.data.setContexts(InteractionContextType.Guild)
+        .setIntegrationTypes(ApplicationIntegrationType.GuildInstall);
+      const response = [{
+        ...expected.data.toJSON(),
+        dm_permission: false,
+      }];
+      const rest = phase === "current"
+        ? new FakeRest(response)
+        : new FakeRest([], response);
+
+      // Act
+      const result = await syncApplicationCommands({
+        rest,
+        clientId: "client-id",
+        loadResult: loaded(expected),
+      });
+
+      // Assert
+      assertEquals(result.status, expectedStatus);
+      assertEquals(rest.putCalls.length, expectedPutCount);
+    });
+  }
+
+  test("PUT応答が明示したcontextsと異なるとき、旧dm_permissionが同じでも配備成功にしない", async () => {
+    // Arrange
+    const expected = command("guild-only");
+    expected.data.setContexts(InteractionContextType.Guild);
+    const rest = new FakeRest([], [{
+      ...expected.data.toJSON(),
+      contexts: [InteractionContextType.Guild, InteractionContextType.BotDM],
+      dm_permission: false,
+    }]);
+
+    // Act
+    const error = await assertRejects(() =>
+      syncApplicationCommands({
+        rest,
+        clientId: "client-id",
+        loadResult: loaded(expected),
+      }), CommandDeploymentError);
+
+    // Assert
+    assertEquals(error.code, "PUBLISH_RESULT_VALIDATION_FAILED");
+  });
+
+  test("PUT応答から期待するoptionが欠落したとき、空optionsの正規化で配備成功にしない", async () => {
+    // Arrange
+    const expected = command("with-option");
+    expected.data.addStringOption((option) =>
+      option
+        .setName("target").setDescription("target option").setRequired(true)
+    );
+    const rest = new FakeRest([], [{
+      name: "with-option",
+      description: "with-option command",
+      type: 1,
+    }]);
+
+    // Act
+    const error = await assertRejects(() =>
+      syncApplicationCommands({
+        rest,
+        clientId: "client-id",
+        loadResult: loaded(expected),
+      }), CommandDeploymentError);
+
+    // Assert
+    assertEquals(error.code, "PUBLISH_RESULT_VALIDATION_FAILED");
+  });
+
   test("global commandに古い公開範囲が残るとき、registryの明示範囲へ更新する", async () => {
     const registration = {
       fileName: "health.ts",

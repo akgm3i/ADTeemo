@@ -56,9 +56,13 @@ function harness() {
     enabled: true,
     lastState: "IDLE",
     currentGameId: null,
+    currentGameMode: null,
+    currentGameObservation: null,
     currentMatchId: null,
     currentNotificationMessageId: null,
     pendingResultMatchId: "JP1_123",
+    pendingResultGameMode: null,
+    pendingResultObservation: null,
     pendingResultNotificationMessageId: "message",
     pendingResultStartedAt: now,
     gameStartedAt: null,
@@ -95,6 +99,8 @@ function harness() {
           stateTransition: {
             state: {
               pendingResultMatchId: null,
+              pendingResultGameMode: null,
+              pendingResultObservation: null,
               pendingResultNotificationMessageId: null,
               pendingResultStartedAt: null,
             },
@@ -129,7 +135,7 @@ function harness() {
     renderer: {
       activeGame: () => Promise.resolve(new EmbedBuilder()),
       resultPending: () => new EmbedBuilder(),
-      resultFetchTimeout: () => new EmbedBuilder(),
+      resultUnavailable: () => Promise.resolve(new EmbedBuilder()),
       matchResult: () => Promise.resolve(new EmbedBuilder()),
     },
     clock: { now: () => now },

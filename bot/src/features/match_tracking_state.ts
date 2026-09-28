@@ -1,4 +1,9 @@
-import type { MatchWatcher, RiotAccount } from "@adteemo/api/contract";
+import type {
+  ActiveGame,
+  MatchGameObservation,
+  MatchWatcher,
+  RiotAccount,
+} from "@adteemo/api/contract";
 import type {
   FinalizedRankSnapshot,
   RankSnapshotPayload,
@@ -34,6 +39,8 @@ export type RankSummary = {
 };
 export type PendingResult = {
   matchId: string;
+  gameMode?: string | null;
+  observation?: MatchGameObservation | null;
   messageId: string | null;
   startedAt: Date | null;
 };
@@ -201,6 +208,12 @@ export function currentStateFromWatcher(watcher: MatchWatcher) {
     currentGameId: watcher.lastState === "FETCHING_RESULT"
       ? null
       : watcher.currentGameId,
+    currentGameMode: watcher.lastState === "FETCHING_RESULT"
+      ? null
+      : watcher.currentGameMode,
+    currentGameObservation: watcher.lastState === "FETCHING_RESULT"
+      ? null
+      : watcher.currentGameObservation,
     currentMatchId: watcher.lastState === "FETCHING_RESULT"
       ? null
       : watcher.currentMatchId,
@@ -224,11 +237,50 @@ export function pendingResultFromWatcher(
   if (!matchId) return null;
   return {
     matchId,
+    gameMode: watcher.pendingResultGameMode ??
+      (watcher.lastState === "FETCHING_RESULT"
+        ? watcher.currentGameMode
+        : null),
+    observation: watcher.pendingResultObservation ??
+      (watcher.lastState === "FETCHING_RESULT"
+        ? watcher.currentGameObservation
+        : null),
     messageId: watcher.pendingResultNotificationMessageId ??
       watcher.currentNotificationMessageId,
     startedAt: watcher.pendingResultStartedAt ??
       watcher.gameStartedAt,
   };
+}
+
+/** Retain only this account's observed Mayhem data, never another game's. */
+export function observeMayhemGame(
+  watcher: MatchWatcher,
+  game: ActiveGame,
+  now: Date,
+): MatchGameObservation | null {
+  if (game.gameMode !== "KIWI") return null;
+  const previous = watcher.currentGameId === String(game.gameId)
+    ? watcher.currentGameObservation
+    : null;
+  const participant = game.participants.find((p) =>
+    p.puuid === watcher.riotAccountPuuid
+  );
+  const championId = participant?.championId && participant.championId > 0
+    ? participant.championId
+    : previous?.championId ?? null;
+  const durations = [previous?.elapsedSeconds, game.gameLength];
+  if (game.gameStartTime > 0 && game.gameStartTime <= now.getTime()) {
+    durations.push(Math.floor((now.getTime() - game.gameStartTime) / 1000));
+  }
+  const knownDurations = durations.filter((value): value is number =>
+    value !== null && value !== undefined && value >= 0
+  );
+  const elapsedSeconds = knownDurations.length
+    ? Math.max(...knownDurations)
+    : null;
+  return championId === null && elapsedSeconds === null
+    ? null
+    : { championId, elapsedSeconds };
 }
 
 export function elapsedMinutes(

@@ -190,7 +190,8 @@
         "opgg": "OP.GG",
         "matchDetails": "Match details",
         "duration": "Duration",
-        "role": "Role"
+        "role": "Role",
+        "estimatedDuration": "Estimated duration"
       },
       "opgg": {
         "detail": "[Match Detail]({url})",
@@ -203,7 +204,8 @@
         "unknownQueue": "Unknown queue",
         "queueId": "Queue {id}",
         "mapId": "Map {id}",
-        "elapsedMinutes": "About {minutes} min"
+        "elapsedMinutes": "About {minutes} min",
+        "observedElapsedMinutes": "About {minutes} min (last observed)"
       },
       "footer": {
         "game": "{platform} Game {gameId} / {riotId}",
@@ -225,6 +227,14 @@
         "jungleCs": "Jungle etc. total: {value}",
         "allyJungleCs": "Ally jungle: {value}",
         "enemyJungleCs": "Enemy jungle: {value}"
+      },
+      "resultAccessDenied": {
+        "title": "Match result unavailable",
+        "description": "Riot denied access to the match result for {member}. Result checks for this match have stopped. Monitoring will continue for the next match."
+      },
+      "mayhemResultUnavailable": {
+        "title": "ARAM: Mayhem",
+        "description": "Match results could not be retrieved."
       }
     }
   },

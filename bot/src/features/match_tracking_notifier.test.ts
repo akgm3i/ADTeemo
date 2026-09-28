@@ -1,7 +1,10 @@
 import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { EmbedBuilder } from "discord.js";
-import { createMatchTrackingNotifier } from "./match_tracking_notifier.ts";
+import {
+  createMatchTrackingNotifier,
+  type WatcherMessage,
+} from "./match_tracking_notifier.ts";
 
 const target = { guildId: "guild", channelId: "channel" };
 const embed = new EmbedBuilder().setTitle("result");
@@ -193,4 +196,51 @@ test("同じ永続識別子のBot投稿が複数ある場合、自動選択や�
     reason: "reconciliation",
   });
   assertEquals(sends, 0);
+});
+
+test("footerのない簡潔な通知では本文を増やさず、送信応答を失っても履歴から回収できる", async () => {
+  let posted: WatcherMessage | null = null;
+  const sentEmbeds: EmbedBuilder[] = [];
+  let sends = 0;
+  const notifier = createMatchTrackingNotifier({
+    logger,
+    client: {
+      channels: {
+        fetch: () =>
+          Promise.resolve({
+            send: ({ embeds }) => {
+              sends++;
+              posted = {
+                id: "posted",
+                author: { id: "bot" },
+                client: { user: { id: "bot" } },
+                embeds: embeds.map((e) => e.toJSON()),
+              };
+              sentEmbeds.push(embeds[0]);
+              throw new Error("lost response");
+            },
+            history: () => Promise.resolve(posted ? [posted] : []),
+          }),
+      },
+    },
+  });
+  const compact = new EmbedBuilder().setTitle("ARAM: Mayhem").setDescription(
+    "試合結果を取得できません。",
+  );
+  const attempt = { nonce: "compact-key", createdAt: 1000, uncertain: false };
+  assertEquals(
+    await notifier.sendOrEditWatcherMessage(target, null, compact, attempt),
+    { status: "retryable_failure", reason: "send" },
+  );
+  assertEquals(sentEmbeds[0].data.title, "ARAM: Mayhem");
+  assertEquals(sentEmbeds[0].data.description, "試合結果を取得できません。");
+  assertEquals(sentEmbeds[0].data.footer, undefined);
+  assertEquals(
+    await notifier.sendOrEditWatcherMessage(target, null, compact, {
+      ...attempt,
+      uncertain: true,
+    }),
+    { status: "sent", messageId: "posted" },
+  );
+  assertEquals(sends, 1);
 });

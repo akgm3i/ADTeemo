@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
+import { FakeTime } from "@std/testing/time";
 import { createMatchTrackingWorker } from "./match_tracking.ts";
 
 function createManualScheduler() {
@@ -35,14 +36,10 @@ function deferred() {
   return { promise, resolve };
 }
 
-async function flushMicrotasks(count = 10) {
-  for (let index = 0; index < count; index++) {
-    await Promise.resolve();
-  }
-}
-
 describe("match_tracking worker", () => {
   test("startしたとき、初回tickを即時実行しpoll間隔で次tickを登録する", async () => {
+    // Arrange
+    using time = new FakeTime();
     const manualScheduler = createManualScheduler();
     const calls: string[] = [];
     const worker = createMatchTrackingWorker({
@@ -62,16 +59,20 @@ describe("match_tracking worker", () => {
       },
     });
 
+    // Act
     worker.start();
-    await flushMicrotasks();
+    await time.runMicrotasks();
     manualScheduler.tick();
-    await flushMicrotasks();
+    await time.runMicrotasks();
 
+    // Assert
     assertEquals(manualScheduler.intervals, [12_345]);
     assertEquals(calls, ["process", "process"]);
   });
 
   test("startを重複して呼んだとき、新しいintervalと初回tickを追加しない", async () => {
+    // Arrange
+    using time = new FakeTime();
     const manualScheduler = createManualScheduler();
     let serviceCount = 0;
     const calls: string[] = [];
@@ -95,16 +96,20 @@ describe("match_tracking worker", () => {
       },
     });
 
+    // Act
     worker.start();
     worker.start();
-    await flushMicrotasks();
+    await time.runMicrotasks();
 
+    // Assert
     assertEquals(serviceCount, 1);
     assertEquals(manualScheduler.intervals, [60_000]);
     assertEquals(calls, ["process"]);
   });
 
   test("前tickが処理中のとき、次tickをskipして警告する", async () => {
+    // Arrange
+    using time = new FakeTime();
     const manualScheduler = createManualScheduler();
     const firstTick = deferred();
     const calls: string[] = [];
@@ -126,18 +131,22 @@ describe("match_tracking worker", () => {
       },
     });
 
+    // Act
     worker.start();
-    await flushMicrotasks();
+    await time.runMicrotasks();
     manualScheduler.tick();
-    await flushMicrotasks();
+    await time.runMicrotasks();
     firstTick.resolve();
-    await flushMicrotasks();
+    await time.runMicrotasks();
 
+    // Assert
     assertEquals(calls, ["process"]);
     assertEquals(warnings, ["match_tracking.worker_tick_skipped"]);
   });
 
   test("tick処理が例外で失敗したとき、errorログを出して次tickを継続できる", async () => {
+    // Arrange
+    using time = new FakeTime();
     const manualScheduler = createManualScheduler();
     const calls: string[] = [];
     const errors: {
@@ -172,11 +181,13 @@ describe("match_tracking worker", () => {
       },
     });
 
+    // Act
     worker.start();
-    await flushMicrotasks();
+    await time.runMicrotasks();
     manualScheduler.tick();
-    await flushMicrotasks();
+    await time.runMicrotasks();
 
+    // Assert
     assertEquals(calls, ["process", "process"]);
     assertEquals(errors[0].message, "match_tracking.worker_tick_failed");
     assertEquals(errors[0].metadata.correlationId, serviceCorrelationIds[0]);
@@ -184,11 +195,17 @@ describe("match_tracking worker", () => {
     assertEquals(errors[0].error, failure);
   });
 
-  test("stopしたとき、登録済みintervalを解除する", () => {
+  test("stopしたとき、登録済みintervalを解除して次tickを実行しない", async () => {
+    // Arrange
+    using time = new FakeTime();
     const manualScheduler = createManualScheduler();
+    let calls = 0;
     const worker = createMatchTrackingWorker({
       createService: () => ({
-        processMatchWatchers: () => Promise.resolve(),
+        processMatchWatchers: () => {
+          calls += 1;
+          return Promise.resolve();
+        },
       }),
       scheduler: manualScheduler.scheduler,
       config: {
@@ -200,9 +217,15 @@ describe("match_tracking worker", () => {
       },
     });
 
+    // Act
     worker.start();
+    await time.runMicrotasks();
     worker.stop();
+    manualScheduler.tick();
+    await time.runMicrotasks();
 
+    // Assert
     assertEquals(manualScheduler.cleared, [1]);
+    assertEquals(calls, 1);
   });
 });
