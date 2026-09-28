@@ -418,4 +418,4 @@ coverage は未検証分岐を探す補助指標であり、一律の数値ゲ�
 deno task quality
 ```
 
-`quality` にはformat、lint、型チェック、Bot runtime境界、メッセージ定義、runtime version同期確認、全テストが含まれます。Pull Requestと`main`へのpushでも固定job名`quality`がこのtaskを実行します。CIではlive external testやrepository secretを使用しません。ドキュメントだけを変更した場合は、対象文書のformat、相対リンク、`git diff --check` など変更に比例した確認を行います。
+`quality` にはformat、lint、型チェック、Bot runtime境界、production permissionのoffline smoke、メッセージ定義、runtime version同期確認、全テストが含まれます。Pull Requestと`main`へのpushでも固定job名`quality`がこのtaskを実行します。CIではlive external testやrepository secretを使用しません。ドキュメントだけを変更した場合は、対象文書のformat、相対リンク、`git diff --check` など変更に比例した確認を行います。

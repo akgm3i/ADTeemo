@@ -6,15 +6,15 @@
 - Read when: 監視を配備するとき、migration0009を適用するとき、membership障害を調べるとき。
 - Related: [#34](https://github.com/akgm3i/ADTeemo/issues/34), [#48](https://github.com/akgm3i/ADTeemo/issues/48)
 - Code: [membership同期](../../bot/src/features/match_watch_membership.ts), [Bot起動](../../bot/src/main.ts), [migration](../../drizzle/0009_lush_leo.sql)
-- Tests: [membership tests](../../bot/src/features/match_watch_membership.test.ts), [migration tests](../../api/src/db/migrations.integration.test.ts), [policy tests](../../api/src/db/default_watch.integration.test.ts)
-- Reviewed: 2026-09-25
-- Verified: 2026-09-25、ローカルmigration・Bot/API integration。実Discord接続と共有DB適用は未実施。
+- Tests: [membership tests](../../bot/src/features/match_watch_membership.test.ts), [起動イベント回帰](../../bot/src/main_membership.test.ts), [migration tests](../../api/src/db/migrations.integration.test.ts), [policy tests](../../api/src/db/default_watch.integration.test.ts)
+- Reviewed: 2026-09-26
+- Verified: 2026-09-26、ローカルmigration・Bot/API integrationと、分離した検証DBでの実Discordメンバー同期・worker起動を確認。共有DB適用は未実施。
 
 ## 配備条件とmembership
 
 BotはGuild Members intentで完全なメンバー一覧を取得する。Discord Developer PortalでもServer Members Intentを有効にし、必要な承認条件を満たす。[Discord Gateway公式資料](https://docs.discord.com/developers/events/gateway#privileged-intents)を2026-09-25に確認した。運用設定は[CONTRIBUTING](../../CONTRIBUTING.md)、採用判断は[ADR 0006](../adr/0006-account-monitoring-policy.md)を参照する。
 
-起動時は全guildの完全snapshotをAPIへ保存してから監視workerを始める。cacheの一部を完全なmembershipとして保存しない。起動前同期の失敗は30秒後に再試行する。保存済みwatcherのguildへBotが既に所属していない場合、そのmembershipを空にする。
+起動時は `ClientReady` で全guildの完全snapshotをAPIへ保存してから監視workerを始める。READY前の `GuildAvailable` では取得せず、初期同期との二重取得を避ける。cacheの一部を完全なmembershipとして保存しない。起動前同期の失敗は30秒後に再試行する。保存済みwatcherのguildへBotが既に所属していない場合、そのmembershipを空にする。
 
 参加・退出・guild復帰時も完全取得を行い、guildごとに取得と保存を順序化する。取得失敗時はmembershipを空にして停止し、guildごとに1つの30秒retryで回復する。Botのguild退出は以前のretryを取り消し、空snapshotの保存を再試行する。APIにも保存できない間は停止の確定を保証できないため、`watch.membership_*_failed`ログを確認する。
 
@@ -41,3 +41,11 @@ WHERE a.puuid IS NULL;
 ```
 
 `users`のlegacy Riot列だけに残った古い登録は、gameName/tagLine/platformを推測で作らないためcanonical accountへ自動移行しない。本人が`/set-riot-id`で公式照合して再登録する。migration生成と一時DBへの検証だけを行っており、本番・共有DBには適用していない。共有DBの適用は対象とbackupを確認した運用操作として扱う。
+
+## 起動時の重複取得の観測
+
+2026-09-26、実Discord接続で `GuildAvailable` と `ClientReady` が同じguildのメンバー一覧を続けて要求し、後者が `GuildMembersTimeout` になることを観測した。30秒後の再試行は成功し、workerのAPI呼び出しが始まった。
+
+[Discord公式のrate limit変更](https://docs.discord.com/developers/change-log#introducing-rate-limit-when-requesting-all-guild-members)では、全メンバー要求は同一guild・Botにつき30秒に1回に制限される。固定したdiscord.jsでは初期 `GuildAvailable` がREADYより前に発火するため、この段階は `ClientReady` の完全同期へ任せる。READY後のguild復帰では従来どおり再同期する。イベントの順序やmember取得APIを変更する際は、この二重取得とworker開始までを再確認する。
+
+修正後は通常のDocker entrypointでREADYから約0.7秒以内に2guildのsnapshot保存とworker初回tickを確認した。検証DBは本番・共有DBと分離しており、共有DBへのmigration適用結果ではない。

@@ -112,6 +112,9 @@ client.on(Events.GuildMemberRemove, (member) => {
   void refreshGuildMembers(member.guild);
 });
 client.on(Events.GuildAvailable, (guild) => {
+  // Initial GUILD_CREATE events precede ClientReady, which fetches every guild.
+  // Fetching here too exceeds Discord's per-guild full-member request limit.
+  if (!client.isReady()) return;
   void refreshGuildMembers(guild);
 });
 client.on(Events.GuildDelete, (guild) => {

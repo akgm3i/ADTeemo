@@ -145,6 +145,12 @@ docker compose --profile prod logs -f
 docker compose --profile prod down
 ```
 
+#### Botの実行権限
+
+Botとcommand-deployerは[Bot workspaceのtask](./bot/deno.json)の用途別permission profileを共有します。productionは許可したDiscord / Backend宛の通信、Botが使う環境変数、動的commandとmessageの読み込みに制限します。rootの配備taskも同じprofileを使い、環境ファイルだけを切り替えます。開発Botのwatch起動は別profileです。
+
+[権限の棚卸しと検証範囲](./docs/integrations/bot-runtime-permissions.md)に、依存由来の権限、Gateway再接続、設定変更時の再確認方法を記載しています。依存は先に `deno install --frozen=true` で取得してください。productionはcached-onlyで起動し、足りないpermissionは対話で追加せず失敗します。`deno task check:bot-permissions` は `.env.example` とdummy credentialを使うoffline検証で、通常の `quality` に含まれます。
+
 #### ログ、保持、閲覧権限
 
 APIとBotのアプリケーションログはstdoutへ出力する1行JSONだけを正本とし、コンテナ内のlog fileへは書き込みません。すべてのrecordは`timestamp`, `level`, `event`, `component`を持ち、ERRORと第3引数にErrorを持つWARNは`correlationId`と`errorCategory`も持ちます。既知のcredential、token、cookie、OAuth code/state、SQL parameter、Riot ID / PUUID、Discord user IDはnested contextでもredactされます。
