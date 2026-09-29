@@ -235,7 +235,14 @@ test("同一accountを2guildで監視すると、tick内のRiot元データは1�
   };
   deps.riotApi.getLeagueEntriesByPuuid = () => {
     rankFetches++;
-    return Promise.resolve([]);
+    return Promise.resolve([{
+      queueType: "RANKED_SOLO_5x5",
+      tier: "GOLD",
+      rank: "I",
+      leaguePoints: 42,
+      wins: 10,
+      losses: 8,
+    }]);
   };
   const apiClient = createInProcessBotApiClient(createApp(deps));
   const notified: string[] = [];
@@ -261,8 +268,36 @@ test("同一accountを2guildで監視すると、tick内のRiot元データは1�
   assertEquals(notified, ["guild-1", "guild-2"]);
   assertEquals(activeFetches, 1);
   assertEquals(rankFetches, 1);
+  assertEquals(
+    (await db.db.query.pendingMatchRankSnapshots.findMany()).map((
+      snapshot,
+    ) => ({
+      platform: snapshot.platform,
+      gameId: snapshot.gameId,
+      puuid: snapshot.puuid,
+      queueType: snapshot.queueType,
+      leaguePoints: snapshot.leaguePoints,
+    })).sort((a, b) => a.queueType.localeCompare(b.queueType)),
+    [
+      {
+        platform: "jp1",
+        gameId: "12345",
+        puuid: "puuid-A",
+        queueType: "RANKED_FLEX_SR",
+        leaguePoints: null,
+      },
+      {
+        platform: "jp1",
+        gameId: "12345",
+        puuid: "puuid-A",
+        queueType: "RANKED_SOLO_5x5",
+        leaguePoints: 42,
+      },
+    ],
+  );
   await service.processMatchWatchers();
   assertEquals(activeFetches, 2); // A new tick must fetch fresh source data.
+  assertEquals(rankFetches, 1); // An ongoing game must keep the original before snapshot.
 });
 
 for (const endedNow of [false, true]) {
@@ -555,3 +590,98 @@ for (const available of [false, true]) {
     }
   });
 }
+
+test("SG2移行後に同じnumeric IDの新Mayhemが始まると、実API経由で旧PH2結果と新currentを分離して保存する", async () => {
+  // Arrange
+  await using db = await createMigratedTestDatabase();
+  const now = new Date();
+  await db.actions.upsertRiotAccount({
+    discordId: "A",
+    puuid: "puuid-1",
+    gameName: "A",
+    tagLine: "SEA",
+    platform: "sg2",
+    region: "sea",
+  });
+  await db.actions.upsertMatchWatcher({
+    guildId: "guild",
+    targetDiscordId: "A",
+    requesterId: "A",
+    channelId: "channel",
+  });
+  await db.actions.updateMatchWatcherState("guild", "A", {
+    lastState: "IN_GAME",
+    currentGameId: "12345",
+    currentMatchId: "PH2_12345",
+    currentNotificationMessageId: "shared",
+    currentGameMode: "KIWI",
+    currentGameObservation: { championId: 17, elapsedSeconds: 3600 },
+    gameStartedAt: new Date(now.getTime() - 3_600_000),
+  });
+  const oldMatch = match();
+  oldMatch.metadata.matchId = "PH2_12345";
+  const deps = createTestDependencies({ dbActions: db.actions });
+  deps.riotApi.getActiveGameByPuuid = () =>
+    Promise.resolve({
+      ...activeGame(),
+      gameMode: "KIWI",
+      gameQueueConfigId: 2400,
+      gameStartTime: now.getTime() - 60_000,
+      gameLength: 60,
+      participants: [{ puuid: "puuid-1", championId: 99, teamId: 100 }],
+    });
+  const fetched: string[] = [];
+  deps.riotApi.getMatchById = (_region, matchId) => {
+    fetched.push(matchId);
+    return Promise.resolve(oldMatch);
+  };
+  deps.riotApi.getLeagueEntriesByPuuid = () => Promise.resolve([]);
+  const apiClient = createInProcessBotApiClient(createApp(deps));
+  const gateway = discord();
+  const service = createMatchTrackingService({
+    apiClient,
+    notifier: createDurableMatchTrackingNotifier({
+      store: apiClient,
+      notifier: gateway.notifier,
+      logger,
+    }),
+    renderer,
+    clock: { now: () => now },
+    logger,
+    config,
+  });
+
+  // Act
+  await service.processMatchWatchers();
+
+  // Assert
+  assertEquals(fetched, ["PH2_12345"]);
+  const [saved] = await db.actions.getEnabledMatchWatchers();
+  assertEquals(saved.currentMatchId, "SG2_12345");
+  assertEquals(saved.currentGameObservation, {
+    championId: 99,
+    elapsedSeconds: 60,
+  });
+  assertEquals(saved.pendingResultMatchId, null);
+  assertEquals(saved.currentNotificationMessageId === "shared", false);
+  assertEquals(
+    (gateway.messages.get("shared")?.embeds?.[0] as { title: string }).title,
+    "result:A",
+  );
+  assertEquals(
+    (gateway.messages.get(saved.currentNotificationMessageId!)?.embeds?.[0] as {
+      title: string;
+    }).title,
+    "progress",
+  );
+  const outbox = await db.db.query.notificationDeliveries.findMany();
+  assertEquals(
+    outbox.map((
+      delivery,
+    ) => [delivery.matchId, delivery.stage, delivery.status]).sort(),
+    [
+      ["PH2_12345", 3, "delivered"],
+      ["SG2_12345", 0, "delivered"],
+    ],
+  );
+});

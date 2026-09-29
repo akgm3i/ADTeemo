@@ -125,6 +125,7 @@ export class MockInteractionBuilder {
   build(): ChatInputCommandInteraction {
     const interaction = {
       ...this.state,
+      createdTimestamp: Date.now(),
       isButton: () => false,
       isStringSelectMenu: () => false,
       inGuild: () => this.state.guildId !== null,

@@ -1,5 +1,9 @@
 import { responseContracts } from "@adteemo/api/contract";
-import type { Lane, RiotPlatform, RiotRegion } from "@adteemo/api/contract";
+import type {
+  CurrentRiotPlatform,
+  Lane,
+  RiotRegion,
+} from "@adteemo/api/contract";
 import { type ApiRpcClient, requestResult } from "./transport.ts";
 
 export function createUsersApiClient(
@@ -9,7 +13,7 @@ export function createUsersApiClient(
     discordId: string,
     gameName: string,
     tagLine: string,
-    platform?: RiotPlatform,
+    platform?: CurrentRiotPlatform,
     region?: RiotRegion,
   ) {
     return await requestResult(

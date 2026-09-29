@@ -1,5 +1,6 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
+import { FakeTime } from "@std/testing/time";
 import { assertSpyCall, assertSpyCalls, stub } from "@std/testing/mock";
 import {
   createRiotStaticData,
@@ -430,5 +431,99 @@ describe("riot_static_data.ts", () => {
       maps: { "999": null },
       gameModes: { UNKNOWN: null },
     });
+  });
+});
+
+for (const stalledAt of ["headers", "body"] as const) {
+  test(`静的データの${stalledAt}が停止したとき、5秒でabortして期限切れcacheを使用する`, async () => {
+    // Arrange
+    using time = new FakeTime("2026-09-29T00:00:00Z");
+    const deps = dependencies();
+    deps.fetchJson = fetchRiotStaticDataJson;
+    deps.dbActions.getRiotStaticDataCache = () =>
+      Promise.resolve({
+        key: "champions-data:ja_JP",
+        version: "15.24.1",
+        value: JSON.stringify({
+          "17": { name: "ティーモ", imageFull: "Teemo.png" },
+        }),
+        updatedAt: new Date("2026-01-01T00:00:00Z"),
+      });
+    let signal: AbortSignal | null | undefined;
+    using _fetch = stub(globalThis, "fetch", (_input, init) => {
+      signal = init?.signal;
+      if (stalledAt === "headers") {
+        return new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(signal?.reason), {
+            once: true,
+          });
+        });
+      }
+      return Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('["version"'));
+              signal?.addEventListener(
+                "abort",
+                () => controller.error(signal?.reason),
+                { once: true },
+              );
+            },
+          }),
+        ),
+      );
+    });
+    const service = createRiotStaticData(deps);
+
+    // Act
+    const request = service.resolve({ championIds: [17] });
+    await time.tickAsync(5_000);
+
+    // Assert
+    assertExists(signal);
+    assertEquals(signal.aborted, true);
+    assertEquals((await request).champions["17"], {
+      name: "ティーモ",
+      iconUrl:
+        "https://ddragon.leagueoflegends.com/cdn/15.24.1/img/champion/Teemo.png",
+    });
+  });
+}
+
+test("cacheなしで静的取得がtimeoutしたとき、既知の日本語名と未取得のnullを返す", async () => {
+  // Arrange
+  using time = new FakeTime(0);
+  const deps = dependencies();
+  deps.fetchJson = fetchRiotStaticDataJson;
+  const signals: AbortSignal[] = [];
+  using _fetch = stub(globalThis, "fetch", (_input, init) => {
+    if (init?.signal) signals.push(init.signal);
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener(
+        "abort",
+        () => reject(init.signal?.reason),
+        { once: true },
+      );
+    });
+  });
+
+  // Act
+  const request = createRiotStaticData(deps).resolve({
+    championIds: [17],
+    queueIds: [420, 9999],
+    mapIds: [11],
+    gameModes: ["CLASSIC"],
+  });
+  await time.tickAsync(5_000);
+
+  // Assert
+  assertEquals(signals.length, 2);
+  assertEquals(signals.every((signal) => signal.aborted), true);
+  assertEquals(await request, {
+    champions: { "17": { name: null, iconUrl: null } },
+    queues: { "420": "ランクソロ/デュオ", "9999": null },
+    maps: { "11": "サモナーズリフト" },
+    gameModes: { "CLASSIC": "クラシック" },
   });
 });

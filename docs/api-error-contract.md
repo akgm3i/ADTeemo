@@ -7,8 +7,8 @@
 - Related: [#115](https://github.com/akgm3i/ADTeemo/issues/115)
 - Code: [error contract](../api/src/contract/errors.ts), [API errors](../api/src/api_errors.ts)
 - Tests: [error contract tests](../api/src/error_contract.test.ts), [Riot応答診断](../api/src/riot_api_diagnostics.test.ts), [Riot応答の正規化](../api/src/riot_api.test.ts)
-- Reviewed: 2026-09-26
-- Verified: 2026-09-26、local code review・qualityと、実Riot応答のnull PUUIDによる502の再現・正規化後の監視復旧と、Match-v5の403を専用codeへ分類した両guildの取得不可通知を確認。
+- Reviewed: 2026-09-29
+- Verified: 2026-09-26、local code review・qualityと、実Riot応答のnull PUUIDによる502の再現・正規化後の監視復旧と、Match-v5の403を専用codeへ分類した両guildの取得不可通知を確認。2026-09-29、HTTPヘッダー/本文の期限とcommit不明のローカル回帰を確認。今回の実サービス疎通は未実施。
 
 Backend APIの成否はHTTPステータスだけで判定します。すべてのエラーレスポンスは `application/json` で、次の共通形式を使います。
 
@@ -52,6 +52,14 @@ malformed JSONとschema不一致、未認証、対象なし、状態競合、内
 
 成功時の `204 No Content` と、RSO callback成功時のHTMLはこのJSON形式の対象外です。エラー時に共通JSON形式から外れるrouteはありません。
 
+## HTTPの期限とcommit不明
+
+Botの[RPC fetch](../bot/src/api_client.ts)とBackendの[静的データfetch](../api/src/riot_static_data.ts)は、[HTTP adapter](../lib/http/buffered_fetch.ts)で応答ヘッダー待ちから本文読了まで同じ期限を適用する。期限では実fetchをabortし、正常・失敗ともtimerと呼出元signalのlistenerを解放する。Bot側は本文timeoutも通信失敗として扱い、HTTPの失敗statusや不正な2xx bodyとは区別する。
+
+Botの120秒はRiot取得が最大2段階×30秒の予算を持つことと追加処理を考慮した通信上限である。静的データは1 HTTP要求5秒で、取得不能なら既存cache・表示fallbackへ戻る。正確な値は上記Codeを正とする。任意OP.GG補足の全経路の所要時間を保証する上限ではない。
+
+timeoutはサーバーでmutationがcommitしていない証拠にはならない。[イベントSaga](./custom-game-event-consistency.md#api-mutationの結果が不明な場合)は同じoperation keyで再照合・再送し、commit不明を理由にDiscord resourceを補償削除しない。[戦績](./record-match-consistency.md#冪等な再送)も同じevent/gameと入力を再送する。外部応答やcredentialをtimeoutのログへ追加しない。
+
 ## 成功レスポンスと契約違反
 
 全2xxのstatus/schemaは[responseContracts](../api/src/contract/responses.ts)が正本です。`createApp`のresponse middlewareとBot clientが同じschemaで検証し、providerとconsumerの契約を別々に宣言しません。
@@ -61,6 +69,12 @@ malformed JSONとschema不一致、未認証、対象なし、状態競合、内
 Botでは不正な2xxを`ApiContractError`（`kind: contract_error`）へ変換し、公開HTTPエラーや通信失敗と区別します。provider側の不正応答は安全な500へ閉じ、内部値をレスポンスへ漏らしません。
 
 実providerとの対応は[contract app tests](../api/src/contract/app.test.ts)、resourceごとのparse・失敗は[Bot resource tests](../bot/src/api_clients)で検証します。facadeの[api_client.test.ts](../bot/src/api_client.test.ts)は組み立てを検証し、各resourceの全挙動を複製しません。fakeの未定義呼出し・未消費応答の扱いは[テスト方針](../TESTING_STYLE.md)に従います。
+
+## 監視inspectionの契約
+
+active-game検査はaccountとnullableなactiveGame、result検査はaccountとnullableなmatch・rankSummary・opggDetailを返す。開始・終了の通知種別や保存パッチは返さない。requestもaccount選択・batch ID・結果のmatch IDだけを受け、watcherの状態、投稿ID、通知間隔、結果期限を判断材料として受け取らない。
+
+通知と状態遷移は[Botの判断境界](./integrations/match-notification-delivery.md#観測取得と状態遷移の責務)が担う。`notificationIntent` / `stateTransition`の削除は成功応答の契約変更なので、APIとBotを同じ版へ更新する。旧Botと新APIの混在を互換fallbackで補わない。
 
 ## 試合結果へのアクセス拒否
 

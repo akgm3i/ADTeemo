@@ -51,6 +51,7 @@ describe("checkHealth", () => {
       {
         contract: responseContracts.health,
         result: new Error("Network error"),
+        args: [],
       },
     ]);
     const client = createApiClient({ rpcClient: rpc.rpcClient });

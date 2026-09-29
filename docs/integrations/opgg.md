@@ -7,7 +7,7 @@
 - Related: [#53](https://github.com/akgm3i/ADTeemo/issues/53), [#56](https://github.com/akgm3i/ADTeemo/issues/56), [#73](https://github.com/akgm3i/ADTeemo/issues/73)
 - Code: [client](../../api/src/integrations/opgg.ts), [service](../../api/src/services/opgg_match_detail.ts)
 - Tests: [client tests](../../api/src/integrations/opgg.test.ts), [service tests](../../api/src/services/opgg_match_detail.test.ts)
-- Reviewed: 2026-09-25
+- Reviewed: 2026-09-29
 - Verified: local implementation only, 2026-09-25; upstream last observed 2026-06-19
 
 Backend APIの`OPGG_ENABLED`で連携全体を制御する。無効時はHTTPを送らず、BotはOP.GG欄なしで通知を続ける。有効化は必要時の`renewal`によるOP.GG側更新も含む。Botはこの設定を参照しない。
@@ -21,6 +21,8 @@ Backend APIの`OPGG_ENABLED`で連携全体を制御する。無効時はHTTPを
 5. 正規化した外部詳細だけを保存し、基本の試合結果へ補足する。
 
 Action失効時の再抽出条件、timeout、retry上限、照合許容差、URLエンコード、更新抑制と保存一意制約はCode/Testsが正本である。[ADR 0005](../adr/0005-optional-opgg-integration.md)に理由を記録している。
+
+platformからOP.GG地域への変換は[共通routing定義](../../api/src/contract/riot_routing.ts)を使う。現在のプロフィールはcanonical accountの地域で参照するが、保存済み外部match ID・provider地域を一括置換しない。PH2/TH2 accountの移行と過去データの保持は[account監視の移行手順](./account-monitoring.md#ph2th2のrouting移行)を参照する。
 
 ## 障害調査
 

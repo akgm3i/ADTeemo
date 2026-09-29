@@ -3,37 +3,14 @@ import {
   MessageFlags,
   SlashCommandBuilder,
 } from "discord.js";
-import type { RiotPlatform, RiotRegion } from "@adteemo/api/contract";
+import {
+  type CurrentRiotPlatform,
+  currentRiotPlatforms,
+  defaultRiotPlatform,
+  riotRegionForPlatform,
+} from "@adteemo/api/contract";
 import { apiClient } from "../api_client.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
-
-const platformChoices: RiotPlatform[] = [
-  "jp1",
-  "kr",
-  "na1",
-  "euw1",
-  "eun1",
-  "br1",
-  "la1",
-  "la2",
-  "oc1",
-  "tr1",
-  "ru",
-  "ph2",
-  "sg2",
-  "th2",
-  "tw2",
-  "vn2",
-];
-
-function regionForPlatform(platform: RiotPlatform): RiotRegion {
-  if (["na1", "br1", "la1", "la2"].includes(platform)) return "americas";
-  if (["euw1", "eun1", "tr1", "ru"].includes(platform)) return "europe";
-  if (["oc1", "ph2", "sg2", "th2", "tw2", "vn2"].includes(platform)) {
-    return "sea";
-  }
-  return "asia";
-}
 
 export const data = new SlashCommandBuilder()
   .setName("set-riot-id")
@@ -50,7 +27,7 @@ export const data = new SlashCommandBuilder()
       .setDescription("LoLサーバー")
       .setRequired(false)
       .addChoices(
-        ...platformChoices.map((platform) => ({
+        ...currentRiotPlatforms.map((platform) => ({
           name: platform.toUpperCase(),
           value: platform,
         })),
@@ -82,9 +59,9 @@ export async function execute(interaction: CommandInteraction) {
   }
 
   const [gameName, tagLine] = parts;
-  const platform =
-    (interaction.options.getString("platform") ?? "jp1") as RiotPlatform;
-  const region = regionForPlatform(platform);
+  const platform = (interaction.options.getString("platform") ??
+    defaultRiotPlatform) as CurrentRiotPlatform;
+  const region = riotRegionForPlatform(platform);
 
   const preference = interaction.options.getString("watch-preference");
   if (preference && !interaction.guildId) {

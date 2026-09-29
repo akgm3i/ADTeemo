@@ -485,3 +485,8 @@ describe("opgg.ts", () => {
     );
   });
 });
+
+test("統合前platformのプロフィール取得ではSG2のOP.GG routingを使う", () => {
+  assertEquals(riotPlatformToOpggRegion("ph2"), "sg");
+  assertEquals(riotPlatformToOpggRegion("TH2"), "sg");
+});

@@ -1,330 +1,282 @@
-import { assertEquals, assertStrictEquals } from "@std/assert";
-import { describe, test } from "@std/testing/bdd";
-import { assertSpyCalls, spy, stub } from "@std/testing/mock";
-import { FakeTime } from "@std/testing/time";
 import {
-  type Channel,
-  Collection,
-  type Message,
-  type Snowflake,
-} from "discord.js";
-import { messageKeys } from "../messages.ts";
+  assertEquals,
+  assertNotEquals,
+  assertStringIncludes,
+} from "@std/assert";
+import { test } from "@std/testing/bdd";
+import { FakeTime } from "@std/testing/time";
+import type { ButtonInteraction, Message } from "discord.js";
+import { messageHandler, messageKeys } from "../messages.ts";
 import { MockInteractionBuilder } from "../test_utils.ts";
-import { statCollector } from "./stat_collector.ts";
+import {
+  createStatSession,
+  parseStatDraft,
+  statCollector,
+} from "./stat_collector.ts";
+import { recordMatchDiscord } from "./testing/record_match_discord.ts";
+import { strictFake } from "./testing/strict_fake.ts";
 
-type CollectorEndListener = (
-  collected: Collection<Snowflake, Message>,
-  reason: string,
-) => void;
-
-type TestCollector = {
-  on(event: "end", listener: CollectorEndListener): TestCollector;
-};
-
-type TestChannel = {
-  id: string;
-  createMessageCollector(options: unknown): TestCollector;
-};
-
-function testMessage(content: string): Message {
+const participants = ["p1", "p2"].map((id) => ({
+  user: { id, username: id },
+  lane: "Top",
+}));
+function createSession() {
+  const interaction = new MockInteractionBuilder("record-match").build();
   return {
-    author: { id: "mock-user-id" },
-    content,
-    delete: () => Promise.resolve({} as Message),
-  } as unknown as Message;
+    interaction,
+    session: createStatSession(interaction, {
+      eventId: 42,
+      gameSequence: 2,
+      winner: "BLUE",
+    }),
+  };
 }
 
-function collectorEndingWith(
-  messages: Message[],
-  reason = "limit",
-): TestCollector {
-  const collected = new Collection<Snowflake, Message>();
-  messages.forEach((message, index) => {
-    collected.set(`message-${index}`, message);
+test("KDA・CS・Goldをまとめて検証し、0を保持して不正形式や安全でない整数を拒否する", () => {
+  assertEquals(parseStatDraft({ kda: "0/2/8", cs: "0", gold: "12000" }), {
+    kills: 0,
+    deaths: 2,
+    assists: 8,
+    cs: 0,
+    gold: 12000,
   });
-  const collector: TestCollector = {
-    on(_event, listener) {
-      listener(collected, reason);
-      return collector;
+  for (
+    const draft of [
+      { kda: "1/2", cs: "1", gold: "1" },
+      { kda: "-1/2/3", cs: "1", gold: "1" },
+      { kda: "1/2/3", cs: "1.2", gold: "1" },
+      { kda: "1/2/3", cs: "1", gold: "-1" },
+      { kda: "1/2/3", cs: "9007199254740992", gold: "1" },
+    ]
+  ) assertEquals(parseStatDraft(draft), null);
+});
+
+test("不正な入力を修正すると、前の参加者の値と現在の入力欄を引き継ぐ", async () => {
+  // Arrange
+  using time = new FakeTime("2026-09-29T00:00:00Z");
+  const { interaction, session } = createSession();
+  using discord = recordMatchDiscord(interaction, [
+    { action: "input", userId: "p1" },
+    {
+      action: "input",
+      userId: "p2",
+      draft: { kda: "bad", cs: "0", gold: "123" },
     },
-  };
-  return collector;
+    {
+      action: "input",
+      userId: "p2",
+      draft: { kda: "1/2/3", cs: "0", gold: "123" },
+    },
+  ], (ms) => time.tick(ms));
+
+  // Act
+  const result = await statCollector.collectStats(session, participants);
+
+  // Assert
+  assertEquals(result.status, "complete");
+  if (result.status !== "complete") return;
+  assertEquals(result.stats.map((stat) => [stat.userId, stat.cs]), [
+    ["p1", 200],
+    ["p2", 0],
+  ]);
+  assertNotEquals(discord.modals[1].custom_id, discord.modals[2].custom_id);
+  assertStringIncludes(JSON.stringify(discord.modals[2]), '"value":"bad"');
+  assertStringIncludes(JSON.stringify(discord.modals[2]), '"value":"0"');
+  assertEquals(
+    discord.edits.some((edit) =>
+      edit.body.content ===
+        messageHandler.formatMessage(
+          messageKeys.matchManagement.recordMatch.invalidStats,
+        )
+    ),
+    true,
+  );
+});
+
+for (const modalTimeout of [false, true]) {
+  test(`${modalTimeout ? "modal" : "入力ボタン"}の個別timeout後に再開すると、入力済みの参加者を再入力せず継続する`, async () => {
+    // Arrange
+    using time = new FakeTime("2026-09-29T00:00:00Z");
+    const { interaction, session } = createSession();
+    using discord = recordMatchDiscord(interaction, [
+      { action: "input", userId: "p1" },
+      modalTimeout
+        ? { action: "input", userId: "p2", modalTimeout: true }
+        : { action: "timeout" },
+      { action: "input", userId: "p2" },
+    ], (ms) => time.tick(ms));
+
+    // Act
+    const result = await statCollector.collectStats(session, participants);
+
+    // Assert
+    assertEquals(result.status, "complete");
+    assertEquals(session.summary.data.fields?.length, 2);
+    assertEquals(
+      discord.edits.some((edit) =>
+        edit.body.content ===
+          messageHandler.formatMessage(
+            messageKeys.matchManagement.recordMatch.paused,
+          )
+      ),
+      true,
+    );
+  });
 }
 
-function createInteraction() {
-  const channel: TestChannel = {
-    id: "mock-channel-id",
-    createMessageCollector: () => collectorEndingWith([], "time"),
-  };
-  const interaction = new MockInteractionBuilder("record-match")
-    .withChannel(channel as unknown as Channel)
+for (const ending of ["cancelled", "expired", "failure"] as const) {
+  test(`途中で${ending}になると、理由を区別して入力済みsummaryを保持する`, async () => {
+    // Arrange
+    using time = new FakeTime("2026-09-29T00:00:00Z");
+    const { interaction, session } = createSession();
+    using _discord = recordMatchDiscord(interaction, [
+      { action: "input", userId: "p1" },
+      ...(ending === "expired"
+        ? [{ action: "timeout" as const }, { action: "timeout" as const }]
+        : [{
+          action: ending === "cancelled"
+            ? "cancel" as const
+            : "failure" as const,
+        }]),
+    ], (ms) => time.tick(ms));
+
+    // Act
+    const result = await statCollector.collectStats(session, participants);
+
+    // Assert
+    assertEquals(result.status, ending);
+    assertEquals(session.summary.data.fields, [{
+      name: "p1 (Top)",
+      value: "10/2/8 - 200cs - 12000g",
+    }]);
+  });
+}
+
+test("セッション開始から60分経過した場合、新たな入力を待たず期限切れにする", async () => {
+  using time = new FakeTime("2026-09-29T00:00:00Z");
+  const { interaction, session } = createSession();
+  using _discord = recordMatchDiscord(interaction, [], (ms) => time.tick(ms));
+  time.tick(60 * 60_000);
+  assertEquals(await statCollector.collectStats(session, participants), {
+    status: "expired",
+  });
+});
+
+test("画面の更新中にセッション期限を越えた場合、新たなボタン入力を待たない", async () => {
+  // Arrange
+  using time = new FakeTime("2026-09-29T00:00:00Z");
+  const { session } = createSession();
+  time.tick(59 * 60_000);
+  using wait = strictFake<[], Promise<never>>("awaitMessageComponent", []);
+  await session.accept({
+    createdTimestamp: Date.now(),
+    deferUpdate: () => Promise.resolve(),
+    editReply: () => {
+      time.tick(61_000);
+      return Promise.resolve({
+        awaitMessageComponent: wait.invoke,
+      } as unknown as Message);
+    },
+  } as unknown as ButtonInteraction);
+
+  // Act
+  const result = await session.waitForButton(
+    "入力",
+    "input_record_match",
+    "入力",
+  );
+
+  // Assert
+  assertEquals(result, { status: "expired" });
+});
+
+test("同じユーザーが別eventの入力を並行しても、messageとmodal IDで値を分離する", async () => {
+  // Arrange
+  using time = new FakeTime("2026-09-29T00:00:00Z");
+  const first = new MockInteractionBuilder("record-match").withId("session-one")
     .build();
-  return { channel, interaction };
-}
-
-describe("stat collector", () => {
-  describe("正常系", () => {
-    test("KDA形式のメッセージを受信したとき、文字列のvalue結果を返す", async () => {
-      // Arrange
-      const { channel, interaction } = createInteraction();
-      using _collectorStub = stub(
-        channel,
-        "createMessageCollector",
-        () => collectorEndingWith([testMessage("10/2/8")]),
-      );
-
-      // Act
-      const result = await statCollector.askForStat<string>(
-        interaction,
-        "Player1",
-        /^\d+\/\d+\/\d+$/,
-        messageKeys.matchManagement.recordMatch.promptKDA,
-        messageKeys.matchManagement.recordMatch.invalidFormatKDA,
-      );
-
-      // Assert
-      assertEquals(result, { status: "value", value: "10/2/8" });
-    });
-
-    test("数値形式のメッセージを受信したとき、数値のvalue結果を返す", async () => {
-      // Arrange
-      const { channel, interaction } = createInteraction();
-      using _collectorStub = stub(
-        channel,
-        "createMessageCollector",
-        () => collectorEndingWith([testMessage("123")]),
-      );
-
-      // Act
-      const result = await statCollector.askForStat<number>(
-        interaction,
-        "Player1",
-        /^\d+$/,
-        messageKeys.matchManagement.recordMatch.promptCS,
-        messageKeys.matchManagement.recordMatch.invalidFormatNumber,
-      );
-
-      // Assert
-      assertEquals(result, { status: "value", value: 123 });
-    });
-
-    for (
-      const { label, content, validation, promptKey, errorKey, value } of [
-        {
-          label: "KDA",
-          content: "10/2/8",
-          validation: /^\d+\/\d+\/\d+$/,
-          promptKey: messageKeys.matchManagement.recordMatch.promptKDA,
-          errorKey: messageKeys.matchManagement.recordMatch.invalidFormatKDA,
-          value: "10/2/8",
-        },
-        {
-          label: "CS",
-          content: "200",
-          validation: /^\d+$/,
-          promptKey: messageKeys.matchManagement.recordMatch.promptCS,
-          errorKey: messageKeys.matchManagement.recordMatch.invalidFormatNumber,
-          value: 200,
-        },
-        {
-          label: "Gold",
-          content: "12000",
-          validation: /^\d+$/,
-          promptKey: messageKeys.matchManagement.recordMatch.promptGold,
-          errorKey: messageKeys.matchManagement.recordMatch.invalidFormatNumber,
-          value: 12000,
-        },
-      ]
-    ) {
-      test(`${label}入力の削除が権限不足で失敗しても、有効なvalue結果を返す`, async () => {
-        // Arrange
-        const { channel, interaction } = createInteraction();
-        const message = testMessage(content);
-        using deleteStub = stub(
-          message,
-          "delete",
-          () => Promise.reject(new Error("Missing Permissions")),
-        );
-        using _collectorStub = stub(
-          channel,
-          "createMessageCollector",
-          () => collectorEndingWith([message]),
-        );
-
-        // Act
-        const result = await statCollector.askForStat(
-          interaction,
-          "Player1",
-          validation,
-          promptKey,
-          errorKey,
-        );
-
-        // Assert
-        assertEquals(result, { status: "value", value });
-        assertSpyCalls(deleteStub, 1);
-      });
-    }
-
-    test("不正な入力の削除が失敗しても、警告後に再試行して有効なvalue結果を返す", async () => {
-      // Arrange
-      using time = new FakeTime();
-      const { channel, interaction } = createInteraction();
-      const invalidMessage = testMessage("invalid");
-      using _deleteStub = stub(
-        invalidMessage,
-        "delete",
-        () => Promise.reject(new Error("Missing Permissions")),
-      );
-      const collectors = [
-        collectorEndingWith([invalidMessage]),
-        collectorEndingWith([testMessage("456")]),
-      ];
-      using collectorStub = stub(
-        channel,
-        "createMessageCollector",
-        () => collectors.shift()!,
-      );
-      const deleteWarning = spy(() => Promise.resolve({} as Message));
-      using followUpStub = stub(
-        interaction,
-        "followUp",
-        () => Promise.resolve({ delete: deleteWarning } as unknown as Message),
-      );
-
-      // Act
-      const result = await statCollector.askForStat<number>(
-        interaction,
-        "Player1",
-        /^\d+$/,
-        messageKeys.matchManagement.recordMatch.promptCS,
-        messageKeys.matchManagement.recordMatch.invalidFormatNumber,
-      );
-      time.tick(5_000);
-
-      // Assert
-      assertEquals(result, { status: "value", value: 456 });
-      assertSpyCalls(collectorStub, 2);
-      assertSpyCalls(followUpStub, 1);
-      assertSpyCalls(deleteWarning, 1);
-    });
+  const second = new MockInteractionBuilder("record-match").withId(
+    "session-two",
+  ).build();
+  const firstSession = createStatSession(first, {
+    eventId: 42,
+    gameSequence: 1,
+    winner: "BLUE",
   });
-
-  describe("中断・異常系", () => {
-    test("collectorがtime理由で終了したとき、timeout結果を返す", async () => {
-      // Arrange
-      const { channel, interaction } = createInteraction();
-      using _collectorStub = stub(
-        channel,
-        "createMessageCollector",
-        () => collectorEndingWith([], "time"),
-      );
-
-      // Act
-      const result = await statCollector.askForStat<number>(
-        interaction,
-        "Player1",
-        /^\d+$/,
-        messageKeys.matchManagement.recordMatch.promptCS,
-        messageKeys.matchManagement.recordMatch.invalidFormatNumber,
-      );
-
-      // Assert
-      assertEquals(result, { status: "timeout" });
-    });
-
-    test("前後空白と大文字小文字を含むcancelを受信したとき、cancelled結果を返す", async () => {
-      // Arrange
-      const { channel, interaction } = createInteraction();
-      using _collectorStub = stub(
-        channel,
-        "createMessageCollector",
-        () => collectorEndingWith([testMessage("  CaNcEl  ")]),
-      );
-
-      // Act
-      const result = await statCollector.askForStat<number>(
-        interaction,
-        "Player1",
-        /^\d+$/,
-        messageKeys.matchManagement.recordMatch.promptCS,
-        messageKeys.matchManagement.recordMatch.invalidFormatNumber,
-      );
-
-      // Assert
-      assertEquals(result, { status: "cancelled" });
-    });
-
-    test("前後空白を含むキャンセルを受信したとき、cancelled結果を返す", async () => {
-      // Arrange
-      const { channel, interaction } = createInteraction();
-      using _collectorStub = stub(
-        channel,
-        "createMessageCollector",
-        () => collectorEndingWith([testMessage("  キャンセル  ")]),
-      );
-
-      // Act
-      const result = await statCollector.askForStat<string>(
-        interaction,
-        "Player1",
-        /^\d+\/\d+\/\d+$/,
-        messageKeys.matchManagement.recordMatch.promptKDA,
-        messageKeys.matchManagement.recordMatch.invalidFormatKDA,
-      );
-
-      // Assert
-      assertEquals(result, { status: "cancelled" });
-    });
-
-    test("collectorがtime以外の理由でメッセージなしに終了したとき、failure結果を返す", async () => {
-      // Arrange
-      const { channel, interaction } = createInteraction();
-      using _collectorStub = stub(
-        channel,
-        "createMessageCollector",
-        () => collectorEndingWith([], "user"),
-      );
-
-      // Act
-      const result = await statCollector.askForStat<number>(
-        interaction,
-        "Player1",
-        /^\d+$/,
-        messageKeys.matchManagement.recordMatch.promptCS,
-        messageKeys.matchManagement.recordMatch.invalidFormatNumber,
-      );
-
-      // Assert
-      assertEquals(result.status, "failure");
-    });
-
-    test("collector処理が例外を投げたとき、同じerrorを持つfailure結果を返す", async () => {
-      // Arrange
-      const { channel, interaction } = createInteraction();
-      const error = new Error("Discord collector failed");
-      using _collectorStub = stub(
-        channel,
-        "createMessageCollector",
-        () => {
-          throw error;
-        },
-      );
-
-      // Act
-      const result = await statCollector.askForStat<number>(
-        interaction,
-        "Player1",
-        /^\d+$/,
-        messageKeys.matchManagement.recordMatch.promptCS,
-        messageKeys.matchManagement.recordMatch.invalidFormatNumber,
-      );
-
-      // Assert
-      assertEquals(result.status, "failure");
-      if (result.status === "failure") {
-        assertStrictEquals(result.error, error);
-      }
-    });
+  const secondSession = createStatSession(second, {
+    eventId: 43,
+    gameSequence: 2,
+    winner: "RED",
   });
+  using _firstDiscord = recordMatchDiscord(first, [{
+    action: "input",
+    userId: "p1",
+    draft: { kda: "1/2/3", cs: "100", gold: "10000" },
+  }], (ms) => time.tick(ms));
+  using _secondDiscord = recordMatchDiscord(second, [{
+    action: "input",
+    userId: "p1",
+    draft: { kda: "5/6/7", cs: "200", gold: "20000" },
+  }], (ms) => time.tick(ms));
+
+  // Act
+  const results = await Promise.all([
+    statCollector.collectStats(firstSession, participants.slice(0, 1)),
+    statCollector.collectStats(secondSession, participants.slice(0, 1)),
+  ]);
+
+  // Assert
+  assertEquals(results, [
+    {
+      status: "complete",
+      stats: [{
+        userId: "p1",
+        kills: 1,
+        deaths: 2,
+        assists: 3,
+        cs: 100,
+        gold: 10000,
+      }],
+    },
+    {
+      status: "complete",
+      stats: [{
+        userId: "p1",
+        kills: 5,
+        deaths: 6,
+        assists: 7,
+        cs: 200,
+        gold: 20000,
+      }],
+    },
+  ]);
+});
+
+test("不正入力を続けてfresh tokenを得ても、開始から60分で終了して最新のdraftを残す", async () => {
+  // Arrange
+  using time = new FakeTime("2026-09-29T00:00:00Z");
+  const { interaction, session } = createSession();
+  using _discord = recordMatchDiscord(
+    interaction,
+    Array.from({ length: 30 }, (_, index) => ({
+      action: "input" as const,
+      userId: "p1",
+      waitMs: 60_000,
+      inputMs: 60_000,
+      modalTimeout: index === 29,
+      draft: { kda: "invalid", cs: "42", gold: "12345" },
+    })),
+    (ms) => time.tick(ms),
+  );
+
+  // Act
+  const result = await statCollector.collectStats(session, participants);
+
+  // Assert
+  assertEquals(result, { status: "expired" });
+  assertEquals(Date.now() - interaction.createdTimestamp, 60 * 60_000);
+  assertEquals(session.summary.data.fields, [{
+    name: "p1 (Top)",
+    value: "invalid - 42cs - 12345g",
+  }]);
 });

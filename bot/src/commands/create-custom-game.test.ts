@@ -22,6 +22,7 @@ import { assertEquals } from "@std/assert";
 import { parse } from "@std/datetime";
 import { apiClient } from "../api_client.ts";
 import type { Event } from "@adteemo/api/contract";
+import { strictFake } from "../features/testing/strict_fake.ts";
 import { customGameEventOperationMarker } from "../features/custom_game_event_discord.ts";
 
 describe("Create Custom Game Command", () => {
@@ -85,55 +86,87 @@ describe("Create Custom Game Command", () => {
     };
   }
 
-  function stubSuccessfulCreateSagaApi() {
+  function stubSuccessfulCreateSagaApi(name: string, scheduledStartAt: Date) {
     const resources = new DisposableStack();
-    let current = eventFixture();
-    resources.use(stub(
-      apiClient,
-      "prepareCustomGameEvent",
-      (input) => {
-        current = eventFixture({
-          operationKey: input.operationKey,
-          name: input.name,
-          guildId: input.guildId,
-          creatorId: input.creatorId,
-          recruitmentChannelId: input.recruitmentChannelId,
-          voiceChannelId: input.voiceChannelId,
-          scheduledStartAt: input.scheduledStartAt,
-        });
-        return Promise.resolve({
-          success: true as const,
-          created: true,
-          event: current,
-        });
-      },
-    ));
-    resources.use(stub(
-      apiClient,
-      "updateCustomGameEventCreationProgress",
-      (_eventId, input) => {
-        current = {
-          ...current,
-          discordScheduledEventId: input.discordScheduledEventId ??
-            current.discordScheduledEventId,
-          recruitmentMessageId: input.recruitmentMessageId ??
-            current.recruitmentMessageId,
-        };
-        return Promise.resolve({ success: true as const, event: current });
-      },
-    ));
-    resources.use(stub(
-      apiClient,
-      "activateCustomGameEvent",
-      () => {
-        current = {
-          ...current,
-          phase: "RECRUITING",
-          syncState: "CONSISTENT",
-        };
-        return Promise.resolve({ success: true as const, event: current });
-      },
-    ));
+    const prepared = eventFixture({ name, scheduledStartAt });
+    const savedEvent: Event = {
+      ...prepared,
+      discordScheduledEventId: "mock-event-id",
+      revision: 1,
+    };
+    const savedMessage: Event = {
+      ...savedEvent,
+      recruitmentMessageId: "mock-message-id",
+      revision: 2,
+    };
+    const active: Event = {
+      ...savedMessage,
+      phase: "RECRUITING",
+      syncState: "CONSISTENT",
+      revision: 3,
+    };
+    const scope = {
+      guildId: prepared.guildId,
+      recruitmentChannelId: prepared.recruitmentChannelId!,
+    };
+    const prepare = resources.use(
+      strictFake<
+        Parameters<typeof apiClient.prepareCustomGameEvent>,
+        ReturnType<typeof apiClient.prepareCustomGameEvent>
+      >(
+        "prepareCustomGameEvent",
+        [{
+          args: [{
+            operationKey: prepared.operationKey!,
+            name,
+            ...scope,
+            creatorId: prepared.creatorId,
+            voiceChannelId: prepared.voiceChannelId!,
+            scheduledStartAt,
+          }],
+          value: Promise.resolve({
+            success: true,
+            created: true,
+            event: prepared,
+          }),
+        }],
+      ),
+    );
+    const progress = resources.use(
+      strictFake<
+        Parameters<typeof apiClient.updateCustomGameEventCreationProgress>,
+        ReturnType<typeof apiClient.updateCustomGameEventCreationProgress>
+      >(
+        "updateCustomGameEventCreationProgress",
+        [
+          {
+            args: [113, { ...scope, discordScheduledEventId: "mock-event-id" }],
+            value: Promise.resolve({ success: true, event: savedEvent }),
+          },
+          {
+            args: [113, { ...scope, recruitmentMessageId: "mock-message-id" }],
+            value: Promise.resolve({ success: true, event: savedMessage }),
+          },
+        ],
+      ),
+    );
+    const activate = resources.use(
+      strictFake<
+        Parameters<typeof apiClient.activateCustomGameEvent>,
+        ReturnType<typeof apiClient.activateCustomGameEvent>
+      >(
+        "activateCustomGameEvent",
+        [{
+          args: [113, scope],
+          value: Promise.resolve({ success: true, event: active }),
+        }],
+      ),
+    );
+    resources.use(stub(apiClient, "prepareCustomGameEvent", prepare.invoke));
+    resources.use(
+      stub(apiClient, "updateCustomGameEventCreationProgress", progress.invoke),
+    );
+    resources.use(stub(apiClient, "activateCustomGameEvent", activate.invoke));
     return resources;
   }
 
@@ -155,7 +188,10 @@ describe("Create Custom Game Command", () => {
     describe("正常系", () => {
       test("有効なイベント名、未来の日付と時刻が指定された場合、Discordイベントを作成し、参加者募集メッセージを投稿する", async () => {
         // Arrange
-        using _apiStubs = stubSuccessfulCreateSagaApi();
+        using _apiStubs = stubSuccessfulCreateSagaApi(
+          "週末カスタム",
+          parse("2025/09/13 21:00", "yyyy/MM/dd HH:mm"),
+        );
         using _formatSpy = spy(messageHandler, "formatMessage");
         const mockGuild = new MockGuildBuilder().build();
         const createScheduledEventSpy = spy(
@@ -222,7 +258,10 @@ describe("Create Custom Game Command", () => {
 
       test("過去の日付が指定された場合、翌年の日付として扱いイベントを作成する", async () => {
         // Arrange
-        using _apiStubs = stubSuccessfulCreateSagaApi();
+        using _apiStubs = stubSuccessfulCreateSagaApi(
+          "新年カスタム",
+          parse("2026/01/15 12:00", "yyyy/MM/dd HH:mm"),
+        );
         const mockGuild = new MockGuildBuilder().build();
         const createScheduledEventSpy = spy(
           mockGuild.scheduledEvents,
@@ -268,7 +307,10 @@ describe("Create Custom Game Command", () => {
 
       test("開始日時が1ヶ月以上先の場合、警告メッセージ付きで成功応答を返す", async () => {
         // Arrange
-        using _apiStubs = stubSuccessfulCreateSagaApi();
+        using _apiStubs = stubSuccessfulCreateSagaApi(
+          "未来のカスタム",
+          parse("2025/12/25 12:00", "yyyy/MM/dd HH:mm"),
+        );
         using formatSpy = spy(messageHandler, "formatMessage");
         const interaction = new MockInteractionBuilder("create-custom-game")
           .withGuild(new MockGuildBuilder().build())

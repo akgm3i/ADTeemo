@@ -1,3 +1,4 @@
+import { canonicalRiotPlatform } from "./contract/riot_routing.ts";
 import { z } from "zod";
 import type { RiotPlatform, RiotRegion } from "./db/schema.ts";
 import { apiLogger } from "./logger.ts";
@@ -855,7 +856,9 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
 
   async function getActiveGameByPuuid(platform: RiotPlatform, puuid: string) {
     const url = new URL(
-      `https://${platform}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/${
+      `https://${
+        canonicalRiotPlatform(platform)
+      }.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/${
         encodeURIComponent(puuid)
       }`,
     );
@@ -883,7 +886,9 @@ export function createRiotApi(dependencies: CreateRiotApiDependencies) {
     puuid: string,
   ) {
     const url = new URL(
-      `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${
+      `https://${
+        canonicalRiotPlatform(platform)
+      }.api.riotgames.com/lol/league/v4/entries/by-puuid/${
         encodeURIComponent(puuid)
       }`,
     );

@@ -7,19 +7,19 @@
 - Related: [#88](https://github.com/akgm3i/ADTeemo/issues/88), [#69](https://github.com/akgm3i/ADTeemo/issues/69)
 - Code: [permission profiles](../../bot/deno.json), [Dockerfile](../../docker/Dockerfile.prod), [Compose](../../docker-compose.yml), [root tasks](../../deno.json), [command同期](../../bot/src/deploy-commands.ts)
 - Tests: [設定の接続](../../bot/production-permissions.test.ts), [offline検証runner](../../bot/check-production-permissions.ts), [権限の許可・拒否](../../bot/production-permissions-smoke.ts), [Bot起動](../../bot/runtime-permissions-smoke.ts), [command配備](../../bot/deploy-permissions-smoke.ts), [command同期回帰](../../bot/src/deploy-commands.test.ts)
-- Reviewed: 2026-09-26
-- Verified: 2026-09-26、Deno 2.5.7とlockfileの依存でoffline smoke、Docker内のprofile検証、Discord global commandの差分なし判定、実Bot起動・API認証・Gateway再接続とResume・slash command応答を確認。検証には既存DBと分離した新規DBを使用。
+- Reviewed: 2026-09-29
+- Verified: 2026-09-26、Deno 2.5.7とlockfileの依存でoffline smoke、Docker内のprofile検証、Discord global commandの差分なし判定、実Bot起動・API認証・Gateway再接続とResume・slash command応答を確認。検証には既存DBと分離した新規DBを使用。2026-09-29、HTTP adapter追加後のBot/command配備profileをoffline smokeとqualityで確認。今回の実Discord・Docker起動は未実施。
 
 ## Profileと用途
 
 許可値の正本はBot workspaceの `run:prod` / `run:deploy` task。DockerのBot CMD、Composeのcommand-deployer、rootの配備taskはこれらを使う。`run:prod` はComposeの `API_URL=http://api:8000` に合わせる。Backendのhostname/portを変更するときはpermission profileと検証も更新する。
 
-| 権限                    | Bot起動                                           | command配備                                       | 必要な理由                                                                                                  |
-| ----------------------- | ------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| net                     | `discord.com:443`, `*.discord.gg:443`, `api:8000` | `discord.com:443`                                 | Discord REST、Botだけが使うGatewayとBackend API                                                             |
-| env                     | taskに列挙したBot設定・認証・監視設定・依存用変数 | 配備設定・Discord認証・message/logger・依存用変数 | `Deno.env` とnpm依存の `process.env` 参照。Backend credentialは配備側に許可しない                           |
-| read                    | Botの `src` と `messages` workspace               | 左記と `api/src/contract`                         | commandのdirectory列挙、動的importとその依存、言語・theme辞書。配備はcommand経由で純粋なAPI契約も動的に読む |
-| write / sys / ffi / run | 付与しない                                        | 付与しない                                        | stdout loggerにfile書込は不要。SQLite・native addon・subprocessも使わない                                   |
+| 権限                    | Bot起動                                           | command配備                                       | 必要な理由                                                                                                                |
+| ----------------------- | ------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| net                     | `discord.com:443`, `*.discord.gg:443`, `api:8000` | `discord.com:443`                                 | Discord REST、Botだけが使うGatewayとBackend API                                                                           |
+| env                     | taskに列挙したBot設定・認証・監視設定・依存用変数 | 配備設定・Discord認証・message/logger・依存用変数 | `Deno.env` とnpm依存の `process.env` 参照。Backend credentialは配備側に許可しない                                         |
+| read                    | Botの `src` と `messages` workspace               | 左記と `api/src/contract`・`lib/http`             | commandのdirectory列挙、動的importとその依存、言語・theme辞書。配備はcommand経由で純粋なAPI契約とHTTP adapterも動的に読む |
+| write / sys / ffi / run | 付与しない                                        | 付与しない                                        | stdout loggerにfile書込は不要。SQLite・native addon・subprocessも使わない                                                 |
 
 `env_file` にAPI用の変数が含まれていても、許可していない `DATABASE_URL`、Riot key、RSO credential等はBotから読めない。環境変数の値や全一覧はログへ出さない。
 
@@ -30,6 +30,8 @@
 [Discord Gateway仕様](https://docs.discord.com/developers/events/gateway#resuming)では、再接続時にREADYで受け取った `resume_gateway_url` を使う。初回hostだけに固定すると再接続先を拒否し得るため、BotにはDiscord管理下の `*.discord.gg` の443番を許可する。Deno 2.5.7でsuffix wildcardの許可と、別domain・別portの拒否を確認した。`gateway*.discord.gg` のようなhostnameの部分wildcardは同runtimeで受理されない。配備にはGateway permissionを付与しない。
 
 [Denoのpermissionモデル](https://docs.deno.com/runtime/fundamentals/security/)では、初期static module graphの読み込みはread permissionと別扱いになる。read制限だけをBackend実装のimport禁止保証とはしない。既存の `check:bot-boundary` がmain・配備・全有効commandのruntime graphからBackend実装とDB clientへの到達を検査し、permission smokeが実際のfile読み取り拒否を保証する。
+
+2026-09-29のHTTP期限追加では、配備側の動的command importから`lib/http/buffered_fetch.ts`へ到達し、既存のread profileで拒否されることをoffline smokeが検出した。`run:deploy`だけに`lib/http`の読み取りを追加し、API実装・DB・秘密envへの権限は追加しない。Bot本体では同moduleが初期static graphへ含まれるため、`run:prod`のread許可は従来どおりで足りる。
 
 productionは `--cached-only --frozen --no-prompt` を使う。依存はDocker buildまたは `deno install --frozen=true` で取得し、実行時にmoduleをnetworkから取得したり、足りないpermissionを対話で追加したりしない。開発Botのwatch taskは別の権限設定を維持する。
 

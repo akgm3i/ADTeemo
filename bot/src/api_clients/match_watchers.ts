@@ -2,9 +2,7 @@ import type { MatchGameObservation } from "@adteemo/api/contract";
 import { responseContracts } from "@adteemo/api/contract";
 import type {
   ActiveGame,
-  MatchTrackingNotificationIntent,
   MatchTrackingRankSummary,
-  MatchTrackingStateTransition,
   MatchWatcherState,
   OpggMatchDetail,
   RiotAccount,
@@ -14,8 +12,6 @@ export type InspectMatchWatcherActiveGameResult = {
   success: true;
   account: RiotAccount;
   activeGame: ActiveGame | null;
-  notificationIntent: MatchTrackingNotificationIntent | null;
-  stateTransition: MatchTrackingStateTransition | null;
 } | FailureResult;
 export type InspectMatchWatcherResultResult = {
   success: true;
@@ -23,8 +19,6 @@ export type InspectMatchWatcherResultResult = {
   match: RiotMatch | null;
   rankSummary: MatchTrackingRankSummary | null;
   opggDetail: OpggMatchDetail | null;
-  notificationIntent: MatchTrackingNotificationIntent | null;
-  stateTransition: MatchTrackingStateTransition | null;
 } | FailureResult;
 import {
   type ApiRpcClient,
@@ -112,13 +106,6 @@ export function createMatchWatchersApiClient(
     state: {
       inspectionBatchId?: string;
       riotAccountPuuid?: string;
-      lastState: MatchWatcherState;
-      currentGameId: string | null;
-      currentNotificationMessageId?: string | null;
-      gameStartedAt?: Date | null;
-      lastInGameNotifiedAt?: Date | null;
-      notificationLastInGameNotifiedAt?: Date | null;
-      inGameNotifyIntervalMs?: number;
     },
   ): Promise<InspectMatchWatcherActiveGameResult> {
     return await requestResult(
@@ -140,9 +127,6 @@ export function createMatchWatchersApiClient(
       inspectionBatchId?: string;
       riotAccountPuuid?: string;
       matchId: string;
-      messageId?: string | null;
-      startedAt?: Date | null;
-      resultFetchTimeoutMs?: number;
     },
   ): Promise<InspectMatchWatcherResultResult> {
     return await requestResult(

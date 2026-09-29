@@ -8,3 +8,4 @@ export type { Client } from "./hc.ts";
 export * from "./responses.ts";
 export * from "./notification_delivery.ts";
 export * from "./custom_game_settings.ts";
+export * from "./ranked_snapshots.ts";

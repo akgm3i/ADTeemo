@@ -1,8 +1,8 @@
 /// <reference path="../../bot/src/@types/discord.js.d.ts" />
-import { stub } from "@std/testing/mock";
 import { FakeTime } from "@std/testing/time";
 import { configureApiClient } from "../../bot/src/api_client.ts";
 import { execute as executeRecordMatch } from "../../bot/src/commands/record-match.ts";
+import { recordMatchDiscord } from "../../bot/src/features/testing/record_match_discord.ts";
 import { MockInteractionBuilder } from "../../bot/src/test_utils.ts";
 import { messageHandler, messageKeys } from "../../bot/src/messages.ts";
 import { strictFake } from "../../bot/src/features/testing/strict_fake.ts";
@@ -220,74 +220,17 @@ describe("Bot→API→DB custom match integration", () => {
 
 // Exercise the production command, participant provider and input collector;
 // only Discord's outer interaction/channel/member operations are scripted.
-function recordMatchDiscordBoundary(success: boolean) {
-  type Interaction = ReturnType<MockInteractionBuilder["build"]>;
-  type Message = Awaited<ReturnType<Interaction["editReply"]>>;
-  const cleanup: Disposable[] = [];
-  function fake<Args extends unknown[], Result>(
-    name: string,
-    steps: Parameters<typeof strictFake<Args, Result>>[1],
-  ) {
-    const item = strictFake<Args, Result>(name, steps);
-    cleanup.push(item);
-    return item;
-  }
-  const message = {} as Message;
-  const updates = fake<[unknown], Promise<void>>("confirmation.update", [{
-    value: Promise.resolve(),
-  }]);
-  const confirms = fake<[unknown], Promise<unknown>>("awaitMessageComponent", [{
-    value: Promise.resolve({
-      customId: "confirm_record_match",
-      update: updates.invoke,
-    }),
-  }]);
-  const reply = {
-    awaitMessageComponent: confirms.invoke,
-  } as unknown as Message;
-  const edits = fake<[unknown], Promise<Message>>(
-    "editReply",
-    Array.from({ length: 31 }, (_, index) => ({
-      check: (body) => {
-        if (index < 30) assertEquals(typeof body, "string");
-        else assertEquals(typeof body, "object");
-      },
-      value: Promise.resolve(reply),
-    })),
+function recordMatchDiscordBoundary(
+  success: boolean,
+  tick: (ms: number) => void,
+  retry = false,
+) {
+  const orderedRoster = eventRoster.toSorted((left, right) =>
+    left.team.localeCompare(right.team) || left.lane.localeCompare(right.lane)
   );
-  const finalText = success
-    ? messageHandler.formatMessage(
-      messageKeys.matchManagement.recordMatch.success,
-    )
-    : messageHandler.formatMessage(
-      messageKeys.matchManagement.recordMatch.failure,
-      {
-        error: messageHandler.formatMessage(
-          messageKeys.matchManagement.recordMatch.failureReason.database,
-        ),
-      },
-    );
-  const notifications = fake<[unknown], Promise<Message>>("followUp", [{
-    args: [{ content: finalText, ephemeral: true }],
-    value: Promise.resolve(message),
-  }]);
-  const deferred = fake<[unknown], ReturnType<Interaction["deferReply"]>>(
-    "deferReply",
-    [{
-      value: Promise.resolve(
-        {} as Awaited<ReturnType<Interaction["deferReply"]>>,
-      ),
-    }],
-  );
-  const deletes = fake<[], Promise<Message>>(
-    "input.delete",
-    Array.from({ length: 30 }, () => ({ value: Promise.resolve(message) })),
-  );
-  const members = fake<[string], Promise<unknown>>(
+  const members = strictFake<[string], Promise<unknown>>(
     "members.fetch",
-    eventRoster.toSorted((left, right) =>
-      left.team.localeCompare(right.team) || left.lane.localeCompare(right.lane)
-    ).map(({ userId }) => ({
+    orderedRoster.map(({ userId }) => ({
       args: [userId],
       value: Promise.resolve({
         id: userId,
@@ -295,55 +238,28 @@ function recordMatchDiscordBoundary(success: boolean) {
       }),
     })),
   );
-  const collectorContents = Array.from(
-    { length: 10 },
-    () => ["1/2/3", "100", "10000"],
-  ).flat();
-  const collectors = fake<
-    [unknown],
-    {
-      on(
-        event: string,
-        listener: (messages: Map<string, unknown>, reason: string) => void,
-      ): unknown;
-    }
-  >(
-    "createMessageCollector",
-    collectorContents.map((content, index) => ({
-      value: {
-        on(event, listener) {
-          assertEquals(event, "end");
-          listener(
-            new Map([[String(index), {
-              content,
-              author: { id: "creator-1" },
-              delete: deletes.invoke,
-            }]]),
-            "limit",
-          );
-          return this;
-        },
-      },
-    })),
-  );
   const interaction = new MockInteractionBuilder("record-match")
     .withUser({ id: "creator-1", username: "Creator" })
     .withGuild({ id: "guild-1", members: { fetch: members.invoke } })
-    .withChannel({
-      id: "channel-1",
-      isTextBased: () => true,
-      createMessageCollector: collectors.invoke,
-    })
+    .withChannel({ id: "channel-1", isTextBased: () => true })
     .withStringOption("winner", "BLUE").build();
-  const editStub = stub(interaction, "editReply", edits.invoke);
-  const followStub = stub(interaction, "followUp", notifications.invoke);
-  const deferStub = stub(interaction, "deferReply", deferred.invoke);
-  cleanup.push(editStub, followStub, deferStub);
+  const discord = recordMatchDiscord(interaction, [
+    ...orderedRoster.map(({ userId }) => ({
+      action: "input" as const,
+      userId,
+      inputMs: 93_000,
+      draft: { kda: "1/2/3", cs: "100", gold: "10000" },
+    })),
+    { action: "confirm" },
+    ...(retry ? [{ action: "confirm" as const }] : []),
+    ...(!success ? [{ action: "cancel" as const }] : []),
+  ], tick);
   return {
     interaction,
-    notifications,
+    edits: discord.edits,
     [Symbol.dispose]() {
-      for (const item of cleanup.toReversed()) item[Symbol.dispose]();
+      discord[Symbol.dispose]();
+      members[Symbol.dispose]();
     },
   };
 }
@@ -356,7 +272,7 @@ for (const injectFailure of [false, true]) {
     async () => {
       // Arrange
       await using database = await createMigratedTestDatabase();
-      using _clock = new FakeTime("2026-08-01T06:00:00.000Z");
+      using clock = new FakeTime("2026-08-01T06:00:00.000Z");
       const input = await seedConfirmedEvent(database);
       if (injectFailure) {
         await database.client.execute(
@@ -368,7 +284,10 @@ for (const injectFailure of [false, true]) {
           createApp(createTestDependencies({ dbActions: database.actions })),
         ),
       );
-      using discord = recordMatchDiscordBoundary(!injectFailure);
+      using discord = recordMatchDiscordBoundary(
+        !injectFailure,
+        (ms) => clock.tick(ms),
+      );
       // Act
       await executeRecordMatch(discord.interaction);
       // Assert
@@ -387,7 +306,32 @@ for (const injectFailure of [false, true]) {
           true,
         );
       }
-      assertEquals(discord.notifications.calls.length, 1);
+      assertEquals(Date.now() - discord.interaction.createdTimestamp, 930_000);
+      assertEquals(
+        discord.edits.some((edit) =>
+          edit.body.content ===
+            messageHandler.formatMessage(
+              messageKeys.matchManagement.recordMatch.success,
+            )
+        ),
+        !injectFailure,
+      );
+      assertEquals(
+        discord.edits.at(-1)?.token,
+        injectFailure ? "button-12" : "button-11",
+      );
+      if (injectFailure) {
+        assertEquals(
+          discord.edits.some((edit) =>
+            edit.body.content?.includes(
+              messageHandler.formatMessage(
+                messageKeys.matchManagement.recordMatch.failureReason.database,
+              ),
+            )
+          ),
+          true,
+        );
+      }
     },
   );
 }
@@ -411,4 +355,42 @@ test("実Backendへ不正な9人の戦績を送ると、Botへ422 validation cod
   ]);
   assertEquals(await database.db.select().from(matches), []);
   assertEquals(await database.db.select().from(matchParticipants), []);
+});
+
+test("実commandの保存応答がcommit後に失われても、同じ内容の明示再送で1試合だけ保持し成功を確認する", async () => {
+  // Arrange
+  await using database = await createMigratedTestDatabase();
+  using clock = new FakeTime("2026-08-01T06:00:00.000Z");
+  await seedConfirmedEvent(database);
+  let recordRequests = 0;
+  const app = createApp(
+    createTestDependencies({ dbActions: database.actions }),
+  );
+  configureApiClient(createInProcessBotApiClient(app, (response, request) => {
+    if (new URL(request.url).pathname === "/matches/custom") {
+      recordRequests++;
+      if (recordRequests === 1) throw new Error("Response lost after commit");
+    }
+    return response;
+  }));
+  using discord = recordMatchDiscordBoundary(
+    true,
+    (ms) => clock.tick(ms),
+    true,
+  );
+
+  // Act
+  await executeRecordMatch(discord.interaction);
+
+  // Assert
+  assertEquals(recordRequests, 2);
+  assertEquals((await database.db.select().from(matches)).length, 1);
+  assertEquals((await database.db.select().from(matchParticipants)).length, 10);
+  assertEquals(discord.edits.at(-1)?.token, "button-12");
+  assertEquals(
+    discord.edits.at(-1)?.body.content,
+    messageHandler.formatMessage(
+      messageKeys.matchManagement.recordMatch.success,
+    ),
+  );
 });

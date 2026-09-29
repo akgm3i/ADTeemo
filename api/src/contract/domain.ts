@@ -1,28 +1,7 @@
 export const lanes = ["Top", "Jungle", "Middle", "Bottom", "Support"] as const;
 export type Lane = (typeof lanes)[number];
 
-export const riotPlatforms = [
-  "br1",
-  "eun1",
-  "euw1",
-  "jp1",
-  "kr",
-  "la1",
-  "la2",
-  "na1",
-  "oc1",
-  "tr1",
-  "ru",
-  "ph2",
-  "sg2",
-  "th2",
-  "tw2",
-  "vn2",
-] as const;
-export type RiotPlatform = (typeof riotPlatforms)[number];
-
-export const riotRegions = ["americas", "asia", "europe", "sea"] as const;
-export type RiotRegion = (typeof riotRegions)[number];
+export * from "./riot_routing.ts";
 
 export const matchWatcherStates = [
   "IDLE",

@@ -19,6 +19,12 @@ type Notification = Deps["notifier"]["sendOrEditWatcherMessage"];
 export function trackingServiceHarness(input: {
   watchers: MatchWatcher[];
   accounts?: RiotAccount[];
+  leagueEntries?: Awaited<
+    ReturnType<Deps["apiClient"]["getLeagueEntriesByPuuid"]>
+  >;
+  rankSaveResult?: Awaited<
+    ReturnType<Deps["apiClient"]["upsertPendingRankSnapshots"]>
+  >;
   active?: Array<{ guildId?: string; targetDiscordId: string; result: Active }>;
   results?: Array<{ targetDiscordId: string; result: Result }>;
   notifications?: Array<
@@ -32,6 +38,11 @@ export function trackingServiceHarness(input: {
 }) {
   const scope = new DisposableStack();
   const states: Parameters<Deps["apiClient"]["updateMatchWatcherState"]>[] = [];
+  const rankSnapshots: Parameters<
+    Deps["apiClient"]["upsertPendingRankSnapshots"]
+  >[0][] = [];
+  const rankReads: Parameters<Deps["apiClient"]["getLeagueEntriesByPuuid"]>[] =
+    [];
   const renderedActive: Parameters<Deps["renderer"]["activeGame"]>[] = [];
   const renderedResults: Parameters<Deps["renderer"]["matchResult"]>[] = [];
   const renderedUnavailable: Parameters<
@@ -97,6 +108,14 @@ export function trackingServiceHarness(input: {
   );
   const service = createMatchTrackingService({
     apiClient: {
+      getLeagueEntriesByPuuid: (...args) => {
+        rankReads.push(args);
+        return Promise.resolve(input.leagueEntries ?? []);
+      },
+      upsertPendingRankSnapshots: (payload) => {
+        rankSnapshots.push(payload);
+        return Promise.resolve(input.rankSaveResult ?? { success: true });
+      },
       getEnabledMatchWatchers: () =>
         Promise.resolve({ success: true, watchers: input.watchers }),
       getRiotAccount: gets.invoke,
@@ -141,6 +160,8 @@ export function trackingServiceHarness(input: {
   return {
     service,
     states,
+    rankReads,
+    rankSnapshots,
     activeInspections: active.calls,
     notifications: notifications.calls,
     renderedActive,
@@ -162,8 +183,6 @@ export function activeInspection(
     success: true,
     account: targetAccount,
     activeGame: game,
-    notificationIntent: null,
-    stateTransition: null,
   };
 }
 export function resultInspection(
@@ -176,7 +195,5 @@ export function resultInspection(
     match,
     rankSummary: null,
     opggDetail: null,
-    notificationIntent: null,
-    stateTransition: null,
   };
 }

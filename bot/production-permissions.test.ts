@@ -55,7 +55,7 @@ describe("Bot production permission profiles", () => {
         resources("read"),
         name === "run:prod"
           ? ["../messages", "src"]
-          : ["../api/src/contract", "../messages", "src"],
+          : ["../api/src/contract", "../lib/http", "../messages", "src"],
       );
       for (const arg of args.filter((arg) => arg.startsWith("--allow-"))) {
         assert(/^--allow-(net|env|read)=\S+$/.test(arg), arg);

@@ -1,3 +1,4 @@
+import { canonicalRiotPlatform } from "@adteemo/api/contract";
 import type {
   ActiveGame,
   MatchGameObservation,
@@ -5,18 +6,11 @@ import type {
   RiotAccount,
 } from "@adteemo/api/contract";
 import type {
+  ApiClient,
   FinalizedRankSnapshot,
   RankSnapshotPayload,
 } from "../api_client.ts";
 
-const RANKED_QUEUE_TYPES: RankedQueueType[] = [
-  "RANKED_SOLO_5x5",
-  "RANKED_FLEX_SR",
-];
-const RANKED_QUEUE_BY_QUEUE_ID = new Map<number, RankedQueueType>([
-  [420, "RANKED_SOLO_5x5"],
-  [440, "RANKED_FLEX_SR"],
-]);
 const TIER_ORDER = [
   "IRON",
   "BRONZE",
@@ -48,7 +42,6 @@ export type ActiveNotificationGroup = {
   messageId: string | null;
   targetAccountPuuids: Set<string>;
   activeWatchers: Map<string, MatchWatcher>;
-  messageIdAccountPuuids: Map<string, Set<string>>;
   resultMessageIdsInUse: Set<string>;
 };
 export type ResultMetricKind =
@@ -84,7 +77,7 @@ export function matchIdForGame(
   account: Pick<RiotAccount, "platform">,
   gameId: string | number,
 ) {
-  return `${account.platform.toUpperCase()}_${gameId}`;
+  return `${canonicalRiotPlatform(account.platform).toUpperCase()}_${gameId}`;
 }
 
 export function normalizePlatform(platform: string) {
@@ -93,12 +86,9 @@ export function normalizePlatform(platform: string) {
 
 export function activeNotificationGroupKey(
   watcher: Pick<MatchWatcher, "guildId" | "channelId">,
-  platform: string,
-  gameId: string | number,
+  matchId: string,
 ) {
-  return `${watcher.guildId}:${watcher.channelId}:${
-    normalizePlatform(platform)
-  }:${gameId}`;
+  return `${watcher.guildId}:${watcher.channelId}:${matchId.toUpperCase()}`;
 }
 
 export function matchIdParts(matchId: string) {
@@ -123,39 +113,6 @@ export function matchCacheKey(
   matchId: string,
 ) {
   return `${account.region}:${matchId}`;
-}
-
-export function rankedQueueTypeByQueueId(queueId: number | undefined) {
-  return queueId === undefined
-    ? undefined
-    : RANKED_QUEUE_BY_QUEUE_ID.get(queueId);
-}
-
-export function rankSnapshotPayloadsFromEntries(
-  entries: Array<{
-    queueType: string;
-    tier?: string | null;
-    rank?: string | null;
-    leaguePoints?: number | null;
-    wins?: number | null;
-    losses?: number | null;
-  }>,
-  fetchedAt: Date,
-): RankSnapshotPayload[] {
-  return RANKED_QUEUE_TYPES.map((queueType) => {
-    const entry = entries.find((candidate) =>
-      candidate.queueType === queueType
-    );
-    return {
-      queueType,
-      tier: entry?.tier ?? null,
-      rank: entry?.rank ?? null,
-      leaguePoints: entry?.leaguePoints ?? null,
-      wins: entry?.wins ?? null,
-      losses: entry?.losses ?? null,
-      fetchedAt,
-    };
-  });
 }
 
 export function newerDate(left: Date | null, right: Date | null) {
@@ -254,17 +211,13 @@ export function pendingResultFromWatcher(
 
 /** Retain only this account's observed Mayhem data, never another game's. */
 export function observeMayhemGame(
-  watcher: MatchWatcher,
+  puuid: string,
+  previous: MatchGameObservation | null,
   game: ActiveGame,
   now: Date,
 ): MatchGameObservation | null {
   if (game.gameMode !== "KIWI") return null;
-  const previous = watcher.currentGameId === String(game.gameId)
-    ? watcher.currentGameObservation
-    : null;
-  const participant = game.participants.find((p) =>
-    p.puuid === watcher.riotAccountPuuid
-  );
+  const participant = game.participants.find((p) => p.puuid === puuid);
   const championId = participant?.championId && participant.championId > 0
     ? participant.championId
     : previous?.championId ?? null;
@@ -281,6 +234,195 @@ export function observeMayhemGame(
   return championId === null && elapsedSeconds === null
     ? null
     : { championId, elapsedSeconds };
+}
+
+export type CurrentMatchState = Pick<
+  MatchWatcher,
+  | "lastState"
+  | "currentGameId"
+  | "currentGameMode"
+  | "currentGameObservation"
+  | "currentMatchId"
+  | "currentNotificationMessageId"
+  | "gameStartedAt"
+  | "lastInGameNotifiedAt"
+>;
+export type PendingMatchState = Pick<
+  MatchWatcher,
+  | "pendingResultMatchId"
+  | "pendingResultGameMode"
+  | "pendingResultObservation"
+  | "pendingResultNotificationMessageId"
+  | "pendingResultStartedAt"
+>;
+
+type ActiveMatchState = CurrentMatchState & {
+  lastState: "IN_GAME";
+  currentGameId: string;
+  currentMatchId: string;
+};
+export type ActiveGameDecision =
+  | { kind: "idle"; current: CurrentMatchState | null }
+  | { kind: "ended"; current: CurrentMatchState; previous: PendingResult }
+  | {
+    kind: "started";
+    game: ActiveGame;
+    current: ActiveMatchState;
+    previous: PendingResult | null;
+  }
+  | {
+    kind: "progress" | "observed";
+    game: ActiveGame;
+    current: ActiveMatchState;
+  };
+
+export function currentMatchIdFromWatcher(
+  watcher: MatchWatcher,
+  account: RiotAccount,
+) {
+  return watcher.lastState === "IN_GAME" && watcher.currentGameId
+    ? watcher.currentMatchId ?? matchIdForGame(account, watcher.currentGameId)
+    : null;
+}
+
+function idleMatchState(): CurrentMatchState {
+  return {
+    lastState: "IDLE",
+    currentGameId: null,
+    currentGameMode: null,
+    currentGameObservation: null,
+    currentMatchId: null,
+    currentNotificationMessageId: null,
+    gameStartedAt: null,
+    lastInGameNotifiedAt: null,
+  };
+}
+
+/** The sole owner of active-match identity and notification timing decisions. */
+export function decideActiveGame(input: {
+  watcher: MatchWatcher;
+  account: RiotAccount;
+  activeGame: ActiveGame | null;
+  notificationLastInGameNotifiedAt: Date | null;
+  inGameNotifyIntervalMs: number;
+  now: Date;
+}): ActiveGameDecision {
+  const { watcher, account, activeGame, now } = input;
+  const previousMatchId = currentMatchIdFromWatcher(watcher, account);
+  const previous: PendingResult | null = previousMatchId
+    ? {
+      matchId: previousMatchId,
+      gameMode: watcher.currentGameMode,
+      observation: watcher.currentGameObservation,
+      messageId: watcher.currentNotificationMessageId,
+      startedAt: watcher.gameStartedAt,
+    }
+    : null;
+  if (!activeGame) {
+    if (previous) return { kind: "ended", previous, current: idleMatchState() };
+    return {
+      kind: "idle",
+      current: watcher.lastState === "IDLE" && watcher.currentGameId === null
+        ? null
+        : idleMatchState(),
+    };
+  }
+  const matchId = matchIdForGame(account, activeGame.gameId);
+  const sameGame = previousMatchId === matchId;
+  const current: ActiveMatchState = {
+    lastState: "IN_GAME",
+    currentGameId: String(activeGame.gameId),
+    currentMatchId: matchId,
+    currentGameMode: activeGame.gameMode,
+    currentGameObservation: observeMayhemGame(
+      watcher.riotAccountPuuid,
+      sameGame ? watcher.currentGameObservation : null,
+      activeGame,
+      now,
+    ),
+    currentNotificationMessageId: sameGame
+      ? watcher.currentNotificationMessageId
+      : null,
+    gameStartedAt: sameGame
+      ? watcher.gameStartedAt
+      : new Date(activeGame.gameStartTime),
+    lastInGameNotifiedAt: sameGame ? watcher.lastInGameNotifiedAt : null,
+  };
+  if (!sameGame) {
+    return { kind: "started", game: activeGame, current, previous };
+  }
+  return {
+    kind: shouldNotifySince(
+        input.notificationLastInGameNotifiedAt ?? watcher.lastInGameNotifiedAt,
+        input.inGameNotifyIntervalMs,
+        now,
+      )
+      ? "progress"
+      : "observed",
+    game: activeGame,
+    current,
+  };
+}
+
+type ResultInspection = Awaited<
+  ReturnType<ApiClient["inspectMatchWatcherResult"]>
+>;
+type ReadyResult = Extract<ResultInspection, { success: true }>;
+type ResultPreflight = { kind: "inspect" } | { kind: "timeout" };
+export type ResultDecision =
+  | { kind: "unavailable" }
+  | { kind: "pending"; failed: boolean }
+  | {
+    kind: "result";
+    result: ReadyResult & { match: NonNullable<ReadyResult["match"]> };
+  };
+type ResultDecisionInput = {
+  pending: PendingResult;
+  now: Date;
+  resultFetchTimeoutMs: number;
+};
+
+/** The result deadline belongs to the watcher, not the shared Riot response. */
+export function decideResult(
+  input: ResultDecisionInput & { inspection: ResultInspection },
+): ResultDecision;
+export function decideResult(input: ResultDecisionInput): ResultPreflight;
+export function decideResult(
+  input: ResultDecisionInput & { inspection?: ResultInspection },
+): ResultPreflight | ResultDecision {
+  const result = input.inspection;
+  if (!result) {
+    return {
+      kind: input.pending.startedAt && isResultFetchTimedOut(
+          input.pending.startedAt,
+          input.resultFetchTimeoutMs,
+          input.now,
+        )
+        ? "timeout"
+        : "inspect",
+    };
+  }
+  if (!result.success) {
+    return result.status === 502 && result.code === "RIOT_MATCH_ACCESS_DENIED"
+      ? { kind: "unavailable" }
+      : { kind: "pending", failed: true };
+  }
+  return result.match
+    ? { kind: "result", result: { ...result, match: result.match } }
+    : { kind: "pending", failed: false };
+}
+
+export function pendingMatchState(
+  pending: PendingResult | null,
+  messageId: string | null = pending?.messageId ?? null,
+): PendingMatchState {
+  return {
+    pendingResultMatchId: pending?.matchId ?? null,
+    pendingResultGameMode: pending?.gameMode ?? null,
+    pendingResultObservation: pending?.observation ?? null,
+    pendingResultNotificationMessageId: messageId,
+    pendingResultStartedAt: pending?.startedAt ?? null,
+  };
 }
 
 export function elapsedMinutes(

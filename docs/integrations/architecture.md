@@ -7,8 +7,8 @@
 - Related: [#69](https://github.com/akgm3i/ADTeemo/issues/69), [#112](https://github.com/akgm3i/ADTeemo/issues/112), [#113](https://github.com/akgm3i/ADTeemo/issues/113), [#114](https://github.com/akgm3i/ADTeemo/issues/114)
 - Code: [API app](../../api/src/app.ts), [Bot main](../../bot/src/main.ts), [schema](../../api/src/db/schema.ts)
 - Tests: [Bot boundary tests](../../bot/check-runtime-boundary.test.ts), [repository tests](../../api/src/db/repositories.integration.test.ts)
-- Reviewed: 2026-09-25
-- Verified: local code review, 2026-09-25
+- Reviewed: 2026-09-29
+- Verified: 2026-09-29、local code reviewと一時SQLiteの並行更新・rollbackテスト。外部サービス実通信は未実施。
 
 ## 構成
 
@@ -39,6 +39,14 @@ Discord側resource ID、募集channel、使用VC、saga状態はeventの所有�
 - 外部副作用とDB: [イベント整合性](../custom-game-event-consistency.md)、[戦績整合性](../record-match-consistency.md)。scope、冪等性、transactionと復旧をそれぞれの境界で守る。
 - 監視通知: [表示ADR](../adr/0003-match-display-priorities.md)、[ランクADR](../adr/0004-ranked-snapshot-lifecycle.md)、[OP.GG連携](./opgg.md)。
 - 文言: [messages編集ガイド](../../messages/README.md)。実際の文言はcatalogだけに保持する。
+
+## SQLite操作の直列化
+
+本番は1つの`Database`を[DB action factory](../../api/src/db/actions.ts)へ渡す。全repositoryの公開actionはこのDB単位で同じqueueを共有する。transactionを使わない更新と、一覧取得中にwatcherを再調整するactionも対象である。同じDBから複数のaction集合を生成してもqueueを共有し、別のテストDBは独立する。
+
+[SQLiteは同じDBへのwriterを同時に1つに制限する](https://www.sqlite.org/isolation.html)。固定依存`@libsql/client 0.15.15`のlocal実装はtransaction開始後に通常操作用の接続を別途作るため、機能別のqueueでは`SQLITE_BUSY`を防げない。公開action全体を直列化し、失敗後もqueueを進める。読み取りだけのactionも同じ入口を通す小さな構成とし、全actionに外部HTTP待ちを含めない。transactionは原子的保存とrollbackを引き続き担う。
+
+内部repository関数とtransaction内SQLは再enqueueしない。イベントrosterとカスタム戦績だけの専用queueは廃止した。[並行書き込みテスト](../../api/src/db/writes.integration.test.ts)と[repository tests](../../api/src/db/repositories.integration.test.ts)が競合、rollback後の継続、再送の保証を持つ。queueはprocessと`Database`インスタンスの範囲であり、同じファイルを複数のAPI processや独立した接続factoryから更新する運用を追加する場合は、書き込み所有者を改めて設計する。migrationは稼働中のAPIと競合させない。
 
 ## Riot共有queue
 

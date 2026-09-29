@@ -4,11 +4,11 @@
 - Status: current
 - Summary: Discord外部副作用とイベント永続化の整合性・復旧。
 - Read when: イベント作成・取消・復旧・migrationの変更時。
-- Related: [#114](https://github.com/akgm3i/ADTeemo/issues/114)
+- Related: [#151](https://github.com/akgm3i/ADTeemo/issues/151), [#114](https://github.com/akgm3i/ADTeemo/issues/114)
 - Code: [event repository](../api/src/db/repositories/events.ts), [saga](../bot/src/features/custom_game_event_saga.ts)
-- Tests: [saga tests](../bot/src/features/custom_game_event_saga.test.ts), [repository tests](../api/src/db/repositories.integration.test.ts)
-- Reviewed: 2026-09-25
-- Verified: local code review, 2026-09-25
+- Tests: [saga tests](../bot/src/features/custom_game_event_saga.test.ts), [DB saga tests](../api/src/db/event_saga.integration.test.ts), [vertical tests](../tests/integration/custom_event_lifecycle.integration.test.ts)
+- Reviewed: 2026-09-29
+- Verified: 2026-09-29、宣言応答unit、実Bot・Hono・一時SQLiteによる応答喪失・取消競合とDB削除進捗を確認。実Discord・本番DBは今回未検証。
 
 ## 目的
 
@@ -220,3 +220,34 @@ ORDER BY id;
 戦績列を含むmigration全体の事前確認、適用順序、rollback条件は[カスタム戦績の整合性と移行](./record-match-consistency.md)を参照する。
 
 再取得時にnonceは失われるため、履歴復旧はnonceへ依存しない。[discord.js 14.22.1の公式Message仕様](https://discord.js.org/docs/packages/discord.js/14.22.1/Message:Class)。markerを持たない旧募集でmessage IDを失った場合は、自動復旧できたと判断せず手動照合へ送る。
+
+## テスト保証の所有と移管
+
+#151では旧Saga単体テストの33ケースを先に棚卸しし、次の所有者へ移した。Sagaの本体の状態遷移は変更していない。単体テストはmethod・引数・応答を宣言し、Backendのphase、revision、削除進捗をfakeで計算しない。未宣言呼び出し、引数不一致、未消費応答はSUTが例外をcatchしてもdisposeで検出する。
+
+- **U**: [Saga単体](../bot/src/features/custom_game_event_saga.test.ts)。直接依存APIの応答に対するDiscord操作順と停止条件。
+- **I**: [実Bot・Hono・SQLite縦断](../tests/integration/custom_event_lifecycle.integration.test.ts)。外部Discordとtransport障害だけを代替し、DBの状態遷移は実装を実行する。
+- **D**: [実DBのSaga保証](../api/src/db/event_saga.integration.test.ts)。削除進捗、revision、所有境界とrollback。
+
+表の番号は移管前の `custom_game_event_saga.test.ts` のケース順である。重複した状態付きfakeを削除する前に、移管先で保証を確認した。
+
+| 旧番号         | 保証                                                                                                  | 所有者                                        |
+| -------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| 1・25          | 作成意図・取消開始を保存できなければDiscord副作用を開始しない                                         | U                                             |
+| 2・27・33      | 各作成IDと各削除結果を直後にcheckpointする。Discordのnot foundは削除完了として扱う                    | U                                             |
+| 3・26          | 同じoperationKeyの同時作成を共有し、同一processの取消は作成完了を待つ                                 | I                                             |
+| 4・5・9        | ID checkpoint・activateのcommit後に応答だけ失っても、同じkey・IDで再照合し重複作成・補償削除しない    | I                                             |
+| 6・20          | 再起動後にID不明resourceを回収し、IDを保存してから作成再開または逆順補償する                          | I                                             |
+| 7・22・32      | CREATE_PENDING、CREATE_COMPENSATION_PENDING、CANCEL_PENDINGで検索0件だけを不存在確認にしない          | I                                             |
+| 8              | 別処理が先に所有したresource IDを保持し、遅れて返った作成IDだけを削除する                             | I                                             |
+| 10             | activateの5xxと再照合失敗でcommit不明なら補償を開始しない                                             | U・I（ヘッダー待ち・本文待ちのtimeoutも含む） |
+| 11・12         | 確定拒否後に補償をclaimし、既知resourceを逆順に削除する                                               | U                                             |
+| 13・14・23・24 | 取消開始・完了、募集確定との競合は実DBを再読する。完了済み作成の再送で副作用を増やさない              | I                                             |
+| 15・16・21     | 取消target・補償IDの保存失敗後は削除しない。削除失敗を確認済み進捗に変えない                          | U                                             |
+| 17・18・19     | Discord作成応答の喪失からIDを回収する。補償の一部失敗でも他resourceの進捗を残し、未完了だけ再試行する | I                                             |
+| 28             | 取消のevent削除失敗を保存し、message削除を開始しない                                                  | U                                             |
+| 29・30・31     | 保存済みIDと検索回収IDを区別し、取消再試行は未完了resourceの保存済みIDから再開する                    | I                                             |
+
+Dではcreation-failureとcancellationの両方で、古いfalse入力を再送しても削除済みflagがtrueから戻らないことを確認する。全5種のSaga更新についてguild/channel違いが行・revisionを変更しないこと、同時異ID更新の競合、実SQLiteのrevision付きUPDATEが0行になった際のrollbackと後続成功も検証する。削除進捗を入力値で上書きする一時コピーに対しては、古いfalse入力の回帰テストが失敗することを確認した。
+
+[create command](../bot/src/commands/create-custom-game.test.ts)には日付、Discord payload、応答の保証を残し、API応答列の宣言だけに置き換えた。[cancel command](../bot/src/commands/cancel-custom-game.test.ts)の候補選択・scope・表示の保証は維持する。

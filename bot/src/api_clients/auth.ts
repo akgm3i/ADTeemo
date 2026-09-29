@@ -1,7 +1,9 @@
 import {
+  type CurrentRiotPlatform,
+  defaultRiotPlatform,
   responseContracts,
-  type RiotPlatform,
   type RiotRegion,
+  riotRegionForPlatform,
 } from "@adteemo/api/contract";
 import { type ApiRpcClient, requestResult } from "./transport.ts";
 
@@ -11,8 +13,8 @@ export function createAuthApiClient(
   async function getLoginUrl(
     discordId: string,
     guildId: string,
-    platform: RiotPlatform = "jp1",
-    region: RiotRegion = "asia",
+    platform: CurrentRiotPlatform = defaultRiotPlatform,
+    region: RiotRegion = riotRegionForPlatform(platform),
   ) {
     return await requestResult(
       responseContracts.loginUrl,

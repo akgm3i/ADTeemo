@@ -50,6 +50,10 @@ describe("setMainRole", () => {
       {
         contract: responseContracts.mainRole,
         result: new Error("Network error"),
+        args: [{
+          param: { userId: "test-user" },
+          json: { guildId: "test-guild", role: "Top" },
+        }],
       },
     ]);
     const client = createApiClient({ rpcClient: rpc.rpcClient });

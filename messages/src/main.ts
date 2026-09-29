@@ -109,7 +109,7 @@ export function initializeMessages(options: InitializeMessagesOptions) {
     key: MessageKey,
     replacements?: Record<string, string | number>,
   ): string {
-    let message = getMessage(themeMessages, key) ??
+    const message = getMessage(themeMessages, key) ??
       getMessage(langSystemMessages, key) ??
       getMessage(defaultMessages, key);
 
@@ -118,16 +118,15 @@ export function initializeMessages(options: InitializeMessagesOptions) {
       return key;
     }
 
-    if (replacements) {
-      for (const [placeholder, value] of Object.entries(replacements)) {
-        message = message.replace(
-          new RegExp(`{${placeholder}}`, "g"),
-          String(value),
-        );
-      }
-    }
+    if (!replacements) return message;
 
-    return message;
+    return message.replace(
+      /\{([^{}]+)\}/g,
+      (token, placeholder: string) =>
+        Object.hasOwn(replacements, placeholder)
+          ? String(replacements[placeholder])
+          : token,
+    );
   }
 
   return { formatMessage };

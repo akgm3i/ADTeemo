@@ -42,6 +42,7 @@ export function createRpcClientStub(
   const pending = [...expectations];
   const calls: { method: string; path: string; args: unknown[] }[] = [];
   const unexpected: string[] = [];
+  const argumentFailures: unknown[] = [];
   function build(parts: string[]): unknown {
     return new Proxy({}, {
       get(_target, prop) {
@@ -51,6 +52,8 @@ export function createRpcClientStub(
           const method = prop.slice(1).toUpperCase(),
             path = `/${parts.join("/")}`;
           calls.push({ method: prop, path, args });
+          // Calls may interleave across endpoints; each method/path consumes
+          // its own responses in declaration order.
           const index = pending.findIndex(({ contract }) =>
             contract.method === method && contract.path === path
           );
@@ -61,7 +64,14 @@ export function createRpcClientStub(
             );
           }
           const [expected] = pending.splice(index, 1);
-          if (expected.args) assertEquals(args, expected.args);
+          try {
+            if (expected.args) assertEquals(args, expected.args);
+          } catch (error) {
+            // Like strictFake, retain assertion failures even when the SUT
+            // catches them and turns them into an ordinary failure result.
+            argumentFailures.push(error);
+            throw error;
+          }
           return expected.result instanceof Error
             ? Promise.reject(expected.result)
             : Promise.resolve(expected.result);
@@ -74,6 +84,7 @@ export function createRpcClientStub(
     rpcClient: build([]) as Client,
     [Symbol.dispose]() {
       assertEquals(unexpected, [], "Unexpected RPC calls");
+      assertEquals(argumentFailures, [], "RPC argument mismatches");
       assertEquals(
         pending.map(({ contract }) => `${contract.method} ${contract.path}`),
         [],

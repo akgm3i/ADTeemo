@@ -7,12 +7,14 @@
 - Related: [#48](https://github.com/akgm3i/ADTeemo/issues/48), [#34](https://github.com/akgm3i/ADTeemo/issues/34), [#89](https://github.com/akgm3i/ADTeemo/issues/89)
 - Code: [account command](../../bot/src/commands/riot-accounts.ts), [watch settings](../../bot/src/commands/watch-settings.ts), [preference](../../bot/src/commands/watch-preference.ts)
 - Tests: [account command tests](../../bot/src/commands/riot-accounts.test.ts), [policy integration](../../tests/integration/watch_policy.integration.test.ts)
-- Reviewed: 2026-09-25
+- Reviewed: 2026-09-29
 - Verified: 2026-09-25、ローカルcommandとBot→API→SQLite。実Discord command登録・実OAuthは未実施。
 
 ## 登録とメインアカウント
 
 `/set-riot-id riot-id:<GameName#TagLine> [platform:<server>]`で自分のアカウントを追加します。Riot公式APIで照合し、同じアカウントの再登録は表示名を更新します。別アカウントを追加しても既存登録を消しません。他のDiscordユーザーに登録済みのアカウントは、自動で所有者を変更できません。手入力はRiot上の本人所有証明ではないため、誤登録や所有権の競合は管理者が確認します。
+
+フィリピン・タイの統合済みサーバーは`SG2`を選びます。既存の過去戦績や通知は元の試合IDのまま保持します。
 
 `/riot-accounts`で一覧を確認します。`action:main`はメイン変更、`action:remove`は選んだアカウントの解除です。選択メニューは本人だけが操作できます。10件ずつ表示し、続きは`page`で指定します。
 

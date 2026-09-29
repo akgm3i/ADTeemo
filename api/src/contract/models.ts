@@ -3,14 +3,12 @@ import type {
   activeGameResponseSchema,
   eventResponseModelSchema,
   leagueEntrySchema,
-  notificationIntentSchema,
   opggDetailResponseSchema,
   participantSchema,
   rankSnapshotResponseSchema,
   rankSummarySchema,
   riotAccountResponseSchema,
   riotMatchResponseSchema,
-  stateTransitionSchema,
   staticDataSchema,
   watcherSchema,
   watcherStatePatchSchema,
@@ -78,11 +76,3 @@ export type ActiveGame = z.output<typeof activeGameResponseSchema>;
 export type RiotMatch = z.output<typeof riotMatchResponseSchema>;
 
 export type LeagueEntry = z.output<typeof leagueEntrySchema>;
-
-export type MatchTrackingNotificationIntent = z.output<
-  typeof notificationIntentSchema
->;
-
-export type MatchTrackingStateTransition = z.output<
-  typeof stateTransitionSchema
->;

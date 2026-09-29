@@ -7,8 +7,25 @@
 - Related: [#99](https://github.com/akgm3i/ADTeemo/issues/99), [#116](https://github.com/akgm3i/ADTeemo/issues/116)
 - Code: [delivery](../../bot/src/features/match_tracking_delivery.ts), [Discord境界](../../bot/src/features/match_tracking_notifier.ts), [repository](../../api/src/db/repositories/notification_deliveries.ts)
 - Tests: [再起動と保存失敗](../../bot/src/features/match_tracking_delivery.integration.test.ts), [ARAM復旧](../../bot/src/features/match_tracking_recovery.test.ts), [leaseとbackoff](../../api/src/db/notification_deliveries.integration.test.ts)
-- Reviewed: 2026-09-28
-- Verified: 2026-09-26、local runtime testsと分離した検証DB・実Discordで開始・進行・結果配送を確認。2guildのうち1投稿が確認中へ戻る不整合を観測し、保存済み結果で復旧後に両投稿をRESTで再取得して確認。Mayhemの結果取得拒否は、修正版workerによる2guildの取得不可通知と結果待ち解除まで確認。2026-09-28、0012適用、保存済み観測値を補足する2投稿の更新とDiscord REST再取得を確認。観測値の保存・再起動・連戦は自動テストで検証。修正後の新しい実試合の結果配送と通信障害時の実Discord再照合は未検証。
+- Reviewed: 2026-09-29
+- Verified: 2026-09-26、local runtime testsと分離した検証DB・実Discordで開始・進行・結果配送を確認。2guildのうち1投稿が確認中へ戻る不整合を観測し、保存済み結果で復旧後に両投稿をRESTで再取得して確認。Mayhemの結果取得拒否は、修正版workerによる2guildの取得不可通知と結果待ち解除まで確認。2026-09-28、0012適用、保存済み観測値を補足する2投稿の更新とDiscord REST再取得を確認。観測値の保存・再起動・連戦は自動テストで検証。修正後の新しい実試合の結果配送と通信障害時の実Discord再照合は未検証。2026-09-29、API観測契約とBot判断の分離、連戦、rank取得共有、再起動・outboxのローカル縦断回帰を確認。今回の外部疎通は未実施。
+
+## 観測取得と状態遷移の責務
+
+試合開始・進捗・終了、結果待ち・timeout・取得不可の判断は、Botの[純粋な状態判断](../../bot/src/features/match_tracking_state.ts)を正本とする。[API inspection](../../api/src/services/match_tracking.ts)はaccount、Spectator/Match-v5の観測値、rank/OP.GG補足を返し、`notificationIntent` / `stateTransition`を生成しない。
+
+#150では両案を次の基準で比較した。
+
+| 案                                       | 現行の責務との適合性                                                                      | 判断                                                                     |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| APIが通知・状態遷移を決めてBotが適用する | APIへ共有投稿ID、account別の投稿所有、配送結果、連戦のcurrent/pending観測を移す必要がある | Discord側の判断材料をAPIへ追加する変更が大きいため採用しない             |
+| APIが観測取得、Botが状態遷移を決める     | 共有投稿と配送を扱うBotで、既存watcher状態・時刻・取得結果を揃えられる                    | 採用。外部I/Oから分離した純粋関数で判断し、serviceが配送と保存を実行する |
+
+現在試合と結果待ちは別の型・保存パッチを持つ。連戦では旧試合の結果を取得しても新試合のIDやMayhem観測を消さず、結果待ちの解除はpending欄だけを対象とする。試合の同一性はplatformを含むmatch IDで比較し、`PH2_12345`と`SG2_12345`を同一視しない。通知間隔内のpollでも現在試合の観測は保存し、再起動後の終了通知に使う。
+
+ランクのbefore snapshotはBotが`started`と判断したときだけ、既存League取得・snapshot保存APIで記録する。同一tickの複数guildからはaccount/game単位で取得を共有する。結果時のafter snapshot確定はAPIの補足取得に残し、queueとsnapshot payloadへの変換だけは[共有契約](../../api/src/contract/ranked_snapshots.ts)へ集約する。watcherごとの通知判断は取得cacheへ入れない。
+
+Botは結果の期限を取得前に判定する。Match-v5の403は終端の取得不可、未反映・通信失敗・429・5xxは期限内の結果待ちとして扱う。表示・配送成功によるmessage IDと時刻の更新はserviceとoutboxが担い、純粋関数はDiscordへ送信しない。テストの所有先は[移管記録](../match-tracking-test-ownership.md)を参照する。
 
 ## 配送単位と状態
 
@@ -30,6 +47,12 @@ Discord送信より先に`notification_deliveries`へintentを保存する。wor
 一時失敗と待機中は、そのwatcherの状態処理を中断する。他watcherの処理は続行する。恒久失敗はoutboxと`match_tracking.delivery_permanent_failure`に残し、通知成功時刻を進めず、結果待ちを解除して次の試合監視を続ける。
 
 起動後と各tickで、期限到来済みのpending配送を再開する。lease期限、試行上限、指数backoffの正確な値はrepositoryとテストが正本である。workerが失敗記録前に終了した場合もlease期限後に回収でき、試行上限で停止する。
+
+## 未完了HTTPからの継続
+
+Bot→Backendの要求はヘッダー待ち・本文待ちを含む期限でabortする。静的データの取得にも独立した期限があり、取得できなければ既存cache・表示fallbackへ進む。期限と失敗分類は[APIエラー契約](../api-error-contract.md#httpの期限とcommit不明)を参照する。
+
+1つの検査がtimeoutした場合、その失敗を記録して次のwatcherを処理し、tickの処理中状態を解放して次回pollへ進む。処理が終わる前のtickは引き続きskipする。timeoutだけでoutboxやwatcherの保存失敗が確定したとは扱わず、同じkeyと保存済みreceiptを使う。外部HTTPが停止した場合の継続・排他は[worker tests](../../bot/src/features/match_tracking_worker.test.ts)で偽時計と通信代替を用いて検証する。
 
 ## 終了検知時の通知順序
 

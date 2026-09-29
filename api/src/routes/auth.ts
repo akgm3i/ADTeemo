@@ -1,3 +1,7 @@
+import {
+  canonicalRiotPlatform,
+  riotRegionForPlatform,
+} from "../contract/riot_routing.ts";
 import { Hono } from "@hono/hono";
 import { zValidator } from "@hono/zod-validator";
 import {
@@ -58,16 +62,18 @@ export function authCallbackRoutes(deps: AuthRouteDependencies) {
             ),
           });
         }
+        const platform = canonicalRiotPlatform(authState.platform);
+        const region = riotRegionForPlatform(platform);
         const { accessToken } = await rso.exchangeCodeForTokens(code);
         // OAuth subject (userinfo.sub) is not an Account-v1 PUUID or display Riot ID.
-        const account = await rso.getAccount(accessToken, authState.region);
+        const account = await rso.getAccount(accessToken, region);
         await dbActions.upsertRiotAccount({
           discordId: authState.discordId,
           puuid: account.puuid,
           gameName: account.gameName,
           tagLine: account.tagLine,
-          platform: authState.platform,
-          region: authState.region,
+          platform,
+          region,
         });
 
         // Display success only after canonical persistence succeeds.

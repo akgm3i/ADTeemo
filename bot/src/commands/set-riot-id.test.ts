@@ -29,6 +29,29 @@ describe("Command: set-riot-id", () => {
         "サモナー名#タグライン の形式で入力してください。",
       );
       assertEquals(riotIdOption?.required, true);
+      const platformOption = options.find((option) =>
+        option.name === "platform"
+      );
+      assertEquals(
+        platformOption && "choices" in platformOption &&
+          platformOption.choices?.map((choice) => choice.value),
+        [
+          "br1",
+          "eun1",
+          "euw1",
+          "jp1",
+          "kr",
+          "la1",
+          "la2",
+          "na1",
+          "oc1",
+          "tr1",
+          "ru",
+          "sg2",
+          "tw2",
+          "vn2",
+        ],
+      );
     });
   });
 

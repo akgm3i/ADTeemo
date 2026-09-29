@@ -95,10 +95,6 @@ export function createTestDependencies(
         ),
       recordCustomMatch: () =>
         unexpectedDependencyCall("dbActions.recordCustomMatch"),
-      createMatchWithParticipants: () =>
-        unexpectedDependencyCall("dbActions.createMatchWithParticipants"),
-      createMatchParticipant: () =>
-        unexpectedDependencyCall("dbActions.createMatchParticipant"),
       upsertPendingRankSnapshots: () =>
         unexpectedDependencyCall("dbActions.upsertPendingRankSnapshots"),
       finalizeMatchRankSnapshots: () =>
@@ -108,10 +104,6 @@ export function createTestDependencies(
       getAuthState: () => unexpectedDependencyCall("dbActions.getAuthState"),
       consumeAuthState: () =>
         unexpectedDependencyCall("dbActions.consumeAuthState"),
-      updateUserRiotId: () =>
-        unexpectedDependencyCall("dbActions.updateUserRiotId"),
-      linkUserWithRiotId: () =>
-        unexpectedDependencyCall("dbActions.linkUserWithRiotId"),
       getRiotAccountsByDiscordId: () =>
         unexpectedDependencyCall("dbActions.getRiotAccountsByDiscordId"),
       setMainRiotAccount: () =>
