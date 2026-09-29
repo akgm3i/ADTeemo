@@ -128,13 +128,13 @@ describe("match watchers", () => {
     const activeGameNotFound = await client.inspectMatchWatcherActiveGame(
       "guild-1",
       "target-1",
-      { lastState: "IDLE", currentGameId: null },
+      {},
     );
     const activeGameUpstreamFailure = await client
       .inspectMatchWatcherActiveGame(
         "guild-1",
         "target-1",
-        { lastState: "IDLE", currentGameId: null },
+        {},
       );
     const resultNotFound = await client.inspectMatchWatcherResult(
       "guild-1",
@@ -232,8 +232,6 @@ describe("match watchers", () => {
             after: null,
           },
           opggDetail,
-          notificationIntent: null,
-          stateTransition: null,
         }),
       },
     ]);
@@ -270,59 +268,37 @@ describe("match watchers", () => {
     });
   });
 
-  test("監視処理用Active Game検査のstate transitionを復元するとき、未指定の日付フィールドをnullに変換しない", async () => {
+  test("Active Game検査はaccountの日時と観測だけを返し、通知判断を含まない", async () => {
+    // Arrange
     const account = {
       discordId: "target-1",
       puuid: "puuid-1",
       gameName: "Teemo",
       tagLine: "JP1",
-      platform: "jp1",
-      region: "asia",
+      platform: "jp1" as const,
+      region: "asia" as const,
       isMain: true,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: null,
     };
-    using rpc = createRpcClientStub([
-      {
-        contract: responseContracts.inspectActiveGame,
-        result: response({
-          account,
-          activeGame: null,
-          notificationIntent: null,
-          stateTransition: {
-            state: {
-              lastState: "IN_GAME",
-              currentGameId: "12345",
-              lastCheckedAt: "2026-01-01T00:05:00.000Z",
-            },
-            messageIdField: "currentNotificationMessageId",
-          },
-        }),
-      },
-    ]);
+    using rpc = createRpcClientStub([{
+      contract: responseContracts.inspectActiveGame,
+      result: response({ account, activeGame: null }),
+    }]);
     const client = createApiClient({ rpcClient: rpc.rpcClient });
 
+    // Act
     const result = await client.inspectMatchWatcherActiveGame(
       "guild-1",
       "target-1",
-      { lastState: "IDLE", currentGameId: null },
+      {},
     );
 
-    assertEquals(result.success, true);
-    if (!result.success) return;
-    assertEquals(
-      result.stateTransition?.state.lastCheckedAt,
-      new Date(
-        "2026-01-01T00:05:00.000Z",
-      ),
-    );
-    assertEquals(
-      "gameStartedAt" in (result.stateTransition?.state ?? {}),
-      false,
-    );
-    assertEquals(
-      "lastInGameNotifiedAt" in (result.stateTransition?.state ?? {}),
-      false,
-    );
+    // Assert
+    assertEquals(result, {
+      success: true,
+      account: { ...account, createdAt: new Date(account.createdAt) },
+      activeGame: null,
+    });
   });
 });

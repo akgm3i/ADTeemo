@@ -279,3 +279,149 @@ describe("routes/users.ts", () => {
     });
   });
 });
+
+for (const platform of ["ph2", "th2"]) {
+  test(`${platform} で新規Riot ID登録すると外部照合・保存前に422で拒否する`, async () => {
+    // Arrange
+    const deps = createTestDependencies();
+    using account = stub(
+      deps.riotApi,
+      "getAccountByRiotId",
+      () => Promise.resolve(null),
+    );
+    using save = stub(
+      deps.dbActions,
+      "upsertRiotAccount",
+      () => Promise.resolve(),
+    );
+
+    // Act
+    const response = await createApp(deps).request("/users/link-by-riot-id", {
+      method: "PATCH",
+      headers: {
+        ...TEST_BOT_SERVICE_AUTH_HEADERS,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        discordId: "owner",
+        gameName: "Teemo",
+        tagLine: "SEA",
+        platform,
+      }),
+    });
+
+    // Assert
+    assertEquals(response.status, 422);
+    assertSpyCalls(account, 0);
+    assertSpyCalls(save, 0);
+  });
+}
+
+for (
+  const scenario of [
+    { platform: "sg2", defaultPlatform: "jp1", expected: "sg2", region: "sea" },
+    { platform: "oc1", defaultPlatform: "jp1", expected: "oc1", region: "sea" },
+    {
+      platform: undefined,
+      defaultPlatform: "th2",
+      expected: "sg2",
+      region: "sea",
+    },
+    {
+      platform: undefined,
+      defaultPlatform: "euw1",
+      expected: "euw1",
+      region: "europe",
+    },
+  ] as const
+) {
+  test(`platform=${scenario.platform ?? "省略"}・既定=${scenario.defaultPlatform} で登録するとregionをplatformから導出する`, async () => {
+    // Arrange
+    const deps = createTestDependencies();
+    const env = deps.env.get;
+    using _env = stub(
+      deps.env,
+      "get",
+      (name) =>
+        name === "RIOT_DEFAULT_PLATFORM"
+          ? scenario.defaultPlatform
+          : name === "RIOT_DEFAULT_REGION"
+          ? "asia"
+          : env(name),
+    );
+    using account = stub(
+      deps.riotApi,
+      "getAccountByRiotId",
+      () =>
+        Promise.resolve({
+          puuid: "account",
+          gameName: "Teemo",
+          tagLine: "SEA",
+        }),
+    );
+    using save = stub(
+      deps.dbActions,
+      "upsertRiotAccount",
+      () => Promise.resolve(),
+    );
+
+    // Act
+    const response = await createApp(deps).request("/users/link-by-riot-id", {
+      method: "PATCH",
+      headers: {
+        ...TEST_BOT_SERVICE_AUTH_HEADERS,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        discordId: "owner",
+        gameName: "Teemo",
+        tagLine: "SEA",
+        platform: scenario.platform,
+      }),
+    });
+
+    // Assert
+    assertEquals(response.status, 204);
+    assertSpyCall(account, 0, { args: [scenario.region, "Teemo", "SEA"] });
+    assertSpyCall(save, 0, {
+      args: [{
+        discordId: "owner",
+        puuid: "account",
+        gameName: "Teemo",
+        tagLine: "SEA",
+        platform: scenario.expected,
+        region: scenario.region,
+      }],
+    });
+  });
+}
+
+test("platformとregionが一致しない登録を422で拒否する", async () => {
+  // Arrange
+  const deps = createTestDependencies();
+  using account = stub(
+    deps.riotApi,
+    "getAccountByRiotId",
+    () => Promise.resolve(null),
+  );
+
+  // Act
+  const response = await createApp(deps).request("/users/link-by-riot-id", {
+    method: "PATCH",
+    headers: {
+      ...TEST_BOT_SERVICE_AUTH_HEADERS,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      discordId: "owner",
+      gameName: "Teemo",
+      tagLine: "SEA",
+      platform: "sg2",
+      region: "asia",
+    }),
+  });
+
+  // Assert
+  assertEquals(response.status, 422);
+  assertSpyCalls(account, 0);
+});

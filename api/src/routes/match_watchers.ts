@@ -27,7 +27,6 @@ type MatchWatchersDbActions = Pick<
   | "getEnabledMatchWatchers"
   | "getEnabledMatchWatchersByGuild"
   | "getRiotAccountByDiscordId"
-  | "upsertPendingRankSnapshots"
   | "finalizeMatchRankSnapshots"
   | "updateMatchWatcherState"
   | "disableMatchWatcher"
@@ -123,8 +122,6 @@ export function matchWatchersRoutes(
           return c.json({
             account: result.account,
             activeGame: result.activeGame,
-            notificationIntent: result.notificationIntent,
-            stateTransition: result.stateTransition,
           }, 200);
         } catch (error) {
           throw matchTrackingApiError(error);
@@ -152,8 +149,6 @@ export function matchWatchersRoutes(
             match: result.match,
             rankSummary: result.rankSummary,
             opggDetail: result.opggDetail,
-            notificationIntent: result.notificationIntent,
-            stateTransition: result.stateTransition,
           }, 200);
         } catch (error) {
           if (

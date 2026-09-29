@@ -1,3 +1,4 @@
+import { createBufferedFetch } from "../../lib/http/buffered_fetch.ts";
 import { z } from "zod";
 import type { DbActions } from "./db/actions.ts";
 
@@ -170,8 +171,10 @@ function isFresh(env: EnvReader, updatedAt: Date, now = Date.now()) {
   return now - updatedAt.getTime() < cacheTtlMs(env);
 }
 
+const fetchStaticData = createBufferedFetch({ timeoutMs: 5_000 });
+
 export async function fetchRiotStaticDataJson(url: string) {
-  const res = await fetch(url);
+  const res = await fetchStaticData(url);
   if (!res.ok) {
     await res.body?.cancel();
     throw new RiotStaticDataHttpError(res.status);

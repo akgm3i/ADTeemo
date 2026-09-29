@@ -1,3 +1,11 @@
+import { createBufferedFetch } from "../../lib/http/buffered_fetch.ts";
+
+// An inspection can make two sequential Riot requests (30 seconds each),
+// followed by optional enrichment and DB work. Leave a further 60 seconds
+// without cutting off either Riot request budget. This is a transport limit,
+// not evidence that a timed-out mutation was not committed.
+export const BOT_API_REQUEST_TIMEOUT_MS = 120_000;
+
 import {
   createWatchPolicyApiClient,
   type WatchPolicyApiClient,
@@ -75,6 +83,7 @@ export type ApiResourceClients = {
 
 export type ApiRpcClientOptions = {
   headers?: Record<string, string>;
+  fetch?: typeof fetch;
 };
 
 export type ApiRpcClientFactory = (
@@ -87,10 +96,12 @@ export function createApiRpcClients(
     apiUrl,
     credential,
     createRpcClient = hcWithType,
+    fetch: fetcher = (...args) => globalThis.fetch(...args),
   }: {
     apiUrl: string;
     credential: string;
     createRpcClient?: ApiRpcClientFactory;
+    fetch?: typeof fetch;
   },
 ) {
   if (credential.length < BOT_SERVICE_TOKEN_MIN_LENGTH) {
@@ -105,8 +116,13 @@ export function createApiRpcClients(
     );
   }
 
-  const publicRpcClient = createRpcClient(apiUrl);
+  const boundedFetch = createBufferedFetch({
+    timeoutMs: BOT_API_REQUEST_TIMEOUT_MS,
+    fetch: fetcher,
+  });
+  const publicRpcClient = createRpcClient(apiUrl, { fetch: boundedFetch });
   const botServiceRpcClient = createRpcClient(apiUrl, {
+    fetch: boundedFetch,
     headers: {
       Authorization: botServiceAuthorization(credential),
     },

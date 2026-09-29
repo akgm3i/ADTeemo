@@ -32,6 +32,8 @@ describe("match_tracking_service.ts", () => {
     const match = matchFixture();
     const service = createMatchTrackingService({
       apiClient: {
+        getLeagueEntriesByPuuid: () => Promise.resolve([]),
+        upsertPendingRankSnapshots: () => Promise.resolve({ success: true }),
         getEnabledMatchWatchers: () =>
           Promise.resolve({
             success: true as const,
@@ -52,13 +54,6 @@ describe("match_tracking_service.ts", () => {
             match,
             rankSummary: null,
             opggDetail: null,
-            notificationIntent: {
-              kind: "result" as const,
-              match,
-              rankSummary: null,
-              opggDetail: null,
-            },
-            stateTransition: null,
           });
         },
         updateMatchWatcherState: (...args) => {
@@ -115,9 +110,6 @@ describe("match_tracking_service.ts", () => {
         inspectionBatchId: "00000000-0000-4000-8000-000000000001",
         riotAccountPuuid: "puuid-1",
         matchId: "JP1_12345",
-        messageId: "message-existing",
-        startedAt: new Date("2026-01-01T00:00:00Z"),
-        resultFetchTimeoutMs: 10 * 60_000,
       },
     ]]);
     assertEquals(activeGameInspectionCalls, []);
@@ -146,7 +138,7 @@ describe("match_tracking_service.ts", () => {
     ]]);
   });
 
-  test("BackendのResult検査がmatchだけを返す旧形式のとき、結果通知として処理してpendingを解除する", async () => {
+  test("Result検査の取得済みmatchをBotが判断し、結果通知後にpendingを解除する", async () => {
     using _batchId = stub(
       crypto,
       "randomUUID",
@@ -165,6 +157,8 @@ describe("match_tracking_service.ts", () => {
     const match = matchFixture();
     const service = createMatchTrackingService({
       apiClient: {
+        getLeagueEntriesByPuuid: () => Promise.resolve([]),
+        upsertPendingRankSnapshots: () => Promise.resolve({ success: true }),
         getEnabledMatchWatchers: () =>
           Promise.resolve({
             success: true as const,
@@ -183,8 +177,6 @@ describe("match_tracking_service.ts", () => {
             match,
             rankSummary: null,
             opggDetail: null,
-            notificationIntent: null,
-            stateTransition: null,
           }),
         updateMatchWatcherState: (...args) => {
           stateUpdates.push(args);
@@ -258,7 +250,7 @@ describe("match_tracking_service.ts", () => {
     ]]);
   });
 
-  test("gameId変更後に旧試合結果が取得できたとき、BackendのResult transitionで新試合状態を消さない", async () => {
+  test("gameId変更後に旧試合結果が取得できたとき、旧pendingの解決で新試合状態を消さない", async () => {
     using _batchId = stub(
       crypto,
       "randomUUID",
@@ -316,6 +308,8 @@ describe("match_tracking_service.ts", () => {
     };
     const service = createMatchTrackingService({
       apiClient: {
+        getLeagueEntriesByPuuid: () => Promise.resolve([]),
+        upsertPendingRankSnapshots: () => Promise.resolve({ success: true }),
         getEnabledMatchWatchers: () =>
           Promise.resolve({
             success: true as const,
@@ -328,11 +322,6 @@ describe("match_tracking_service.ts", () => {
             success: true as const,
             account,
             activeGame: nextActiveGame,
-            notificationIntent: {
-              kind: "started" as const,
-              activeGame: nextActiveGame,
-            },
-            stateTransition: null,
           }),
         inspectMatchWatcherResult: () =>
           Promise.resolve({
@@ -341,24 +330,6 @@ describe("match_tracking_service.ts", () => {
             match: previousMatch,
             rankSummary: null,
             opggDetail: null,
-            notificationIntent: {
-              kind: "result" as const,
-              match: previousMatch,
-              rankSummary: null,
-              opggDetail: null,
-            },
-            stateTransition: {
-              state: {
-                lastState: "IDLE" as const,
-                currentGameId: null,
-                currentMatchId: null,
-                pendingResultMatchId: null,
-                pendingResultNotificationMessageId: null,
-                pendingResultStartedAt: null,
-                lastCheckedAt: now,
-              },
-              messageIdField: null,
-            },
           }),
         updateMatchWatcherState: (...args) => {
           stateUpdates.push(args);
@@ -423,6 +394,8 @@ describe("match_tracking_service.ts", () => {
     const account = accountFixture();
     const service = createMatchTrackingService({
       apiClient: {
+        getLeagueEntriesByPuuid: () => Promise.resolve([]),
+        upsertPendingRankSnapshots: () => Promise.resolve({ success: true }),
         getEnabledMatchWatchers: () =>
           Promise.resolve({
             success: true as const,
@@ -435,11 +408,6 @@ describe("match_tracking_service.ts", () => {
             success: true as const,
             account,
             activeGame: null,
-            notificationIntent: {
-              kind: "resultPending" as const,
-              matchId: "JP1_12345",
-            },
-            stateTransition: null,
           }),
         inspectMatchWatcherResult: (...args) => {
           resultInspectionCalls.push(args);
@@ -449,16 +417,6 @@ describe("match_tracking_service.ts", () => {
             match: null,
             rankSummary: null,
             opggDetail: null,
-            notificationIntent: null,
-            stateTransition: {
-              state: {
-                pendingResultMatchId: "JP1_12345",
-                pendingResultNotificationMessageId: null,
-                pendingResultStartedAt: targetWatcher.gameStartedAt,
-                currentMatchId: null,
-              },
-              messageIdField: null,
-            },
           });
         },
         updateMatchWatcherState: (...args) => {
@@ -506,9 +464,6 @@ describe("match_tracking_service.ts", () => {
         inspectionBatchId: "00000000-0000-4000-8000-000000000001",
         riotAccountPuuid: "puuid-1",
         matchId: "JP1_12345",
-        messageId: null,
-        startedAt: new Date("2026-01-01T00:00:00Z"),
-        resultFetchTimeoutMs: 10 * 60_000,
       },
     ]]);
     assertEquals(stateUpdates.at(-1), [
@@ -534,7 +489,7 @@ describe("match_tracking_service.ts", () => {
     ]);
   });
 
-  test("同一targetとmatchIdでもguildごとに異なるmessageIdでBackend Result検査を行う", async () => {
+  test("同じ結果の観測はguild所有境界で取得し、保存・投稿IDをBot側で分離する", async () => {
     using _batchId = stub(
       crypto,
       "randomUUID",
@@ -561,6 +516,8 @@ describe("match_tracking_service.ts", () => {
     const account = accountFixture();
     const service = createMatchTrackingService({
       apiClient: {
+        getLeagueEntriesByPuuid: () => Promise.resolve([]),
+        upsertPendingRankSnapshots: () => Promise.resolve({ success: true }),
         getEnabledMatchWatchers: () =>
           Promise.resolve({
             success: true as const,
@@ -579,8 +536,6 @@ describe("match_tracking_service.ts", () => {
             match: null,
             rankSummary: null,
             opggDetail: null,
-            notificationIntent: null,
-            stateTransition: null,
           });
         },
         updateMatchWatcherState: () =>
@@ -632,9 +587,6 @@ describe("match_tracking_service.ts", () => {
         inspectionBatchId: "00000000-0000-4000-8000-000000000001",
         riotAccountPuuid: "puuid-1",
         matchId: "JP1_12345",
-        messageId: "message-existing-1",
-        startedAt: new Date("2026-01-01T00:00:00Z"),
-        resultFetchTimeoutMs: 10 * 60_000,
       },
     ], [
       "guild-2",
@@ -643,9 +595,6 @@ describe("match_tracking_service.ts", () => {
         inspectionBatchId: "00000000-0000-4000-8000-000000000001",
         riotAccountPuuid: "puuid-1",
         matchId: "JP1_12345",
-        messageId: "message-existing-2",
-        startedAt: new Date("2026-01-01T00:01:00Z"),
-        resultFetchTimeoutMs: 10 * 60_000,
       },
     ]]);
   });
@@ -659,6 +608,8 @@ describe("match_tracking_service.ts", () => {
     const warnings: Array<[string, Record<string, unknown> | undefined]> = [];
     const service = createMatchTrackingService({
       apiClient: {
+        getLeagueEntriesByPuuid: () => Promise.resolve([]),
+        upsertPendingRankSnapshots: () => Promise.resolve({ success: true }),
         getEnabledMatchWatchers: () =>
           Promise.resolve({
             success: true as const,
@@ -785,6 +736,8 @@ describe("match_tracking_service.ts", () => {
     const errors: unknown[] = [];
     const service = createMatchTrackingService({
       apiClient: {
+        getLeagueEntriesByPuuid: () => Promise.resolve([]),
+        upsertPendingRankSnapshots: () => Promise.resolve({ success: true }),
         getEnabledMatchWatchers: () =>
           Promise.resolve({
             success: true as const,
@@ -818,8 +771,6 @@ describe("match_tracking_service.ts", () => {
               updatedAt: null,
             },
             activeGame: null,
-            notificationIntent: null,
-            stateTransition: null,
           });
         },
         inspectMatchWatcherResult: () => {
@@ -880,6 +831,8 @@ describe("match_tracking_service.ts", () => {
     const events: string[] = [];
     const service = createMatchTrackingService({
       apiClient: {
+        getLeagueEntriesByPuuid: () => Promise.resolve([]),
+        upsertPendingRankSnapshots: () => Promise.resolve({ success: true }),
         getEnabledMatchWatchers: () =>
           Promise.resolve(markFailureLogged({
             success: false as const,

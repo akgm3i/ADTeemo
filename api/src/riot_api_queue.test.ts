@@ -969,3 +969,46 @@ describe("createRiotApi", () => {
     assertEquals(calls, 2);
   });
 });
+
+test("Riot本文が閉じないとき、attempt期限でHTTPをabortして次要求へ進む", async () => {
+  // Arrange
+  using time = new FakeTime(0);
+  const signals: AbortSignal[] = [];
+  let abortedBodies = 0;
+  let calls = 0;
+  const fake = createFakeRiotApi(time, (_input, init) => {
+    calls++;
+    if (calls > 3) return Promise.resolve(accountResponse("Next"));
+    const signal = init?.signal;
+    if (signal) signals.push(signal);
+    return Promise.resolve(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"puuid":'));
+            signal?.addEventListener("abort", () => {
+              abortedBodies++;
+              controller.error(signal.reason);
+            }, { once: true });
+          },
+        }),
+      ),
+    );
+  });
+
+  // Act
+  await assertRejects(
+    () => fake.run(fake.api.getAccountByRiotId("asia", "First", "JP1")),
+    RiotApiRequestError,
+    "timed out",
+  );
+  const next = await fake.run(
+    fake.api.getAccountByRiotId("asia", "Next", "JP1"),
+  );
+
+  // Assert
+  assertEquals(signals.length, 3);
+  assertEquals(signals.every((signal) => signal.aborted), true);
+  assertEquals(abortedBodies, 3);
+  assertEquals(next?.gameName, "Next");
+});

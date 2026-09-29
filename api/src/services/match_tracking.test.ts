@@ -92,264 +92,94 @@ const afterSnapshot: MatchRankSnapshot = {
 };
 
 describe("services/match_tracking.ts", () => {
-  test("新しいランク対象試合を検知すると、Riot取得後にpending rank snapshotを保存してactiveGameを返す", async () => {
-    const calls: string[] = [];
-    const savedPayloads: unknown[] = [];
+  test("Active Game検査ではaccountと進行中試合だけを取得し、rank取得や通知判断を行わない", async () => {
+    // Arrange
+    const calls: unknown[] = [];
+    const unexpected = (): never => {
+      throw new Error("Unexpected enrichment");
+    };
     const service = createMatchTrackingInspectionService({
       dbActions: {
-        getRiotAccountByDiscordId: (discordId) => {
-          calls.push(`account:${discordId}`);
+        getRiotAccountByDiscordId: (...args) => {
+          calls.push(args);
           return Promise.resolve(account);
         },
-        upsertPendingRankSnapshots: (payload) => {
-          calls.push("saveSnapshots");
-          savedPayloads.push(payload);
-          return Promise.resolve();
-        },
-        finalizeMatchRankSnapshots: () =>
-          Promise.resolve({ before: [], after: [] }),
+        finalizeMatchRankSnapshots: unexpected,
       },
       riotApi: {
-        getActiveGameByPuuid: (platform, puuid) => {
-          calls.push(`activeGame:${platform}:${puuid}`);
+        getActiveGameByPuuid: (...args) => {
+          calls.push(args);
           return Promise.resolve(activeGame);
         },
-        getLeagueEntriesByPuuid: (platform, puuid) => {
-          calls.push(`leagueEntries:${platform}:${puuid}`);
-          return Promise.resolve(entries);
-        },
-        getMatchById: () => Promise.resolve(null),
+        getLeagueEntriesByPuuid: unexpected,
+        getMatchById: unexpected,
       },
-      opggMatchDetailService: {
-        resolveAndSave: () => Promise.resolve(null),
-      },
-      logger: { warn: () => {} },
-      clock: { now: () => new Date("2026-01-01T00:00:00.000Z") },
+      opggMatchDetailService: { resolveAndSave: unexpected },
+      logger: { warn() {} },
     });
 
+    // Act
     const result = await service.inspectActiveGame({
-      guildId: "guild-1",
+      guildId: "guild",
       targetDiscordId: "target-1",
-      lastState: "IDLE",
-      currentGameId: null,
+      riotAccountPuuid: "puuid-1",
     });
 
-    assertEquals(result, {
-      status: "ok",
-      account,
-      activeGame,
-      notificationIntent: { kind: "started", activeGame },
-      stateTransition: {
-        state: {
-          lastState: "IN_GAME",
-          currentGameId: "12345",
-          currentMatchId: null,
-          gameStartedAt: new Date("2023-11-14T22:13:20.000Z"),
-          lastInGameNotifiedAt: new Date("2026-01-01T00:00:00.000Z"),
-          lastCheckedAt: new Date("2026-01-01T00:00:00.000Z"),
-        },
-        messageIdField: "currentNotificationMessageId",
-      },
-    });
-    assertEquals(calls, [
-      "account:target-1",
-      "activeGame:jp1:puuid-1",
-      "leagueEntries:jp1:puuid-1",
-      "saveSnapshots",
-    ]);
-    assertEquals(savedPayloads, [{
-      platform: "jp1",
-      gameId: "12345",
-      puuid: "puuid-1",
-      snapshots: [{
-        queueType: "RANKED_SOLO_5x5",
-        tier: "EMERALD",
-        rank: "IV",
-        leaguePoints: 19,
-        wins: 11,
-        losses: 8,
-        fetchedAt: new Date("2026-01-01T00:00:00.000Z"),
-      }, {
-        queueType: "RANKED_FLEX_SR",
-        tier: null,
-        rank: null,
-        leaguePoints: null,
-        wins: null,
-        losses: null,
-        fetchedAt: new Date("2026-01-01T00:00:00.000Z"),
-      }],
-    }]);
+    // Assert
+    assertEquals(result, { status: "ok", account, activeGame });
+    assertEquals(calls, [["target-1", "puuid-1"], ["jp1", "puuid-1"]]);
   });
 
-  test("同じ進行中試合を再確認すると、pending rank snapshotを保存せずactiveGameを返す", async () => {
-    const calls: string[] = [];
+  test("Match-v5に未反映のとき、rankとOP.GGを解決せずmatch nullの観測を返す", async () => {
+    // Arrange
+    const unexpected = (): never => {
+      throw new Error("Unexpected enrichment");
+    };
+    const calls: unknown[] = [];
     const service = createMatchTrackingInspectionService({
       dbActions: {
         getRiotAccountByDiscordId: () => Promise.resolve(account),
-        upsertPendingRankSnapshots: () => {
-          calls.push("saveSnapshots");
-          return Promise.resolve();
-        },
-        finalizeMatchRankSnapshots: () =>
-          Promise.resolve({ before: [], after: [] }),
+        finalizeMatchRankSnapshots: unexpected,
       },
       riotApi: {
-        getActiveGameByPuuid: () => Promise.resolve(activeGame),
-        getLeagueEntriesByPuuid: () => {
-          calls.push("leagueEntries");
-          return Promise.resolve(entries);
-        },
-        getMatchById: () => Promise.resolve(null),
-      },
-      opggMatchDetailService: {
-        resolveAndSave: () => Promise.resolve(null),
-      },
-      logger: { warn: () => {} },
-      clock: { now: () => new Date("2026-01-01T00:05:00.000Z") },
-    });
-
-    const result = await service.inspectActiveGame({
-      guildId: "guild-1",
-      targetDiscordId: "target-1",
-      lastState: "IN_GAME",
-      currentGameId: "12345",
-    });
-
-    assertEquals(result, {
-      status: "ok",
-      account,
-      activeGame,
-      notificationIntent: null,
-      stateTransition: null,
-    });
-    assertEquals(calls, []);
-  });
-
-  test("同じ進行中試合で通知間隔を過ぎると、progress intentと通知時刻更新用transitionを返す", async () => {
-    const service = createMatchTrackingInspectionService({
-      dbActions: {
-        getRiotAccountByDiscordId: () => Promise.resolve(account),
-        upsertPendingRankSnapshots: () => Promise.resolve(),
-        finalizeMatchRankSnapshots: () =>
-          Promise.resolve({ before: [], after: [] }),
-      },
-      riotApi: {
-        getActiveGameByPuuid: () => Promise.resolve(activeGame),
-        getLeagueEntriesByPuuid: () => Promise.resolve(entries),
-        getMatchById: () => Promise.resolve(null),
-      },
-      opggMatchDetailService: {
-        resolveAndSave: () => Promise.resolve(null),
-      },
-      logger: { warn: () => {} },
-      clock: { now: () => new Date("2026-01-01T00:10:00.000Z") },
-    });
-
-    const result = await service.inspectActiveGame({
-      guildId: "guild-1",
-      targetDiscordId: "target-1",
-      lastState: "IN_GAME",
-      currentGameId: "12345",
-      lastInGameNotifiedAt: new Date("2026-01-01T00:00:00.000Z"),
-      inGameNotifyIntervalMs: 5 * 60_000,
-    });
-
-    assertEquals(result, {
-      status: "ok",
-      account,
-      activeGame,
-      notificationIntent: { kind: "progress", activeGame },
-      stateTransition: {
-        state: {
-          lastState: "IN_GAME",
-          currentGameId: "12345",
-          lastInGameNotifiedAt: new Date("2026-01-01T00:10:00.000Z"),
-          lastCheckedAt: new Date("2026-01-01T00:10:00.000Z"),
-        },
-        messageIdField: "currentNotificationMessageId",
-      },
-    });
-  });
-
-  test("結果取得待ちの試合がMatch-v5に未反映のとき、rankとOP.GGを解決せずmatch nullを返す", async () => {
-    const calls: string[] = [];
-    const service = createMatchTrackingInspectionService({
-      dbActions: {
-        getRiotAccountByDiscordId: () => Promise.resolve(account),
-        upsertPendingRankSnapshots: () => Promise.resolve(),
-        finalizeMatchRankSnapshots: () => {
-          calls.push("finalizeSnapshots");
-          return Promise.resolve({ before: [], after: [] });
-        },
-      },
-      riotApi: {
-        getActiveGameByPuuid: () => Promise.resolve(null),
-        getLeagueEntriesByPuuid: () => {
-          calls.push("leagueEntries");
-          return Promise.resolve(entries);
-        },
-        getMatchById: (region, matchId) => {
-          calls.push(`match:${region}:${matchId}`);
+        getActiveGameByPuuid: unexpected,
+        getLeagueEntriesByPuuid: unexpected,
+        getMatchById: (...args) => {
+          calls.push(args);
           return Promise.resolve(null);
         },
       },
-      opggMatchDetailService: {
-        resolveAndSave: () => {
-          calls.push("opgg");
-          return Promise.resolve(null);
-        },
-      },
-      logger: { warn: () => {} },
-      clock: { now: () => new Date("2026-01-01T00:05:00.000Z") },
+      opggMatchDetailService: { resolveAndSave: unexpected },
+      logger: { warn() {} },
     });
 
+    // Act
     const result = await service.inspectResult({
-      guildId: "guild-1",
+      guildId: "guild",
       targetDiscordId: "target-1",
       matchId: "JP1_12345",
     });
 
+    // Assert
     assertEquals(result, {
       status: "ok",
       account,
       match: null,
       rankSummary: null,
       opggDetail: null,
-      notificationIntent: null,
-      stateTransition: {
-        state: {
-          pendingResultMatchId: "JP1_12345",
-          pendingResultNotificationMessageId: null,
-          pendingResultStartedAt: null,
-          lastCheckedAt: new Date("2026-01-01T00:05:00.000Z"),
-        },
-        messageIdField: null,
-      },
     });
-    assertEquals(calls, ["match:asia:JP1_12345"]);
+    assertEquals(calls, [["asia", "JP1_12345"]]);
   });
 
-  test("結果取得待ちの試合がMatch-v5で取得できると、rank snapshotを確定しOP.GG詳細を解決して返す", async () => {
-    const calls: string[] = [];
-    const opggDetail = {
-      provider: "opgg" as const,
-      providerRegion: "jp",
-      providerMatchId: "12345",
-      detailUrl: "https://op.gg/lol/summoners/jp/Teemo-JP1/matches/12345",
-      providerCreatedAt: new Date("2026-01-01T00:00:00.000Z"),
-      averageTier: "Emerald",
-      participant: {
-        puuid: "puuid-1",
-        participantId: 1,
-        laneScore: 7,
-      },
-    };
+  test("結果を取得できると、rank snapshotを確定してOP.GGを解決し取得事実を返す", async () => {
+    // Arrange
+    const calls: unknown[] = [];
+    const at = new Date("2026-01-01T00:05:00Z");
     const service = createMatchTrackingInspectionService({
       dbActions: {
         getRiotAccountByDiscordId: () => Promise.resolve(account),
-        upsertPendingRankSnapshots: () => Promise.resolve(),
         finalizeMatchRankSnapshots: (payload) => {
-          calls.push(`finalize:${payload.matchId}:${payload.puuid}`);
+          calls.push(["finalize", payload]);
           return Promise.resolve({
             before: [beforeSnapshot],
             after: [afterSnapshot],
@@ -358,33 +188,33 @@ describe("services/match_tracking.ts", () => {
       },
       riotApi: {
         getActiveGameByPuuid: () => Promise.resolve(null),
-        getLeagueEntriesByPuuid: (platform, puuid) => {
-          calls.push(`leagueEntries:${platform}:${puuid}`);
+        getLeagueEntriesByPuuid: (...args) => {
+          calls.push(["league", ...args]);
           return Promise.resolve(entries);
         },
-        getMatchById: (region, matchId) => {
-          calls.push(`match:${region}:${matchId}`);
+        getMatchById: (...args) => {
+          calls.push(["match", ...args]);
           return Promise.resolve(match);
         },
       },
       opggMatchDetailService: {
-        resolveAndSave: (payload) => {
-          calls.push(
-            `opgg:${payload.matchId}:${payload.match.participant.puuid}`,
-          );
-          return Promise.resolve(opggDetail);
+        resolveAndSave: (input) => {
+          calls.push(["opgg", input.matchId]);
+          return Promise.resolve(null);
         },
       },
-      logger: { warn: () => {} },
-      clock: { now: () => new Date("2026-01-01T00:05:00.000Z") },
+      logger: { warn() {} },
+      clock: { now: () => at },
     });
 
+    // Act
     const result = await service.inspectResult({
-      guildId: "guild-1",
+      guildId: "guild",
       targetDiscordId: "target-1",
       matchId: "JP1_12345",
     });
 
+    // Assert
     assertEquals(result, {
       status: "ok",
       account,
@@ -394,66 +224,30 @@ describe("services/match_tracking.ts", () => {
         before: beforeSnapshot,
         after: afterSnapshot,
       },
-      opggDetail,
-      notificationIntent: {
-        kind: "result",
-        match,
-        rankSummary: {
-          queueType: "RANKED_SOLO_5x5",
-          before: beforeSnapshot,
-          after: afterSnapshot,
-        },
-        opggDetail,
-      },
-      stateTransition: {
-        state: {
-          pendingResultMatchId: null,
-          pendingResultNotificationMessageId: null,
-          pendingResultStartedAt: null,
-          lastCheckedAt: new Date("2026-01-01T00:05:00.000Z"),
-        },
-        messageIdField: null,
-      },
+      opggDetail: null,
     });
     assertEquals(calls, [
-      "match:asia:JP1_12345",
-      "leagueEntries:jp1:puuid-1",
-      "finalize:JP1_12345:puuid-1",
-      "opgg:JP1_12345:puuid-1",
+      ["match", "asia", "JP1_12345"],
+      ["league", "jp1", "puuid-1"],
+      ["finalize", {
+        matchId: "JP1_12345",
+        platform: "jp1",
+        gameId: "12345",
+        puuid: "puuid-1",
+        snapshots: [
+          { ...entries[0], fetchedAt: at },
+          {
+            queueType: "RANKED_FLEX_SR",
+            tier: null,
+            rank: null,
+            leaguePoints: null,
+            wins: null,
+            losses: null,
+            fetchedAt: at,
+          },
+        ],
+      }],
+      ["opgg", "JP1_12345"],
     ]);
-  });
-  test("結果取得期限を過ぎていると、timeout intentを返してMatch-v5とランクとOP.GGへ接続しない", async () => {
-    const unexpected = () => {
-      throw new Error("Timeout must not fetch external data");
-    };
-    const service = createMatchTrackingInspectionService({
-      dbActions: {
-        getRiotAccountByDiscordId: () => Promise.resolve(account),
-        upsertPendingRankSnapshots: unexpected,
-        finalizeMatchRankSnapshots: unexpected,
-      },
-      riotApi: {
-        getActiveGameByPuuid: unexpected,
-        getLeagueEntriesByPuuid: unexpected,
-        getMatchById: unexpected,
-      },
-      opggMatchDetailService: { resolveAndSave: unexpected },
-      logger: { warn() {} },
-      clock: { now: () => new Date("2026-01-01T04:00:00Z") },
-    });
-    const result = await service.inspectResult({
-      guildId: "guild-1",
-      targetDiscordId: "target-1",
-      matchId: "JP1_12345",
-      startedAt: new Date("2026-01-01T00:00:00Z"),
-      resultFetchTimeoutMs: 3 * 60 * 60 * 1000,
-    });
-    assertEquals(result.status, "ok");
-    if (result.status !== "ok") throw new Error("Expected timeout intent");
-    assertEquals(result.notificationIntent, {
-      kind: "timeout",
-      matchId: "JP1_12345",
-    });
-    assertEquals(result.stateTransition?.state.pendingResultMatchId, null);
   });
 });

@@ -10,11 +10,14 @@ import {
   activeGameCacheKey,
   activeNotificationGroupKey,
   currentStateFromWatcher,
+  decideActiveGame,
+  decideResult,
   isResultFetchTimedOut,
   matchCacheKey,
   matchIdForGame,
   matchIdParts,
   observeMayhemGame,
+  pendingMatchState,
   pendingResultFromWatcher,
   rankDelta,
   resultMetricValues,
@@ -32,6 +35,15 @@ describe("match_tracking_state.ts", () => {
       gameId: "12345",
     });
     assertEquals(matchIdParts("JP1"), null);
+    assertEquals(
+      matchIdForGame(account({ platform: "ph2", region: "sea" }), 12345),
+      "SG2_12345",
+    );
+    assertEquals(matchIdParts("PH2_12345"), {
+      platform: "PH2",
+      gameId: "12345",
+    });
+
     assertEquals(activeGameCacheKey(riotAccount), "jp1:puuid-1");
     assertEquals(matchCacheKey(riotAccount, "JP1_12345"), "asia:JP1_12345");
   });
@@ -40,12 +52,12 @@ describe("match_tracking_state.ts", () => {
     const target = watcher({ guildId: "guild-1", channelId: "channel-1" });
 
     assertEquals(
-      activeNotificationGroupKey(target, "jp1", 12345),
-      "guild-1:channel-1:JP1:12345",
+      activeNotificationGroupKey(target, "JP1_12345"),
+      "guild-1:channel-1:JP1_12345",
     );
     assertEquals(
-      activeNotificationGroupKey(target, "kr", 12345),
-      "guild-1:channel-1:KR:12345",
+      activeNotificationGroupKey(target, "KR_12345"),
+      "guild-1:channel-1:KR_12345",
     );
   });
 
@@ -221,7 +233,7 @@ test("Mayhemを観測すると、PUUIDが一致する本人のチャンピオン
       teamId: 100,
     }],
   };
-  assertEquals(observeMayhemGame(watcher(), game, now), {
+  assertEquals(observeMayhemGame("puuid-1", null, game, now), {
     championId: 17,
     elapsedSeconds: 605,
   });
@@ -235,16 +247,154 @@ test("Mayhemを観測すると、PUUIDが一致する本人のチャンピオン
     gameLength: undefined,
     participants: [{ puuid: "other", championId: 99, teamId: 100 }],
   };
-  assertEquals(observeMayhemGame(saved, missing, now), {
-    championId: 17,
-    elapsedSeconds: 605,
+  assertEquals(
+    observeMayhemGame(
+      saved.riotAccountPuuid,
+      saved.currentGameObservation,
+      missing,
+      now,
+    ),
+    {
+      championId: 17,
+      elapsedSeconds: 605,
+    },
+  );
+  assertEquals(
+    observeMayhemGame(saved.riotAccountPuuid, null, {
+      ...missing,
+      gameId: 67890,
+    }, now),
+    null,
+  );
+  assertEquals(
+    observeMayhemGame(saved.riotAccountPuuid, saved.currentGameObservation, {
+      ...game,
+      gameMode: "CLASSIC",
+    }, now),
+    null,
+  );
+});
+
+describe("試合監視の判断正本", () => {
+  test("開始・進行・観測保存・終了・IDLEを、保存状態と事実と時刻だけから決める", () => {
+    // Arrange
+    const now = new Date("2026-01-01T01:00:00Z");
+    const input = {
+      watcher: watcher(),
+      account: account(),
+      activeGame: activeGame(),
+      notificationLastInGameNotifiedAt: null,
+      inGameNotifyIntervalMs: 300_000,
+      now,
+    };
+    const running = watcher({
+      lastState: "IN_GAME",
+      currentGameId: "12345",
+      currentMatchId: "JP1_12345",
+      lastInGameNotifiedAt: new Date(now.getTime() - 300_000),
+    });
+
+    // Act / Assert
+    assertEquals(decideActiveGame(input).kind, "started");
+    assertEquals(
+      decideActiveGame({ ...input, watcher: running }).kind,
+      "progress",
+    );
+    assertEquals(
+      decideActiveGame({
+        ...input,
+        watcher: running,
+        notificationLastInGameNotifiedAt: new Date(now.getTime() - 299_999),
+      }).kind,
+      "observed",
+    );
+    assertEquals(
+      decideActiveGame({ ...input, watcher: running, activeGame: null }).kind,
+      "ended",
+    );
+    assertEquals(decideActiveGame({ ...input, activeGame: null }), {
+      kind: "idle",
+      current: null,
+    });
   });
-  assertEquals(
-    observeMayhemGame(saved, { ...missing, gameId: 67890 }, now),
-    null,
-  );
-  assertEquals(
-    observeMayhemGame(saved, { ...game, gameMode: "CLASSIC" }, now),
-    null,
-  );
+
+  test("旧platformの同じnumeric IDは別試合として、前の結果と新currentを分離する", () => {
+    // Arrange
+    const target = watcher({
+      lastState: "IN_GAME",
+      currentGameId: "12345",
+      currentMatchId: "PH2_12345",
+      currentGameMode: "KIWI",
+      currentGameObservation: { championId: 17, elapsedSeconds: 3600 },
+    });
+
+    // Act
+    const decision = decideActiveGame({
+      watcher: target,
+      account: account({ platform: "sg2", region: "sea" }),
+      activeGame: activeGame(),
+      notificationLastInGameNotifiedAt: null,
+      inGameNotifyIntervalMs: 300_000,
+      now: new Date("2026-01-01T01:00:00Z"),
+    });
+
+    // Assert
+    assertEquals(decision.kind, "started");
+    if (decision.kind !== "started") throw new Error("Expected new game");
+    assertEquals(decision.previous?.matchId, "PH2_12345");
+    assertEquals(decision.current.currentMatchId, "SG2_12345");
+    assertEquals(decision.current.currentGameObservation, null);
+  });
+
+  test("結果期限の境界と403・一時失敗を区別し、pending消去の型にcurrentを含めない", () => {
+    // Arrange
+    const pending = {
+      matchId: "JP1_12345",
+      messageId: "old",
+      startedAt: new Date("2026-01-01T00:00:00Z"),
+    };
+    const input = {
+      pending,
+      now: new Date("2026-01-01T03:00:00Z"),
+      resultFetchTimeoutMs: 10_800_000,
+    };
+
+    // Act / Assert
+    assertEquals(decideResult(input), { kind: "timeout" });
+    assertEquals(
+      decideResult({ ...input, now: new Date(input.now.getTime() - 1) }),
+      { kind: "inspect" },
+    );
+    assertEquals(
+      decideResult({
+        ...input,
+        inspection: {
+          success: false,
+          status: 502,
+          code: "RIOT_MATCH_ACCESS_DENIED",
+          error: "denied",
+        },
+      }),
+      { kind: "unavailable" },
+    );
+    assertEquals(
+      decideResult({
+        ...input,
+        inspection: {
+          success: false,
+          status: 502,
+          code: "RIOT_API_UNAVAILABLE",
+          error: "temporary",
+        },
+      }),
+      { kind: "pending", failed: true },
+    );
+    assertEquals(Object.keys(pendingMatchState(null)).sort(), [
+      "pendingResultGameMode",
+      "pendingResultMatchId",
+      "pendingResultNotificationMessageId",
+      "pendingResultObservation",
+      "pendingResultStartedAt",
+    ]);
+  });
 });

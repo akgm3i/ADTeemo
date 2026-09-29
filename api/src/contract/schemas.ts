@@ -1,10 +1,13 @@
 import { z } from "zod";
 import {
+  currentRiotPlatforms,
   customGameTeams,
+  defaultRiotPlatform,
   lanes,
   matchWatcherStates,
   rankedQueueTypes,
   riotPlatforms,
+  riotRegionForPlatform,
   riotRegions,
 } from "./domain.ts";
 
@@ -17,7 +20,7 @@ export const linkByRiotIdSchema = z.object({
   discordId: z.string(),
   gameName: z.string(),
   tagLine: z.string(),
-  platform: z.enum(riotPlatforms).optional(),
+  platform: z.enum(currentRiotPlatforms).optional(),
   region: z.enum(riotRegions).optional(),
 });
 
@@ -220,22 +223,12 @@ export const updateMatchWatcherStateSchema = z.object({
 export const inspectMatchWatcherActiveGameSchema = z.object({
   inspectionBatchId: z.uuid().optional(),
   riotAccountPuuid: z.string().min(1).optional(),
-  lastState: z.enum(matchWatcherStates),
-  currentGameId: z.string().nullable(),
-  currentNotificationMessageId: z.string().nullable().optional(),
-  gameStartedAt: z.coerce.date().nullable().optional(),
-  lastInGameNotifiedAt: z.coerce.date().nullable().optional(),
-  notificationLastInGameNotifiedAt: z.coerce.date().nullable().optional(),
-  inGameNotifyIntervalMs: z.number().int().nonnegative().optional(),
 });
 
 export const inspectMatchWatcherResultSchema = z.object({
   inspectionBatchId: z.uuid().optional(),
   riotAccountPuuid: z.string().min(1).optional(),
   matchId: z.string().min(1),
-  messageId: z.string().nullable().optional(),
-  startedAt: z.coerce.date().nullable().optional(),
-  resultFetchTimeoutMs: z.number().int().nonnegative().optional(),
 });
 
 export const platformAndPuuidSchema = z.object({
@@ -264,9 +257,16 @@ export const callbackQuerySchema = z.object({
 export const loginUrlQuerySchema = z.object({
   discordId: z.string().min(1),
   guildId: z.string().min(1),
-  platform: z.enum(riotPlatforms).default("jp1"),
-  region: z.enum(riotRegions).default("asia"),
-}).strict();
+  platform: z.enum(currentRiotPlatforms).default(defaultRiotPlatform),
+  region: z.enum(riotRegions).optional(),
+}).strict().refine(
+  ({ platform, region }) =>
+    region === undefined || region === riotRegionForPlatform(platform),
+  { path: ["region"], message: "Region does not match platform" },
+).transform((binding) => ({
+  ...binding,
+  region: riotRegionForPlatform(binding.platform),
+}));
 
 export type MatchParticipant = z.infer<typeof createParticipantSchema>;
 export type CustomMatchStat = z.infer<typeof customMatchStatSchema>;

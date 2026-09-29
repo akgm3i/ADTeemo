@@ -208,28 +208,6 @@ export const staticDataSchema = z.object({
   maps: z.record(z.string(), z.string().nullable()),
   gameModes: z.record(z.string(), z.string().nullable()),
 }).strict();
-export const notificationIntentSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.enum(["started", "progress"]),
-    activeGame: activeGameResponseSchema,
-  }).strict(),
-  z.object({ kind: z.literal("resultPending"), matchId: id }).strict(),
-  z.object({ kind: z.literal("timeout"), matchId: id }).strict(),
-  z.object({
-    kind: z.literal("result"),
-    match: riotMatchResponseSchema,
-    rankSummary: rankSummarySchema.nullable(),
-    opggDetail: opggDetailResponseSchema.nullable(),
-  }).strict(),
-]);
-export const stateTransitionSchema = z.object({
-  state: watcherStatePatchSchema,
-  messageIdField: z.enum([
-    "currentNotificationMessageId",
-    "pendingResultNotificationMessageId",
-  ]).nullable(),
-}).strict();
-
 export type ResponseContract<T = unknown> = {
   method: string;
   path: string;
@@ -459,8 +437,6 @@ export const responseContracts = {
     z.object({
       account: riotAccountResponseSchema,
       activeGame: activeGameResponseSchema.nullable(),
-      notificationIntent: notificationIntentSchema.nullable(),
-      stateTransition: stateTransitionSchema.nullable(),
     }).strict(),
   ),
   inspectResult: contract(
@@ -472,8 +448,6 @@ export const responseContracts = {
       match: riotMatchResponseSchema.nullable(),
       rankSummary: rankSummarySchema.nullable(),
       opggDetail: opggDetailResponseSchema.nullable(),
-      notificationIntent: notificationIntentSchema.nullable(),
-      stateTransition: stateTransitionSchema.nullable(),
     }).strict(),
   ),
   activeGame: contract(

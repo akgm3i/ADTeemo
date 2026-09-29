@@ -175,3 +175,48 @@ test("canonical repositoryが失敗すると、500で応答し成功ページを
     message: "Internal server error",
   });
 });
+
+test("統合前に発行したRSO stateを消費すると、SG2とSEAで照合・保存する", async () => {
+  // Arrange
+  const deps = createTestDependencies();
+  using _consume = stub(
+    deps.dbActions,
+    "consumeAuthState",
+    () => Promise.resolve({ ...stateBinding, platform: "ph2", region: "asia" }),
+  );
+  using _token = stub(
+    deps.rso,
+    "exchangeCodeForTokens",
+    () => Promise.resolve({ accessToken: "access-token", idToken: undefined }),
+  );
+  using account = stub(
+    deps.rso,
+    "getAccount",
+    () =>
+      Promise.resolve({ puuid: "account", gameName: "Teemo", tagLine: "SEA" }),
+  );
+  using save = stub(
+    deps.dbActions,
+    "upsertRiotAccount",
+    () => Promise.resolve(),
+  );
+
+  // Act
+  const response = await createApp(deps).request(
+    "/auth/rso/callback?code=x&state=state-1",
+  );
+
+  // Assert
+  assertEquals(response.status, 200);
+  assertSpyCall(account, 0, { args: ["access-token", "sea"] });
+  assertSpyCall(save, 0, {
+    args: [{
+      discordId: "user-1",
+      puuid: "account",
+      gameName: "Teemo",
+      tagLine: "SEA",
+      platform: "sg2",
+      region: "sea",
+    }],
+  });
+});

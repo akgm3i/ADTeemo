@@ -2,13 +2,13 @@
 
 - Type: integration
 - Status: current
-- Summary: カスタム戦績のtransaction、冪等性、旧データ移行。
+- Summary: カスタム戦績の入力継続、transaction、冪等性、旧実装とデータの扱い。
 - Read when: 戦績記録・再送・migration・roster変更時。
 - Related: [#113](https://github.com/akgm3i/ADTeemo/issues/113)
 - Code: [match repository](../api/src/db/repositories/matches.ts)
 - Tests: [repository tests](../api/src/db/repositories.integration.test.ts), [vertical tests](../tests/integration/custom_match_recording.integration.test.ts)
-- Reviewed: 2026-09-25
-- Verified: local code review, 2026-09-25
+- Reviewed: 2026-09-29
+- Verified: 2026-09-29、偽時計による15分超の入力と実Bot・Hono・一時SQLiteの保存/再送を確認。実Discordと本番DBは今回未検証。
 
 ## 目的
 
@@ -42,6 +42,30 @@ requestが持つ各userの値はkills、deaths、assists、CS、Goldだけであ
 
 既存の`PUT /events/:eventId/participants`は、戦績保存前の明示的な補正APIとして残す。1試合でも保存した後は異なるrosterへ変更できない。通常のmatching失敗からPUTへfallbackしない。これにより過去戦績のteam/laneとイベントrosterの対応を固定する。
 
+## 入力セッションと保存確認
+
+Botは確定rosterの10人について、1人分のKDA・CS・Goldを1つのmodalで収集する。slash commandの応答だけを使い続けず、入力ボタンとmodal submissionから新しいinteractionへ引き継ぐ。確認ボタンも新しいinteractionとしてacknowledgeしてから保存するため、最初のcommandから15分を超えた入力や保存結果の通知を古いtokenへ依存させない。
+
+入力待機は2分、停止後の再開待機は最大10分、セッション全体は60分とする。現在の返信tokenには14分の安全期限を設け、期限までに保存済みではない入力一覧を表示して終了する。cancel、入力不正、入力待機のtimeout、セッション終了、保存失敗を別の結果として扱う。不正なフォーム値は再入力用に保持し、完了済みのプレイヤーの値を消さない。
+
+セッションはcommand invocation内のメモリで保持する。同じ応答・実行者に限定したボタンと、invocation ID・入力ボタンのinteraction ID・participant IDを含むmodal IDで並行入力を分離する。対象event、game番号、winner、確定rosterは開始時に固定し、APIのcreator/guild/channel境界とtransaction内のroster照合も維持する。Bot再起動やセッション終了後の自動復元は提供しないため、終了時に対象と入力一覧を残す。
+
+10人分の入力後も明示確認までAPIへ戦績を保存しない。確認後に送るpayloadは再試行を通じて固定し、保存失敗では再試行ボタンから同じpayloadを送る。HTTP timeout後のcommit不明も新しいgame番号で回避しない。成功応答を確認できないまま終了する場合は保存結果が未確認であることを伝える。
+
+### 入力テストの保証移管
+
+#146では旧チャット入力のテスト保証を次の所有者へ対応付け、移管先の成功を確認してから旧collectorを削除した。
+
+| 旧保証                                              | 現在の所有者・判断                                                                                                                            |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| KDA・数値、0、不正入力                              | [collector tests](../bot/src/features/stat_collector.test.ts)で形式・安全な整数・不正draft修正・前参加者の保持を検証                          |
+| 入力messageの削除権限がなくても継続                 | チャット収集/削除を廃止。modalのACK、入力受理、不正draft再送で検証し、message削除権限を前提にしない                                           |
+| timeout                                             | 同collectorでボタン/modalの個別timeoutからの再開、セッション終了、画面更新遅延を検証                                                          |
+| 大文字・空白・日本語の文字cancel                    | 文字による取消をボタンへ変更。collectorとcommandでcancel、一覧保持、確認前の保存0回を検証                                                     |
+| timeout以外の終了・例外                             | collector failureとcommandの入力失敗表示で検証。strict fakeはcatchされたassert失敗も保持                                                      |
+| command成功・中断・provider/確認/保存失敗・失敗分類 | [command tests](../bot/src/commands/record-match.test.ts)に維持し、累積15分30秒、fresh token、同payloadの明示再送を追加                       |
+| 原子的保存・commit後応答喪失の再送                  | [実command・Hono・SQLite縦断](../tests/integration/custom_match_recording.integration.test.ts)で10人保存、rollback、1試合だけの再送成功を検証 |
+
 ## transactionとrollback
 
 新規記録では、APIは次を1つのSQLite transactionで行う。
@@ -68,7 +92,7 @@ requestが持つ各userの値はkills、deaths、assists、CS、Goldだけであ
 
 既存matchの確認は新規保存用のイベント状態判定より先に行う。初回commit後にイベントが取消済みまたは取消処理中になっていても、同じscope・roster・入力の再送は `created: false` を返し、異なる入力は409にする。取消後に未保存のgame番号を新規追加することはできない。
 
-同じAPI processで複数のカスタム戦績保存が同時に到着した場合は、SQLite transactionを開始する前にrepository内で直列化する。同じkey・同じ入力の同時送信は一方だけが新規commitし、もう一方はそのcommitを検証して既存成功を返す。同じkey・異なる入力なら、一方だけをcommitしてもう一方は409にする。
+同じAPI processで複数のカスタム戦績保存が同時に到着した場合は、SQLite transactionを開始する前に[共通DB action境界](./integrations/architecture.md#sqlite操作の直列化)で他repositoryの操作とともに直列化する。同じkey・同じ入力の同時送信は一方だけが新規commitし、もう一方はそのcommitを検証して既存成功を返す。同じkey・異なる入力なら、一方だけをcommitしてもう一方は409にする。
 
 PUUIDは初回の新規保存時だけcanonical Riot accountから取得するsnapshotであり、冪等性比較には使わない。初回記録後にRiot accountを再リンクしても、同じrequestの再送は `created: false` で既存matchを返し、保存済みsnapshotを現在のPUUIDへ更新しない。既存matchの同一request判定では、現在のcanonical Riot accountの存在も改めて要求しない。
 
@@ -83,6 +107,31 @@ API応答がtimeoutしてcommit結果が不明な場合は、同じ `eventId`、
 | 参加者不足・roster不一致・記録不能状態 | 409  | roster/stateを直し、同じgame番号で再送  |
 | 新規保存時のcanonical Riot account不足 | 404  | Riot ID連携を完了し、同じgame番号で再送 |
 | game番号、件数、重複、stats値が不正    | 422  | requestを修正してから送信               |
+
+## 旧実装の整理と互換性
+
+#152では#143のDB境界と#150の監視判断の統合後に、全workspaceの参照、`api/deno.json`の公開exports、HTTP routeとmigrationを再確認した。判断は次のとおりである。
+
+| 候補                                                     | 判断と根拠                                                                                                                                                                                                              |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createMatchWithParticipants` / `createMatchParticipant` | 削除。現行routeは`recordCustomMatch`を呼び、旧関数の参照はrepository専用テストとAPI test utilityだけだった。repository factoryの戻り値、そこから推論される`DbActions`、専用payload型/schema、fake入口、専用テストも除去 |
+| `updateUserRiotId` / `linkUserWithRiotId`                | 削除。新規連携は手動/RSOともcanonicalな`upsertRiotAccount`を使い、旧関数にHTTP routeやpackage公開exportはない。旧専用テスト・fake入口も除去                                                                             |
+| Bot state内のrank queue / snapshot変換                   | 重複実装を除去。#150後は[共有contract](../api/src/contract/ranked_snapshots.ts)の同じ関数をBotのbefore取得とAPIのafter確定が実際に使うため、共有関数は保持                                                              |
+| `ActiveNotificationGroup.messageIdAccountPuuids`         | 削除。初期化と自身の更新以外に判断用途がない。現在の共有投稿ID・対象account集合・watcher状態・結果投稿の使用済みIDとoutbox所有権は保持                                                                                  |
+| `upsertMatchWatcher`                                     | 保持。移行client用HTTP routeと既存integrationが使う互換APIであり、不要な旧helperには含めない                                                                                                                            |
+| 公開`createParticipantSchema` / `MatchParticipant`       | 保持。`contract` / `schema` / `validators`で公開されており、repository内部型と同じ理由では削除しない                                                                                                                    |
+| 旧`users.riotId`列、旧match/participant、migration履歴   | 保持。コード削除から過去データの廃止・自動補修は導かない。0013のrouting移行は#147として別に検証する                                                                                                                     |
+
+旧repositoryテストを削除する前に、次の保証を[現行repository integration](../api/src/db/repositories.integration.test.ts)へ対応付けて実行した。
+
+| 旧保証                                                     | 現行経路の所有先・仕様                                                                                                                                          |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 試合と全参加者のcommit、同じ入力の再送                     | `recordCustomMatch`の10人一括保存、同一/異なる入力の並行再送、event/game単位の既存成功/競合                                                                     |
+| 親matchだけ、または一部participantのある旧行への不足分追加 | 現行APIでは提供しない。決定的match IDの既存行衝突は拒否し、旧行を変更しない。履歴補修は本書の手動reconciliationで判断                                           |
+| 同じuserの重複拒否                                         | 10件中1人を重複させた現行stats入力を拒否し、match/participantが0行のままであることを追加確認                                                                    |
+| participant保存途中のDB失敗とrollback後の継続              | SQLite triggerで5人目のinsertを拒否し、全rollback後に同じkeyを再試行して10人保存できる既存テスト                                                                |
+| not foundとDB障害の区別                                    | canonical account不足は`RiotAccountNotFoundError`、実SQLiteのinsert障害はnot-found系errorへ変換されないことを明示確認                                           |
+| Riot IDの更新と履歴保持                                    | canonical accountの表示情報更新・PUUID所有、保存済み戦績のPUUID snapshot保持、[migration tests](../api/src/db/migrations.integration.test.ts)の旧列・旧履歴保持 |
 
 ## migration前の確認
 

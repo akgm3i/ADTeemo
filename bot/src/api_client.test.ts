@@ -1,7 +1,11 @@
 import { assertEquals, assertStrictEquals, assertThrows } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import { responseContracts } from "@adteemo/api/contract";
-import { createApiResourceClients, createApiRpcClients } from "./api_client.ts";
+import {
+  type ApiRpcClientOptions,
+  createApiResourceClients,
+  createApiRpcClients,
+} from "./api_client.ts";
 
 import { createRpcClientStub, response } from "./api_clients/test_utils.ts";
 
@@ -49,7 +53,7 @@ describe("createApiClient", () => {
     const queuedClients = [publicRpc, serviceRpc];
     const calls: Array<{
       apiUrl: string;
-      options?: { headers?: Record<string, string> };
+      options?: ApiRpcClientOptions;
     }> = [];
 
     // Act
@@ -68,10 +72,11 @@ describe("createApiClient", () => {
     assertStrictEquals(clients.publicRpcClient, publicRpc);
     assertStrictEquals(clients.botServiceRpcClient, serviceRpc);
     assertEquals(calls, [
-      { apiUrl, options: undefined },
+      { apiUrl, options: { fetch: calls[0].options?.fetch } },
       {
         apiUrl,
         options: {
+          fetch: calls[0].options?.fetch,
           headers: { Authorization: `Bearer ${credential}` },
         },
       },

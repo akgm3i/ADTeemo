@@ -65,25 +65,6 @@ export function createUsersRepository(database: Database) {
     });
   }
 
-  async function updateUserRiotId(discordId: string, riotId: string) {
-    await database.update(users).set({ riotId }).where(
-      eq(users.discordId, discordId),
-    )
-      .execute();
-  }
-
-  async function linkUserWithRiotId(discordId: string, riotId: string) {
-    const payload = userInsertSchema.parse({ discordId, riotId });
-
-    await database.insert(users).values(payload).onConflictDoUpdate({
-      target: users.discordId,
-      set: {
-        riotId,
-        updatedAt: new Date(),
-      },
-    }).execute();
-  }
-
   async function upsertRiotAccount(account: {
     discordId: string;
     puuid: string;
@@ -208,8 +189,6 @@ export function createUsersRepository(database: Database) {
     upsertUser,
     deleteUser,
     setMainRole,
-    updateUserRiotId,
-    linkUserWithRiotId,
     upsertRiotAccount,
     getRiotAccountByDiscordId,
     getRiotAccountsByDiscordId,

@@ -47,8 +47,6 @@ describe("match tracking composition smoke", () => {
           success: true,
           account: account(),
           activeGame: null,
-          notificationIntent: null,
-          stateTransition: null,
         }),
     );
 
@@ -62,11 +60,6 @@ describe("match tracking composition smoke", () => {
       args: ["guild-1", "target-1", {
         inspectionBatchId: "00000000-0000-4000-8000-000000000001",
         riotAccountPuuid: "puuid-1",
-        lastState: "IDLE",
-        currentGameId: null,
-        currentNotificationMessageId: null,
-        gameStartedAt: null,
-        lastInGameNotifiedAt: null,
       }],
     });
   });

@@ -276,7 +276,7 @@ describe("API error contract", () => {
           ...TEST_BOT_SERVICE_AUTH_HEADERS,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ lastState: "IDLE", currentGameId: null }),
+        body: JSON.stringify({}),
       },
     );
     const responseText = await response.clone().text();

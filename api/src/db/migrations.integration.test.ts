@@ -801,3 +801,198 @@ for (const beforeIndex of [11, 12]) {
     );
   });
 }
+
+test("統合済みplatformを移行すると、accountの所属だけを更新し旧試合・観測・通知receiptを保持する", async () => {
+  // Arrange
+  await using database = await createPreCustomGameConsistencyDatabase(13);
+  const createdAt = new Date("2026-09-01T00:00:00.000Z");
+  await database.db.insert(schema.guilds).values([
+    { id: "guild", createdAt },
+    { id: "other-guild", createdAt },
+  ]);
+  await database.db.insert(schema.users).values([
+    { discordId: "owner", riotId: "legacy-puuid", createdAt },
+    { discordId: "other-owner", createdAt },
+  ]);
+  await database.db.insert(schema.riotAccounts).values([
+    {
+      discordId: "owner",
+      puuid: "ph-account",
+      isMain: true,
+      gameName: "Teemo",
+      tagLine: "PH2",
+      platform: "ph2",
+      region: "sea",
+      createdAt,
+    },
+    {
+      discordId: "owner",
+      puuid: "th-account",
+      isMain: false,
+      gameName: "Teemo",
+      tagLine: "TH2",
+      platform: "th2",
+      region: "sea",
+      createdAt,
+    },
+    {
+      discordId: "other-owner",
+      puuid: "sg-account",
+      isMain: true,
+      gameName: "Teemo",
+      tagLine: "SG2",
+      platform: "sg2",
+      region: "sea",
+      createdAt,
+    },
+  ]);
+  const watcher = {
+    guildId: "guild",
+    targetDiscordId: "owner",
+    requesterId: "owner",
+    channelId: "channel",
+    lastState: "IN_GAME" as const,
+    currentGameId: "123",
+    currentGameMode: "KIWI",
+    currentGameObservation: { championId: 17, elapsedSeconds: 300 },
+    currentNotificationMessageId: "active-message",
+    pendingResultMatchId: "PH2_100",
+    pendingResultGameMode: "CLASSIC",
+    pendingResultStartedAt: createdAt,
+    pendingResultNotificationMessageId: "result-message",
+    createdAt,
+  };
+  await database.db.insert(schema.matchWatchers).values([
+    { ...watcher, riotAccountPuuid: "ph-account" },
+    { ...watcher, riotAccountPuuid: "th-account", currentMatchId: "TH2_123" },
+    {
+      ...watcher,
+      riotAccountPuuid: "sg-account",
+      targetDiscordId: "other-owner",
+      pendingResultMatchId: null,
+    },
+    {
+      ...watcher,
+      guildId: "other-guild",
+      riotAccountPuuid: "ph-account",
+      currentGameId: null,
+    },
+  ]);
+  await database.db.insert(schema.matches).values({ id: "PH2_100", createdAt });
+  await database.db.insert(schema.matchParticipants).values({
+    matchId: "PH2_100",
+    userId: "owner",
+    riotPuuid: "ph-account",
+    team: "BLUE",
+    win: true,
+    lane: "Top",
+    kills: 4,
+    deaths: 2,
+    assists: 8,
+    cs: 100,
+    gold: 10000,
+  });
+  await database.db.insert(schema.pendingMatchRankSnapshots).values({
+    platform: "ph2",
+    gameId: "123",
+    puuid: "ph-account",
+    queueType: "RANKED_SOLO_5x5",
+    tier: "GOLD",
+    rank: "I",
+    leaguePoints: 55,
+    fetchedAt: createdAt,
+    expiresAt: new Date("2026-09-01T06:00:00.000Z"),
+  });
+  await database.db.insert(schema.matchRankSnapshots).values({
+    matchId: "PH2_100",
+    platform: "ph2",
+    puuid: "ph-account",
+    queueType: "RANKED_SOLO_5x5",
+    phase: "before",
+    tier: "GOLD",
+    rank: "I",
+    leaguePoints: 40,
+    fetchedAt: createdAt,
+  });
+  await database.db.insert(schema.externalMatchDetails).values({
+    matchId: "PH2_100",
+    provider: "opgg",
+    providerRegion: "ph",
+    providerMatchId: "provider-history",
+    detailUrl: "https://example.com/history",
+    providerCreatedAt: createdAt,
+  });
+  await database.db.insert(schema.notificationDeliveries).values([
+    {
+      key: "delivered",
+      guildId: "guild",
+      targetDiscordId: "owner",
+      riotAccountPuuid: "ph-account",
+      channelId: "channel",
+      embed: { title: "historical result" },
+      messageId: "receipt-message",
+      matchId: "PH2_100",
+      stage: 2,
+      revision: 0,
+      status: "delivered",
+      nextAttemptAt: 1,
+      createdAt: 1,
+    },
+    {
+      key: "pending",
+      guildId: "guild",
+      targetDiscordId: "owner",
+      riotAccountPuuid: "ph-account",
+      channelId: "channel",
+      embed: { title: "current game" },
+      messageId: "active-message",
+      matchId: "PH2_123",
+      stage: 0,
+      revision: 0,
+      status: "pending",
+      leaseId: "existing-lease",
+      leaseUntil: 100,
+      nextAttemptAt: 1,
+      createdAt: 1,
+    },
+  ]);
+  const beforeAccounts = await database.db.select().from(schema.riotAccounts);
+  const beforeWatchers = await database.db.select().from(schema.matchWatchers);
+  const history = async () => ({
+    users: await database.db.select().from(schema.users),
+    matches: await database.db.select().from(schema.matches),
+    participants: await database.db.select().from(schema.matchParticipants),
+    pending: await database.db.select().from(schema.pendingMatchRankSnapshots),
+    rank: await database.db.select().from(schema.matchRankSnapshots),
+    external: await database.db.select().from(schema.externalMatchDetails),
+    notifications: await database.db.select().from(
+      schema.notificationDeliveries,
+    ),
+  });
+  const beforeHistory = await history();
+
+  // Act
+  await migrate(database.db, { migrationsFolder });
+  await migrate(database.db, { migrationsFolder });
+
+  // Assert
+  assertEquals(
+    await database.db.select().from(schema.riotAccounts),
+    beforeAccounts.map((account) => ({
+      ...account,
+      platform: "sg2",
+      region: "sea",
+    })),
+  );
+  assertEquals(
+    await database.db.select().from(schema.matchWatchers),
+    beforeWatchers.map((saved) => ({
+      ...saved,
+      currentMatchId:
+        saved.riotAccountPuuid === "ph-account" && saved.currentGameId !== null
+          ? "PH2_123"
+          : saved.currentMatchId,
+    })),
+  );
+  assertEquals(await history(), beforeHistory);
+});

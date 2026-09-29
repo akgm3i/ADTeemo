@@ -80,6 +80,8 @@ function harness() {
   };
   const service = createMatchTrackingService({
     apiClient: {
+      getLeagueEntriesByPuuid: () => Promise.resolve([]),
+      upsertPendingRankSnapshots: () => Promise.resolve({ success: true }),
       getEnabledMatchWatchers: () =>
         Promise.resolve({ success: true, watchers: [watcher] }),
       getRiotAccount: () => Promise.resolve({ success: true, account }),
@@ -90,22 +92,6 @@ function harness() {
           match: aram,
           rankSummary: null,
           opggDetail: null,
-          notificationIntent: {
-            kind: "result",
-            match: aram,
-            rankSummary: null,
-            opggDetail: null,
-          },
-          stateTransition: {
-            state: {
-              pendingResultMatchId: null,
-              pendingResultGameMode: null,
-              pendingResultObservation: null,
-              pendingResultNotificationMessageId: null,
-              pendingResultStartedAt: null,
-            },
-            messageIdField: null,
-          },
         }),
       inspectMatchWatcherActiveGame: () => {
         state.inspections++;
@@ -113,8 +99,6 @@ function harness() {
           success: true,
           account,
           activeGame: null,
-          notificationIntent: null,
-          stateTransition: null,
         });
       },
       updateMatchWatcherState: (_guild, _target, patch) => {

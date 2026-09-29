@@ -47,13 +47,43 @@ const DEFAULT_DB_ACTIONS_CONFIG: DbActionsConfig = {
   pendingRankSnapshotTtlMs: DEFAULT_PENDING_RANK_SNAPSHOT_TTL_MS,
 };
 
+// A libsql transaction owns a connection; ordinary statements and subsequent
+// transactions use another one. Serialize complete repository operations on the
+// shared database, including reads that reconcile watchers. Only this public
+// boundary enqueues: repository-local calls and transaction statements do not.
+// No external HTTP/Discord work belongs inside a DB action.
+const databaseQueues = new WeakMap<Database, { tail: Promise<void> }>();
+
+function serializeActions<
+  T extends Record<string, (...args: never[]) => Promise<unknown>>,
+>(database: Database, actions: T): T {
+  let queue = databaseQueues.get(database);
+  if (!queue) {
+    queue = { tail: Promise.resolve() };
+    databaseQueues.set(database, queue);
+  }
+  const sharedQueue = queue;
+  // Preserve each action's parameter and result types; the wrapper only changes
+  // when the existing function starts, not its arguments or return value.
+  return Object.fromEntries(
+    Object.entries(actions).map(([name, action]) => [
+      name,
+      (...args: never[]) => {
+        const result = sharedQueue.tail.then(() => action(...args));
+        sharedQueue.tail = result.then(() => undefined, () => undefined);
+        return result;
+      },
+    ]),
+  ) as T;
+}
+
 export function createDbActions(
   database: Database,
   config: Partial<DbActionsConfig> = {},
 ) {
   const resolvedConfig = { ...DEFAULT_DB_ACTIONS_CONFIG, ...config };
 
-  return {
+  return serializeActions(database, {
     ...createNotificationDeliveriesRepository(database),
     ...createUsersRepository(database),
     ...createGuildsRepository(database),
@@ -62,7 +92,7 @@ export function createDbActions(
     ...createAuthRepository(database),
     ...createRiotStaticDataRepository(database),
     ...createMatchWatchersRepository(database, resolvedConfig),
-  };
+  });
 }
 
 export type DbActions = ReturnType<typeof createDbActions>;

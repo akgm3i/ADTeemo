@@ -123,7 +123,20 @@
         "unknown": "An unexpected error occurred."
       },
       "cancelled": "Match stats registration was cancelled.",
-      "timeout": "Timed out. Match stats registration was cancelled."
+      "timeout": "Timed out. Match stats registration was cancelled.",
+      "sessionContext": "Event {eventId}, game {gameSequence}, winner: {winner}. Your entered values remain on this screen.",
+      "promptStats": "Enter KDA, CS, and Gold together for {username}.",
+      "inputButton": "Enter stats",
+      "resumeButton": "Resume input",
+      "modalTitle": "Stats: {username}",
+      "paused": "The input wait timed out. Your entered values are retained. Resume within 10 minutes or cancel.",
+      "expired": "This input session expired. No save was made. Keep the values below and run the command again for the same event and game number.",
+      "invalidStats": "Check the input format. Use 10/2/8 for KDA and nonnegative integers for CS and Gold. Your values will be prefilled for correction.",
+      "retrySave": "The save result could not be confirmed. The values below are retained. You can resend the same data for the same game number.",
+      "retryButton": "Resend same data",
+      "saving": "Saving match stats…",
+      "saveUnconfirmed": "The input session ended without a confirmed save result. Keep the values below and resend the same data for the same event and game number.",
+      "confirmationPaused": "Confirmation timed out. Your values are retained. Check the summary and confirm or resend, or cancel."
     }
   },
   "matchTracking": {

@@ -1,5 +1,5 @@
 import systemMessages from "../ja_JP/system.json" with { type: "json" };
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 import { afterEach, beforeEach, describe, test } from "@std/testing/bdd";
 import { assertSpyCalls, stub } from "@std/testing/mock";
 import type { Stub } from "@std/testing/mock";
@@ -8,6 +8,7 @@ import type { MessageKey } from "./main.ts";
 
 const MOCK_JA_SYSTEM = {
   greeting: "こんにちは、{name}さん",
+  summary: "{value}|{value}|{count}|{missing}",
   common: {
     ok: "はい",
     cancel: "キャンセル",
@@ -75,6 +76,19 @@ describe("formatMessage (Message Translation)", () => {
       assertEquals(result, "こんにちは、ゲストさん");
     });
 
+    for (const value of ["$&", "$$", "$`", "$'", "{count}"]) {
+      test(`置換値が ${value} のとき、反復placeholderへ文字列のまま挿入し、0と未指定値を保持する`, () => {
+        // Act
+        const result = formatMessage("summary" as MessageKey, {
+          value,
+          count: 0,
+        });
+
+        // Assert
+        assertEquals(result, `${value}|${value}|0|{missing}`);
+      });
+    }
+
     test("見つからないキーについては、警告を表示しキー自体を文字列として返す", () => {
       // Arrange
       const missingKey = "a.b.c" as MessageKey;
@@ -138,3 +152,35 @@ test("未提供の言語を指定した場合、実在する日本語systemカ�
     systemMessages.common.info.guildOnlyCommand,
   );
 });
+
+for (
+  const options of [
+    { lang: "ja_JP", theme: "system" },
+    { lang: "ja_JP", theme: "teemo" },
+    { lang: "en_US", theme: "system" },
+    { lang: "en_US", theme: "teemo" },
+    { lang: "not-supported", theme: "teemo" },
+  ]
+) {
+  for (const eventName of ["$&", "{organizer}"]) {
+    test(`${options.lang}/${options.theme} の募集文でイベント名 ${eventName} をそのまま表示する`, () => {
+      // Arrange
+      const messages = initializeMessages(options);
+
+      // Act
+      const result = messages.formatMessage(
+        "customGame.create.recruitmentMessage",
+        {
+          eventName,
+          organizer: "review-organizer",
+          startTime: "20:00",
+        },
+      );
+
+      // Assert
+      assertStringIncludes(result, `**${eventName}**`);
+      assertStringIncludes(result, "review-organizer");
+      assertStringIncludes(result, "**20:00**");
+    });
+  }
+}

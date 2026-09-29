@@ -5,13 +5,18 @@ import { createApiClient } from "../../bot/src/api_client.ts";
 
 export function createInProcessBotApiClient(
   app: ReturnType<typeof createApp>,
-  transformResponse?: (response: Response, request: Request) => Response,
+  transformResponse?: (
+    response: Response,
+    request: Request,
+  ) => Response | Promise<Response>,
 ) {
   const rpcClient = hcWithType("http://adteemo.integration.test", {
     headers: TEST_BOT_SERVICE_AUTH_HEADERS,
     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
       const request = new Request(input, init);
-      const response = await app.fetch(request);
+      const response = await app.fetch(
+        transformResponse ? request.clone() : request,
+      );
       return transformResponse
         ? transformResponse(response, request)
         : response;

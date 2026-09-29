@@ -1,7 +1,7 @@
 import { assertEquals, assertFalse, assertRejects } from "@std/assert";
 import { beforeEach, describe, test } from "@std/testing/bdd";
 import { assertSpyCalls, stub } from "@std/testing/mock";
-import { riotApi } from "./riot_api.ts";
+import { createRiotApi, defaultSleeper, riotApi } from "./riot_api.ts";
 import {
   activeGameResponseSchema,
   riotMatchResponseSchema,
@@ -423,5 +423,40 @@ for (const win of [true, false, undefined]) {
         info: { ...payload.info, gameMode: "CLASSIC" },
       }).success,
     );
+  });
+}
+
+for (const platform of ["ph2", "th2"] as const) {
+  test(`${platform} の現在情報はSG2で取得し、旧Match-v5 IDは変更しない`, async () => {
+    // Arrange
+    const urls: string[] = [];
+    const api = createRiotApi({
+      fetch: (input) => {
+        const url = String(input);
+        urls.push(url);
+        return Promise.resolve(
+          url.includes("/league/")
+            ? Response.json([])
+            : new Response(null, { status: 404 }),
+        );
+      },
+      env: { get: (key) => key === "RIOT_API_KEY" ? "test-key" : undefined },
+      clock: { now: () => 0 },
+      sleeper: defaultSleeper,
+      logger: { warn() {} },
+    });
+    const matchId = `${platform.toUpperCase()}_12345`;
+
+    // Act
+    await api.getActiveGameByPuuid(platform, "account");
+    await api.getLeagueEntriesByPuuid(platform, "account");
+    await api.getMatchById("sea", matchId);
+
+    // Assert
+    assertEquals(urls, [
+      "https://sg2.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/account",
+      "https://sg2.api.riotgames.com/lol/league/v4/entries/by-puuid/account",
+      `https://sea.api.riotgames.com/lol/match/v5/matches/${matchId}`,
+    ]);
   });
 }

@@ -95,16 +95,6 @@ function normalizedParticipants(
 }
 
 export function createEventsRepository(database: Database) {
-  // Match the custom-match writer: serialize roster writes on this API process
-  // so concurrent retries observe the first commit instead of SQLITE_BUSY.
-  // The transaction below still protects the roster across DB connections.
-  let rosterWriteTail: Promise<void> = Promise.resolve();
-  function serializeRosterWrite<T>(operation: () => Promise<T>) {
-    const result = rosterWriteTail.then(operation);
-    rosterWriteTail = result.then(() => undefined, () => undefined);
-    return result;
-  }
-
   async function scopedEvent(
     query: typeof database.query,
     scope: EventScope,
@@ -445,59 +435,57 @@ export function createEventsRepository(database: Database) {
     allowReplace: boolean,
   ) {
     const participants = eventParticipantsSchema.parse(input.participants);
-    return await serializeRosterWrite(() =>
-      database.transaction(async (tx) => {
-        const event = await scopedEvent(tx.query, input);
-        if (
-          event.phase !== "RECRUITING" || event.syncState !== "CONSISTENT"
-        ) {
-          throw new DomainConflictError(
-            "Participants can only be saved for a consistent recruiting event",
-          );
-        }
+    return await database.transaction(async (tx) => {
+      const event = await scopedEvent(tx.query, input);
+      if (
+        event.phase !== "RECRUITING" || event.syncState !== "CONSISTENT"
+      ) {
+        throw new DomainConflictError(
+          "Participants can only be saved for a consistent recruiting event",
+        );
+      }
 
-        const existing = await tx.query.customGameEventParticipants.findMany({
-          where: eq(customGameEventParticipants.eventId, event.id),
-        });
-        if (
-          existing.length > 0 &&
-          JSON.stringify(normalizedParticipants(existing)) ===
-            JSON.stringify(normalizedParticipants(participants))
-        ) {
-          return existing;
-        }
+      const existing = await tx.query.customGameEventParticipants.findMany({
+        where: eq(customGameEventParticipants.eventId, event.id),
+      });
+      if (
+        existing.length > 0 &&
+        JSON.stringify(normalizedParticipants(existing)) ===
+          JSON.stringify(normalizedParticipants(participants))
+      ) {
+        return existing;
+      }
 
-        if (existing.length > 0 && !allowReplace) {
-          throw new DomainConflictError("Event roster is already confirmed");
-        }
+      if (existing.length > 0 && !allowReplace) {
+        throw new DomainConflictError("Event roster is already confirmed");
+      }
 
-        const existingMatch = await tx.query.matches.findFirst({
-          where: eq(matches.customGameEventId, event.id),
-        });
-        if (existingMatch) {
-          throw new DomainConflictError(
-            "Participants cannot change after a match is recorded",
-          );
-        }
+      const existingMatch = await tx.query.matches.findFirst({
+        where: eq(matches.customGameEventId, event.id),
+      });
+      if (existingMatch) {
+        throw new DomainConflictError(
+          "Participants cannot change after a match is recorded",
+        );
+      }
 
-        for (const participant of participants) {
-          await tx.insert(users).values(
-            userInsertSchema.parse({ discordId: participant.userId }),
-          ).onConflictDoNothing().execute();
-        }
-        await tx.delete(customGameEventParticipants).where(
-          eq(customGameEventParticipants.eventId, event.id),
-        ).execute();
-        return await tx.insert(customGameEventParticipants).values(
-          participants.map((participant) =>
-            eventParticipantInsertSchema.parse({
-              ...participant,
-              eventId: event.id,
-            })
-          ),
-        ).returning();
-      })
-    );
+      for (const participant of participants) {
+        await tx.insert(users).values(
+          userInsertSchema.parse({ discordId: participant.userId }),
+        ).onConflictDoNothing().execute();
+      }
+      await tx.delete(customGameEventParticipants).where(
+        eq(customGameEventParticipants.eventId, event.id),
+      ).execute();
+      return await tx.insert(customGameEventParticipants).values(
+        participants.map((participant) =>
+          eventParticipantInsertSchema.parse({
+            ...participant,
+            eventId: event.id,
+          })
+        ),
+      ).returning();
+    });
   }
 
   function saveCustomGameEventParticipants(

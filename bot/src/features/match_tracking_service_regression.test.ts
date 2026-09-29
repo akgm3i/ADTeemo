@@ -702,19 +702,6 @@ describe("match tracking serviceの共有投稿と連戦の回帰", () => {
             success: true as const,
             account: account(),
             activeGame: game,
-            notificationIntent: value === due
-              ? { kind: "progress" as const, activeGame: game }
-              : null,
-            stateTransition: value === due
-              ? {
-                state: {
-                  lastState: "IN_GAME" as const,
-                  currentGameId: "12345",
-                  lastInGameNotifiedAt: trackingNow,
-                },
-                messageIdField: "currentNotificationMessageId" as const,
-              }
-              : null,
           },
         })),
         notifications: [{ messageId: "due-message", resultId: "due-message" }],
@@ -732,11 +719,6 @@ describe("match tracking serviceの共有投稿と連戦の回帰", () => {
           state: {
             inspectionBatchId: "00000000-0000-4000-8000-000000000001",
             riotAccountPuuid: value.riotAccountPuuid,
-            lastState: value.lastState,
-            currentGameId: value.currentGameId,
-            currentNotificationMessageId: value.currentNotificationMessageId,
-            gameStartedAt: value.gameStartedAt,
-            lastInGameNotifiedAt: value.lastInGameNotifiedAt,
           },
         })),
       );
@@ -752,7 +734,7 @@ describe("match tracking serviceの共有投稿と連戦の回帰", () => {
     });
   }
 
-  test("Backendがtimeout intentを返すと、期限切れ通知後にpendingを解除する", async () => {
+  test("保存済みpendingの期限が過ぎたら、外部結果を取得せず期限切れ通知後に解除する", async () => {
     using _batchId = stub(
       crypto,
       "randomUUID",
@@ -760,20 +742,12 @@ describe("match tracking serviceの共有投稿と連戦の回帰", () => {
     );
     using h = trackingServiceHarness({
       watchers: [
-        watcher({ lastState: "FETCHING_RESULT", currentMatchId: "JP1_12345" }),
+        watcher({
+          lastState: "FETCHING_RESULT",
+          currentMatchId: "JP1_12345",
+          gameStartedAt: new Date(trackingNow.getTime() - 10_800_000),
+        }),
       ],
-      results: [{
-        targetDiscordId: "target-1",
-        result: {
-          success: true,
-          account: account(),
-          match: null,
-          rankSummary: null,
-          opggDetail: null,
-          notificationIntent: { kind: "timeout", matchId: "JP1_12345" },
-          stateTransition: null,
-        },
-      }],
       notifications: [{
         messageId: null,
         resultId: "timeout-message",
@@ -1010,3 +984,145 @@ test("次のMayhemが始まってから前試合の結果取得が拒否され�
     elapsedSeconds: 120,
   });
 });
+
+test("旧PH2と新SG2でnumeric gameIdが一致しても、旧結果と新しい開始投稿・Mayhem観測を分離する", async () => {
+  // Arrange
+  const movedAccount = account({ platform: "sg2", region: "sea" });
+  const previousObservation = { championId: 17, elapsedSeconds: 3600 };
+  const nextGame = {
+    ...activeGame(),
+    gameMode: "KIWI",
+    gameQueueConfigId: 2400,
+    gameStartTime: trackingNow.getTime() - 60_000,
+    gameLength: 60,
+    participants: [{ puuid: "puuid-1", championId: 99, teamId: 100 }],
+  };
+  const oldMatch = match();
+  oldMatch.metadata.matchId = "PH2_12345";
+  using h = trackingServiceHarness({
+    watchers: [watcher({
+      ...inGame(),
+      currentMatchId: "PH2_12345",
+      currentGameMode: "KIWI",
+      currentGameObservation: previousObservation,
+    })],
+    accounts: [movedAccount],
+    active: [{
+      targetDiscordId: "target-1",
+      result: activeInspection(nextGame, movedAccount),
+    }],
+    results: [{
+      targetDiscordId: "target-1",
+      result: resultInspection(oldMatch, movedAccount),
+    }],
+    notifications: [
+      { messageId: null, resultId: "new-active", intent: "started:sg2:12345" },
+      { messageId: "shared", resultId: "shared", intent: "result:PH2_12345" },
+    ],
+  });
+
+  // Act
+  await h.service.processMatchWatchers();
+
+  // Assert
+  assertEquals(h.errors, []);
+  assertEquals(h.states.at(-1)?.[2].currentMatchId, "SG2_12345");
+  assertEquals(h.states.at(-1)?.[2].currentNotificationMessageId, "new-active");
+  assertEquals(h.states.at(-1)?.[2].currentGameObservation, {
+    championId: 99,
+    elapsedSeconds: 60,
+  });
+  assertEquals(h.renderedResults[0][5], previousObservation);
+});
+
+test("旧pendingの期限切れはBotが結果取得前に判断し、新しいcurrentMatchIdを保持する", async () => {
+  // Arrange
+  using h = trackingServiceHarness({
+    watchers: [watcher({
+      ...inGame(),
+      currentGameId: "67890",
+      currentMatchId: "JP1_67890",
+      lastInGameNotifiedAt: trackingNow,
+      pendingResultMatchId: "JP1_12345",
+      pendingResultNotificationMessageId: "old-result",
+      pendingResultStartedAt: new Date(trackingNow.getTime() - 10_800_000),
+    })],
+    accounts: [account()],
+    active: [{
+      targetDiscordId: "target-1",
+      result: activeInspection(activeGame(67890)),
+    }],
+    notifications: [{
+      messageId: "old-result",
+      resultId: "old-result",
+      intent: "timeout:JP1_12345",
+    }],
+  });
+
+  // Act
+  await h.service.processMatchWatchers();
+
+  // Assert
+  assertEquals(h.errors, []);
+  assertEquals(h.states[0][2].pendingResultMatchId, null);
+  assertEquals(h.states[0][2].currentMatchId, "JP1_67890");
+});
+
+for (const saveFails of [false, true]) {
+  test(`ランク開始時に取得したbeforeを${saveFails ? "保存できなくても警告して" : "保存して"}開始通知を継続する`, async () => {
+    // Arrange
+    const entries = [{
+      queueType: "RANKED_SOLO_5x5" as const,
+      tier: "GOLD",
+      rank: "I",
+      leaguePoints: 42,
+      wins: 10,
+      losses: 8,
+    }];
+    using h = trackingServiceHarness({
+      watchers: [watcher()],
+      active: [{
+        targetDiscordId: "target-1",
+        result: activeInspection(activeGame()),
+      }],
+      leagueEntries: entries,
+      rankSaveResult: saveFails
+        ? { success: false, error: "repository unavailable" }
+        : { success: true },
+      notifications: [{
+        messageId: null,
+        resultId: "started",
+        intent: "started:jp1:12345",
+      }],
+    });
+
+    // Act
+    await h.service.processMatchWatchers();
+
+    // Assert
+    assertEquals(h.rankReads, [["jp1", "puuid-1"]]);
+    assertEquals(h.rankSnapshots, [{
+      platform: "jp1",
+      gameId: "12345",
+      puuid: "puuid-1",
+      snapshots: [
+        { ...entries[0], fetchedAt: trackingNow },
+        {
+          queueType: "RANKED_FLEX_SR",
+          tier: null,
+          rank: null,
+          leaguePoints: null,
+          wins: null,
+          losses: null,
+          fetchedAt: trackingNow,
+        },
+      ],
+    }]);
+    assertEquals(h.states[0][2].currentNotificationMessageId, "started");
+    assertEquals(
+      h.warnings.map(([event]) => event),
+      saveFails ? ["match_tracking.rank_snapshot_pending_save_failed"] : [],
+    );
+    assertEquals(h.errors, []);
+  });
+}

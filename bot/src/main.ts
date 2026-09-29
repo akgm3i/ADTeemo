@@ -7,6 +7,7 @@ import {
   type Guild,
   Interaction,
   MessageFlags,
+  Partials,
 } from "discord.js";
 import { ensureRoles } from "./features/role-management.ts";
 import {
@@ -35,6 +36,8 @@ const customGameEventSaga = createCustomGameEventSaga(apiClient);
 
 // Create a new client instance
 const client = new Client({
+  // A leaving member may not have arrived in the initial member chunks yet.
+  partials: [Partials.GuildMember],
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
@@ -69,7 +72,7 @@ async function initializeMatchTracking(readyClient: Client<true>) {
       )
     ) {
       if (!readyClient.guilds.cache.has(guildId)) {
-        await membershipSync.sync(guildId, () => Promise.resolve([]));
+        await membershipSync.removeGuild(guildId);
       }
     }
     await membershipSync.initialize(
@@ -106,10 +109,12 @@ async function refreshGuildMembers(guild: Guild) {
   });
 }
 client.on(Events.GuildMemberAdd, (member) => {
-  void refreshGuildMembers(member.guild);
+  if (!member.user.bot) {
+    void membershipSync.addMember(member.guild.id, member.id);
+  }
 });
 client.on(Events.GuildMemberRemove, (member) => {
-  void refreshGuildMembers(member.guild);
+  void membershipSync.removeMember(member.guild.id, member.id);
 });
 client.on(Events.GuildAvailable, (guild) => {
   // Initial GUILD_CREATE events precede ClientReady, which fetches every guild.
@@ -117,9 +122,24 @@ client.on(Events.GuildAvailable, (guild) => {
   if (!client.isReady()) return;
   void refreshGuildMembers(guild);
 });
+client.on(Events.GuildCreate, (guild) => {
+  if (client.isReady()) void refreshGuildMembers(guild);
+});
+client.on(Events.GuildUnavailable, (guild) => {
+  void membershipSync.suspendGuild(guild.id);
+});
 client.on(Events.GuildDelete, (guild) => {
-  membershipSync.cancelRefresh(guild.id);
-  void membershipSync.refresh(guild.id, () => Promise.resolve([]));
+  void membershipSync.removeGuild(guild.id);
+});
+// discord.js 14.22 does not surface RATE_LIMITED through members.fetch().
+client.on(Events.Raw, (packet) => {
+  if (packet.t !== "RATE_LIMITED") return;
+  const data = packet.d;
+  if (
+    data?.opcode === 8 && typeof data.meta?.guild_id === "string" &&
+    typeof data.retry_after === "number" && Number.isFinite(data.retry_after) &&
+    data.retry_after >= 0
+  ) membershipSync.rateLimited(data.meta.guild_id, data.retry_after);
 });
 
 // When the client is ready, run this code (only once)

@@ -1,10 +1,13 @@
 import { eq } from "drizzle-orm";
+import { ZodError } from "zod";
 import { assert, assertEquals, assertFalse, assertRejects } from "@std/assert";
 import { describe, test } from "@std/testing/bdd";
 import {
   DomainConflictError,
+  EventNotFoundError,
   MatchWatcherLimitError,
   RecordNotFoundError,
+  RiotAccountNotFoundError,
 } from "../errors.ts";
 import { createMigratedTestDatabase } from "./integration_test_harness.ts";
 import {
@@ -28,23 +31,6 @@ function riotAccount(discordId: string, puuid = `puuid-${discordId}`) {
     tagLine: "JP1",
     platform: "jp1" as const,
     region: "asia" as const,
-  };
-}
-
-function participant(
-  userId: string,
-  lane: "Top" | "Jungle" = "Top",
-) {
-  return {
-    userId,
-    team: lane === "Top" ? ("BLUE" as const) : ("RED" as const),
-    win: lane === "Top",
-    lane,
-    kills: 1,
-    deaths: 2,
-    assists: 3,
-    cs: 100,
-    gold: 10_000,
   };
 }
 
@@ -793,6 +779,29 @@ describe("migration適用済みSQLiteでのrepository integration", () => {
     );
   });
 
+  test("10件の戦績に同じuserが重複していると、現行記録経路でも試合と参加者を保存しない", async () => {
+    // Arrange
+    await using database = await createMigratedTestDatabase();
+    const scope = await prepareRecordableCustomGame(database);
+    const stats = eventMatchStats.map((entry, index) =>
+      index === 9 ? { ...entry, userId: eventMatchStats[0].userId } : entry
+    );
+
+    // Act / Assert
+    await assertRejects(
+      () =>
+        database.actions.recordCustomMatch({
+          ...scope,
+          gameSequence: 1,
+          winner: "BLUE",
+          stats,
+        }),
+      ZodError,
+    );
+    assertEquals(await database.db.select().from(matches), []);
+    assertEquals(await database.db.select().from(matchParticipants), []);
+  });
+
   test("参加者のcanonical Riot accountが1件でもないと、matchとparticipantを残さない", async () => {
     // Arrange
     await using database = await createMigratedTestDatabase();
@@ -817,13 +826,15 @@ describe("migration適用済みSQLiteでのrepository integration", () => {
     await database.actions.upsertRiotAccount(riotAccount("user-1"));
 
     // Act & Assert
-    await assertRejects(() =>
-      database.actions.recordCustomMatch({
-        ...scope,
-        gameSequence: 1,
-        winner: "BLUE",
-        stats: eventMatchStats,
-      })
+    await assertRejects(
+      () =>
+        database.actions.recordCustomMatch({
+          ...scope,
+          gameSequence: 1,
+          winner: "BLUE",
+          stats: eventMatchStats,
+        }),
+      RiotAccountNotFoundError,
     );
     assertEquals(await database.db.select().from(matches), []);
     assertEquals(await database.db.select().from(matchParticipants), []);
@@ -872,7 +883,12 @@ describe("migration適用済みSQLiteでのrepository integration", () => {
     };
 
     // Act & Assert
-    await assertRejects(() => database.actions.recordCustomMatch(input));
+    const error = await assertRejects(() =>
+      database.actions.recordCustomMatch(input)
+    );
+    assertFalse(error instanceof RecordNotFoundError);
+    assertFalse(error instanceof RiotAccountNotFoundError);
+    assertFalse(error instanceof EventNotFoundError);
     assertEquals(await database.db.select().from(matches), []);
     assertEquals(await database.db.select().from(matchParticipants), []);
 
@@ -1027,22 +1043,6 @@ describe("migration適用済みSQLiteでのrepository integration", () => {
     assertEquals(user.riotId, null);
     assertEquals(user.updatedAt, initialUser?.updatedAt);
     assert(accounts[0].updatedAt instanceof Date);
-  });
-
-  test("legacy Riot IDを既存ユーザーへ再リンクすると、値とupdatedAtを実DBで更新する", async () => {
-    // Arrange
-    await using database = await createMigratedTestDatabase();
-    await database.actions.linkUserWithRiotId("user-1", "puuid-before");
-
-    // Act
-    await database.actions.linkUserWithRiotId("user-1", "puuid-after");
-    const saved = await database.db.query.users.findFirst({
-      where: eq(users.discordId, "user-1"),
-    });
-
-    // Assert
-    assertEquals(saved?.riotId, "puuid-after");
-    assert(saved?.updatedAt instanceof Date);
   });
 
   test("同じcreatorとtargetを別guild・channelへ保存すると、取得とcascadeがguild境界を越えない", async () => {
@@ -1256,200 +1256,5 @@ describe("migration適用済みSQLiteでのrepository integration", () => {
       "target-1",
     ]);
     assertEquals(rolledBackRequester, undefined);
-  });
-
-  test("matchと全participantを保存して同じmatchを再送すると、1回分だけcommitする", async () => {
-    // Arrange
-    await using database = await createMigratedTestDatabase();
-    await database.actions.upsertUser("user-1");
-    await database.actions.upsertUser("user-2");
-    const input = {
-      matchId: "match-1",
-      participants: [
-        participant("user-1", "Top"),
-        participant("user-2", "Jungle"),
-      ],
-    };
-
-    // Act
-    const first = await database.actions.createMatchWithParticipants(input);
-    const second = await database.actions.createMatchWithParticipants(input);
-    const savedMatches = await database.db.select().from(matches);
-    const savedParticipants = await database.db.select().from(
-      matchParticipants,
-    );
-
-    // Assert
-    assertEquals(first.created, true);
-    assertEquals(second.created, false);
-    assertEquals(savedMatches.map((match) => match.id), ["match-1"]);
-    assertEquals(
-      savedParticipants.map((savedParticipant) => savedParticipant.userId)
-        .toSorted(),
-      ["user-1", "user-2"],
-    );
-  });
-
-  test("別処理でmatch行だけが作成済みでも、全participantを保存して再送時は重複しない", async () => {
-    // Arrange
-    await using database = await createMigratedTestDatabase();
-    await database.actions.upsertUser("user-1");
-    await database.actions.upsertUser("user-2");
-    await database.actions.upsertExternalMatchDetail({
-      matchId: "match-existing",
-      provider: "opgg",
-      providerRegion: "jp",
-      providerMatchId: "existing",
-      detailUrl: "https://example.com/matches/existing",
-      providerCreatedAt: new Date("2026-07-21T00:00:00.000Z"),
-      averageTier: null,
-    });
-    const input = {
-      matchId: "match-existing",
-      participants: [
-        participant("user-1", "Top"),
-        participant("user-2", "Jungle"),
-      ],
-    };
-
-    // Act
-    const first = await database.actions.createMatchWithParticipants(input);
-    const second = await database.actions.createMatchWithParticipants(input);
-    const savedParticipants = await database.db.select().from(
-      matchParticipants,
-    );
-
-    // Assert
-    assertEquals(first.created, true);
-    assertEquals(first.participants.length, 2);
-    assertEquals(second.created, false);
-    assertEquals(savedParticipants.length, 2);
-  });
-
-  test("単体participantだけが保存済みのmatchへ全participantを保存すると、不足分だけ追加して再送時は重複しない", async () => {
-    // Arrange
-    await using database = await createMigratedTestDatabase();
-    await database.actions.upsertUser("user-1");
-    await database.actions.upsertUser("user-2");
-    await database.db.insert(matches).values({ id: "match-partial" });
-    await database.actions.createMatchParticipant({
-      matchId: "match-partial",
-      ...participant("user-1", "Top"),
-    });
-    const input = {
-      matchId: "match-partial",
-      participants: [
-        participant("user-1", "Top"),
-        participant("user-2", "Jungle"),
-      ],
-    };
-
-    // Act
-    const first = await database.actions.createMatchWithParticipants(input);
-    const second = await database.actions.createMatchWithParticipants(input);
-    const savedParticipants = await database.db.select().from(
-      matchParticipants,
-    );
-
-    // Assert
-    assertEquals(first.created, true);
-    assertEquals(
-      first.participants.map((savedParticipant) => savedParticipant.userId)
-        .toSorted(),
-      ["user-1", "user-2"],
-    );
-    assertEquals(second.created, false);
-    assertEquals(
-      savedParticipants.map((savedParticipant) => savedParticipant.userId)
-        .toSorted(),
-      ["user-1", "user-2"],
-    );
-  });
-
-  test("同じuserIdを複数participantとして保存すると、入力を拒否してmatchもparticipantも作成しない", async () => {
-    // Arrange
-    await using database = await createMigratedTestDatabase();
-    await database.actions.upsertUser("user-1");
-    const input = {
-      matchId: "match-duplicate-user",
-      participants: [
-        participant("user-1", "Top"),
-        participant("user-1", "Jungle"),
-      ],
-    };
-
-    // Act & Assert
-    await assertRejects(() =>
-      database.actions.createMatchWithParticipants(input)
-    );
-    assertEquals(
-      await database.db.select().from(matches).where(
-        eq(matches.id, input.matchId),
-      ),
-      [],
-    );
-    assertEquals(
-      await database.db.select().from(matchParticipants),
-      [],
-    );
-  });
-
-  test("participant一括保存でforeign key違反になると、matchを含めてrollbackし次のtransactionを実行できる", async () => {
-    // Arrange
-    await using database = await createMigratedTestDatabase();
-    await database.actions.upsertUser("user-1");
-    const input = {
-      matchId: "match-rollback",
-      participants: [
-        participant("user-1", "Top"),
-        participant("missing-user", "Jungle"),
-      ],
-    };
-
-    // Act & Assert
-    await assertRejects(() =>
-      database.actions.createMatchWithParticipants(input)
-    );
-    assertEquals(
-      await database.db.select().from(matches).where(
-        eq(matches.id, input.matchId),
-      ),
-      [],
-    );
-    assertEquals(
-      await database.db.select().from(matchParticipants),
-      [],
-    );
-
-    await database.actions.upsertUser("missing-user");
-    const retried = await database.actions.createMatchWithParticipants(input);
-    assertEquals(retried.created, true);
-    assertEquals(retried.participants.length, 2);
-  });
-
-  test("単体participant保存時、not foundは専用errorにしDB failureとは区別する", async () => {
-    // Arrange
-    await using database = await createMigratedTestDatabase();
-    await database.db.insert(matches).values({ id: "match-1" });
-
-    // Act & Assert
-    await assertRejects(
-      () =>
-        database.actions.createMatchParticipant({
-          matchId: "match-1",
-          ...participant("missing-user"),
-        }),
-      RecordNotFoundError,
-    );
-
-    await database.actions.upsertUser("user-1");
-    await database.client.execute("DROP TABLE match_participants");
-    const databaseError = await assertRejects(() =>
-      database.actions.createMatchParticipant({
-        matchId: "match-1",
-        ...participant("user-1"),
-      })
-    );
-    assertFalse(databaseError instanceof RecordNotFoundError);
   });
 });

@@ -3,10 +3,10 @@ import { DomainConflictError, RecordNotFoundError } from "../errors.ts";
 import { Hono } from "@hono/hono";
 import { zValidator } from "@hono/zod-validator";
 import {
-  type RiotPlatform,
-  riotPlatforms,
-  type RiotRegion,
-  riotRegions,
+  canonicalRiotPlatform,
+  defaultRiotPlatform,
+  isRiotPlatform,
+  riotRegionForPlatform,
 } from "../contract/domain.ts";
 import { linkByRiotIdSchema, roleSchema } from "../contract/schemas.ts";
 import { messageHandler, messageKeys } from "../messages.ts";
@@ -17,18 +17,11 @@ import {
   remoteApiError,
 } from "../api_errors.ts";
 
-function defaultPlatform(env: EnvReader): RiotPlatform {
-  const platform = env.get("RIOT_DEFAULT_PLATFORM") ?? "jp1";
-  return riotPlatforms.includes(platform as RiotPlatform)
-    ? platform as RiotPlatform
-    : "jp1";
-}
-
-function defaultRegion(env: EnvReader): RiotRegion {
-  const region = env.get("RIOT_DEFAULT_REGION") ?? "asia";
-  return riotRegions.includes(region as RiotRegion)
-    ? region as RiotRegion
-    : "asia";
+function defaultPlatform(env: EnvReader) {
+  const platform = env.get("RIOT_DEFAULT_PLATFORM") ?? defaultRiotPlatform;
+  return isRiotPlatform(platform)
+    ? canonicalRiotPlatform(platform)
+    : defaultRiotPlatform;
 }
 
 type UsersDbActions = Pick<
@@ -56,7 +49,12 @@ export function usersRoutes(deps: {
           "json",
         );
         const resolvedPlatform = platform ?? defaultPlatform(env);
-        const resolvedRegion = region ?? defaultRegion(env);
+        const resolvedRegion = riotRegionForPlatform(resolvedPlatform);
+        if (region !== undefined && region !== resolvedRegion) {
+          return apiErrorResponse(c, "VALIDATION_ERROR", {
+            details: { issues: [{ code: "custom", path: ["region"] }] },
+          });
+        }
 
         let account;
         try {

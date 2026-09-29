@@ -86,6 +86,7 @@ describe("matches", () => {
       {
         contract: responseContracts.recordMatch,
         result: new Error("Network error"),
+        args: [{ json: recordInput }],
       },
     ]);
     const client = createApiClient({ rpcClient: rpc.rpcClient });
@@ -331,6 +332,7 @@ describe("resolveOpggMatchDetail", () => {
       {
         contract: responseContracts.opggDetail,
         result: new Error("Network error"),
+        args: [{ param: { matchId }, json: payload }],
       },
     ]);
     const client = createApiClient({ rpcClient: rpc.rpcClient });
